@@ -35,9 +35,17 @@ class User extends Authenticatable
 
     public function effectiveRole(): string
     {
-        $role = strtolower(trim((string) ($this->role ?? '')));
+        $rawRole = trim((string) ($this->role ?? ''));
+        $role = $this->normalizeRole($rawRole);
 
+        // الحسابات القديمة قبل إضافة نظام الصلاحيات لم يكن لديها role واضح.
         if ($role === '' || $role === 'null') {
+            return 'admin';
+        }
+
+        // احتياط مهم: بعض قواعد البيانات القديمة حفظت حساب المدير باسم/بريد Admin
+        // مع role غير صحيح مثل owner بعد تجارب إدارة الملاك.
+        if ($this->looksLikeLegacyAdminAccount() && $role !== 'super_admin') {
             return 'admin';
         }
 
@@ -61,5 +69,34 @@ class User extends Authenticatable
     public function scopeActive($q)
     {
         return $q->where('status', 'active');
+    }
+
+    private function normalizeRole(string $role): string
+    {
+        $role = strtolower(trim($role));
+        $role = str_replace(['-', ' '], '_', $role);
+
+        return match ($role) {
+            '', 'null' => $role,
+            'admin', 'administrator', 'مدير', 'المدير', 'ادمن', 'أدمن', 'إدمن', 'مشرف', 'مشرف_عام' => 'admin',
+            'superadmin', 'super_admin', 'system_admin', 'مدير_عام', 'المدير_العام' => 'super_admin',
+            'manager', 'agent', 'property_manager', 'مدير_العقارات', 'وكيل', 'مسؤول' => 'manager',
+            'owner', 'landlord', 'مالك', 'المالك' => 'owner',
+            default => $role,
+        };
+    }
+
+    private function looksLikeLegacyAdminAccount(): bool
+    {
+        $name = mb_strtolower(trim((string) ($this->name ?? '')));
+        $email = mb_strtolower(trim((string) ($this->email ?? '')));
+
+        if ($name === 'admin' || $name === 'administrator' || $name === 'مدير' || $name === 'المدير') {
+            return true;
+        }
+
+        return str_starts_with($email, 'admin@')
+            || str_contains($email, '+admin@')
+            || str_contains($email, '.admin@');
     }
 }
