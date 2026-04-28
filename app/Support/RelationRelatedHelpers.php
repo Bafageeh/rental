@@ -1,5 +1,9 @@
 <?php
 
+// Phase 2: extracted helper functions for RelationRelatedHelpers.
+// Functions stay guarded to support repeated Laravel/PHPUnit bootstraps.
+
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
@@ -474,8 +478,204 @@ if (!function_exists('mrr_list')) {
     }
 }
 
+
+if (!function_exists('mrr_user_is_admin')) {
+    function mrr_user_is_admin($user): bool
+    {
+        if (!$user) {
+            return false;
+        }
+
+        $role = method_exists($user, 'effectiveRole')
+            ? $user->effectiveRole()
+            : strtolower(trim((string) ($user->role ?? 'admin')));
+
+        return in_array($role, ['admin', 'manager', 'super_admin'], true);
+    }
+}
+
+if (!function_exists('mrr_request_owner_scope_id')) {
+    function mrr_request_owner_scope_id(Request $request): ?int
+    {
+        $user = $request->user();
+
+        if (!$user || mrr_user_is_admin($user)) {
+            return null;
+        }
+
+        $ownerId = (int) ($user->owner_id ?? 0);
+
+        return $ownerId > 0 ? $ownerId : 0;
+    }
+}
+
+if (!function_exists('mrr_owner_scope_forbidden_response')) {
+    function mrr_owner_scope_forbidden_response()
+    {
+        return response()->json([
+            'status' => 'error',
+            'message' => 'هذا السجل غير متاح لهذا الحساب أو خارج نطاق المالك المرتبط به.',
+        ], 403);
+    }
+}
+
+if (!function_exists('mrr_owned_property_ids')) {
+    function mrr_owned_property_ids(int $ownerId): array
+    {
+        if ($ownerId <= 0 || !mrr_has_table('properties') || !mrr_has_col('properties', 'owner_id')) {
+            return [];
+        }
+
+        $query = DB::table('properties')->where('owner_id', $ownerId);
+        mrr_apply_active_scope($query, 'properties');
+
+        return $query->pluck('id')->map(fn($v) => (int) $v)->values()->all();
+    }
+}
+
+if (!function_exists('mrr_owned_unit_ids')) {
+    function mrr_owned_unit_ids(int $ownerId): array
+    {
+        if ($ownerId <= 0 || !mrr_has_table('units') || !mrr_has_col('units', 'id')) {
+            return [];
+        }
+
+        $propertyIds = mrr_owned_property_ids($ownerId);
+        $query = DB::table('units')->where(function ($q) use ($ownerId, $propertyIds) {
+            $hasScope = false;
+
+            if (mrr_has_col('units', 'owner_id')) {
+                $q->where('owner_id', $ownerId);
+                $hasScope = true;
+            }
+
+            if (count($propertyIds) > 0 && mrr_has_col('units', 'property_id')) {
+                $hasScope ? $q->orWhereIn('property_id', $propertyIds) : $q->whereIn('property_id', $propertyIds);
+                $hasScope = true;
+            }
+
+            if (!$hasScope) {
+                $q->whereRaw('1 = 0');
+            }
+        });
+        mrr_apply_active_scope($query, 'units');
+
+        return $query->pluck('id')->map(fn($v) => (int) $v)->values()->all();
+    }
+}
+
+if (!function_exists('mrr_owned_contract_ids')) {
+    function mrr_owned_contract_ids(int $ownerId): array
+    {
+        if ($ownerId <= 0 || !mrr_has_table('contracts') || !mrr_has_col('contracts', 'id')) {
+            return [];
+        }
+
+        $propertyIds = mrr_owned_property_ids($ownerId);
+        $unitIds = mrr_owned_unit_ids($ownerId);
+        $query = DB::table('contracts')->where(function ($q) use ($ownerId, $propertyIds, $unitIds) {
+            $hasScope = false;
+
+            if (mrr_has_col('contracts', 'owner_id')) {
+                $q->where('owner_id', $ownerId);
+                $hasScope = true;
+            }
+
+            if (count($propertyIds) > 0 && mrr_has_col('contracts', 'property_id')) {
+                $hasScope ? $q->orWhereIn('property_id', $propertyIds) : $q->whereIn('property_id', $propertyIds);
+                $hasScope = true;
+            }
+
+            if (count($unitIds) > 0 && mrr_has_col('contracts', 'unit_id')) {
+                $hasScope ? $q->orWhereIn('unit_id', $unitIds) : $q->whereIn('unit_id', $unitIds);
+                $hasScope = true;
+            }
+
+            if (!$hasScope) {
+                $q->whereRaw('1 = 0');
+            }
+        });
+        mrr_apply_active_scope($query, 'contracts');
+
+        return $query->pluck('id')->map(fn($v) => (int) $v)->values()->all();
+    }
+}
+
+if (!function_exists('mrr_owned_tenant_ids')) {
+    function mrr_owned_tenant_ids(int $ownerId): array
+    {
+        if ($ownerId <= 0 || !mrr_has_table('contracts') || !mrr_has_col('contracts', 'tenant_id')) {
+            return [];
+        }
+
+        $contractIds = mrr_owned_contract_ids($ownerId);
+
+        if (count($contractIds) === 0) {
+            return [];
+        }
+
+        return DB::table('contracts')
+            ->whereIn('id', $contractIds)
+            ->whereNotNull('tenant_id')
+            ->pluck('tenant_id')
+            ->map(fn($v) => (int) $v)
+            ->unique()
+            ->values()
+            ->all();
+    }
+}
+
+if (!function_exists('mrr_record_belongs_to_owner')) {
+    function mrr_record_belongs_to_owner(string $table, $record, int $ownerId): bool
+    {
+        if ($ownerId <= 0 || !$record) {
+            return false;
+        }
+
+        $id = (int) mrr_row_value($record, 'id');
+
+        if ($table === 'owners') {
+            return $id === $ownerId;
+        }
+
+        if ($table === 'properties') {
+            return (int) mrr_row_value($record, 'owner_id') === $ownerId;
+        }
+
+        if ($table === 'units') {
+            if ((int) mrr_row_value($record, 'owner_id') === $ownerId) {
+                return true;
+            }
+
+            return in_array((int) mrr_row_value($record, 'property_id'), mrr_owned_property_ids($ownerId), true);
+        }
+
+        if ($table === 'contracts') {
+            if (mrr_has_col('contracts', 'owner_id') && (int) mrr_row_value($record, 'owner_id') === $ownerId) {
+                return true;
+            }
+
+            if (in_array((int) mrr_row_value($record, 'property_id'), mrr_owned_property_ids($ownerId), true)) {
+                return true;
+            }
+
+            return in_array((int) mrr_row_value($record, 'unit_id'), mrr_owned_unit_ids($ownerId), true);
+        }
+
+        if ($table === 'tenants') {
+            return in_array($id, mrr_owned_tenant_ids($ownerId), true);
+        }
+
+        if ($table === 'payments' && mrr_has_col('payments', 'contract_id')) {
+            return in_array((int) mrr_row_value($record, 'contract_id'), mrr_owned_contract_ids($ownerId), true);
+        }
+
+        return false;
+    }
+}
+
 if (!function_exists('mrr_related_sections')) {
-    function mrr_related_sections(string $entity, int $id): array
+    function mrr_related_sections(string $entity, int $id, ?int $ownerScopeId = null): array
     {
         $sections = [];
 
@@ -538,7 +738,14 @@ if (!function_exists('mrr_related_sections')) {
 
         if ($entity === 'tenant') {
             if (mrr_has_table('contracts') && mrr_has_col('contracts', 'tenant_id')) {
-                $contracts = mrr_list('contracts', fn ($q) => $q->where('tenant_id', $id));
+                $contracts = mrr_list('contracts', function ($q) use ($id, $ownerScopeId) {
+                    $q->where('tenant_id', $id);
+
+                    if ($ownerScopeId !== null) {
+                        $contractIds = mrr_owned_contract_ids($ownerScopeId);
+                        $q->whereIn('id', count($contractIds) > 0 ? $contractIds : [-1]);
+                    }
+                });
                 $sections[] = ['key' => 'tenant_contracts', 'title' => 'عقود هذا المستأجر', 'entity' => 'contract', 'count' => count($contracts), 'items' => $contracts];
             }
         }
@@ -576,35 +783,3 @@ if (!function_exists('mrr_relation_links')) {
         return $links;
     }
 }
-
-$myRentalsRelatedHandler = function (string $entity, $id) {
-    $table = mrr_entity_table($entity);
-    if (!$table || !mrr_has_table($table)) {
-        return response()->json(['message' => 'نوع السجل غير معروف أو الجدول غير موجود'], 404);
-    }
-
-    $record = mrr_find($table, $id);
-    if (!$record) {
-        return response()->json(['message' => 'السجل غير موجود'], 404);
-    }
-
-    $entityKey = mrr_table_entity($table);
-    $title = mrr_label_for($table, $record);
-    $fields = mrr_public_fields($table, $record);
-    $sections = mrr_related_sections($entityKey, (int) $id);
-    $links = mrr_relation_links($table, $record);
-
-    return response()->json([
-        'entity' => $entityKey,
-        'entity_title' => mrr_ar_entity_title($entityKey),
-        'id' => (int) $id,
-        'title' => $title,
-        'fields' => $fields,
-        'sections' => $sections,
-        'links' => $links,
-        'counts' => collect($sections)->mapWithKeys(fn ($section) => [$section['key'] => $section['count']])->all(),
-    ]);
-};
-
-Route::get('/relation-manager/related/{entity}/{id}', $myRentalsRelatedHandler);
-Route::get('/my/relation-manager/related/{entity}/{id}', $myRentalsRelatedHandler);

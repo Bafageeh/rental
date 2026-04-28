@@ -116,6 +116,7 @@ class OwnerDashboardController extends Controller
                 'net_income' => $paidIncome - $expensesTotal,
             ],
             'properties' => $properties->map(fn (Property $property) => $this->propertyPayload($property, $units, $contracts, $payments['all'], $expenses['all']))->values(),
+            'units' => $units->map(fn (Unit $unit) => $this->unitPayload($unit))->values(),
             'contracts' => $contracts->take(20)->map(fn (Contract $contract) => $this->contractPayload($contract))->values(),
             'payments' => $payments['items'],
             'overdue_payments' => $payments['overdue'],
@@ -195,7 +196,7 @@ class OwnerDashboardController extends Controller
             return collect();
         }
 
-        return Unit::query()
+        return Unit::with('property')
             ->whereIn('id', $unitIds)
             ->orderBy('unit_number')
             ->get();
@@ -367,6 +368,24 @@ class OwnerDashboardController extends Controller
             'paid_income' => (float) $propertyPayments->where('status', 'paid')->sum('amount'),
             'due_income' => (float) $propertyPayments->whereIn('status', ['due', 'overdue'])->sum('amount'),
             'expenses' => (float) $propertyExpenses->sum('amount'),
+            'units' => $propertyUnits->map(fn (Unit $unit) => $this->unitPayload($unit))->values(),
+        ];
+    }
+
+    private function unitPayload(Unit $unit): array
+    {
+        return [
+            'id' => $unit->id,
+            'property_id' => $this->hasColumn('units', 'property_id') ? $unit->property_id : null,
+            'owner_id' => $this->hasColumn('units', 'owner_id') ? $unit->owner_id : null,
+            'unit_scope' => $this->hasColumn('units', 'unit_scope') ? $unit->unit_scope : null,
+            'unit_number' => $unit->unit_number,
+            'name' => $unit->name ?? null,
+            'type' => $unit->type,
+            'floor' => $unit->floor,
+            'status' => $unit->status,
+            'rent_amount' => (float) ($unit->rent_amount ?? 0),
+            'property_name' => $unit->property?->name,
         ];
     }
 

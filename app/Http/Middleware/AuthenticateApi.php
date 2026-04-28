@@ -61,8 +61,11 @@ class AuthenticateApi
     }
 
     /**
-     * بعض بيئات cPanel / Apache / PHP-FPM لا تمرر Authorization إلى Laravel كما هي.
-     * لذلك نقرأ التوكن من أكثر من مصدر، والجوال سيرسل X-Api-Token كاحتياط.
+     * نقرأ التوكن فقط من الهيدرز:
+     * - Authorization: Bearer <token>
+     * - X-Api-Token كاحتياط لبعض بيئات cPanel/Apache التي لا تمرر Authorization إلى Laravel.
+     *
+     * لا نقبل api_token من query/body حتى لا يظهر التوكن في الروابط، السجلات، أو history.
      */
     private function resolveToken(Request $request): ?string
     {
@@ -81,9 +84,7 @@ class AuthenticateApi
 
         if (! $token) {
             $token = $request->header('X-Api-Token')
-                ?: $request->server('HTTP_X_API_TOKEN')
-                ?: $request->input('api_token')
-                ?: $request->query('api_token');
+                ?: $request->server('HTTP_X_API_TOKEN');
         }
 
         if (! is_string($token)) {

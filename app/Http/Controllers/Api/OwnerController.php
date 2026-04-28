@@ -38,9 +38,10 @@ class OwnerController extends Controller
             'phone'       => ['nullable', 'string', 'max:50'],
             'email'       => ['nullable', 'email', 'max:255'],
             'national_id' => ['nullable', 'string', 'max:50'],
-            'type'        => ['nullable', 'string', 'in:self,external,partner'],
             'notes'       => ['nullable', 'string', 'max:2000'],
         ]);
+
+        $data['type'] = $data['type'] ?? 'external';
 
         return $this->created(
             Owner::create($data)->loadCount('properties'),
@@ -60,7 +61,6 @@ class OwnerController extends Controller
             'phone'       => ['nullable', 'string', 'max:50'],
             'email'       => ['nullable', 'email', 'max:255'],
             'national_id' => ['nullable', 'string', 'max:50'],
-            'type'        => ['nullable', 'string', 'in:self,external,partner'],
             'notes'       => ['nullable', 'string', 'max:2000'],
         ]);
 

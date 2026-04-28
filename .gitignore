@@ -34,3 +34,19 @@ Thumbs.db
 /storage/framework/sessions/*
 /storage/app/private/*
 /public/storage/*
+
+# Local backups / generated archives
+*.bak
+*.bak.*
+*.backup
+*.backup.*
+*_backups/
+*_file_backups/
+_archived_src_backups/
+backup/
+backups/
+*.tar
+*.tar.gz
+*.zip
+error_log
+backup_before_*/

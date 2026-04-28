@@ -5,6 +5,8 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\ContractFile;
 use App\Models\Owner;
+use App\Models\Property;
+use App\Models\Unit;
 use App\Services\GovernmentContractImporter;
 use App\Services\GovernmentContractPdfExtractor;
 use Illuminate\Http\Request;
@@ -23,6 +25,8 @@ class ContractFileController extends Controller
             'tenant_id' => ['nullable', 'integer'],
             'contract_id' => ['nullable', 'integer'],
             'owner_id' => ['nullable', 'integer', 'exists:owners,id'],
+            'property_id' => ['nullable', 'integer', 'exists:properties,id'],
+            'unit_id' => ['nullable', 'integer', 'exists:units,id'],
             'apply' => ['nullable'],
         ]);
 
@@ -56,11 +60,11 @@ class ContractFileController extends Controller
             $importResult = null;
 
             if ($request->boolean('apply')) {
-                $forcedOwner = $request->integer('owner_id')
-                    ? Owner::find($request->integer('owner_id'))
-                    : null;
+                $forcedOwner = $request->integer('owner_id') ? Owner::find($request->integer('owner_id')) : null;
+                $forcedProperty = $request->integer('property_id') ? Property::with('owner')->find($request->integer('property_id')) : null;
+                $forcedUnit = $request->integer('unit_id') ? Unit::with('property.owner')->find($request->integer('unit_id')) : null;
 
-                $importResult = $importer->import($data, $forcedOwner);
+                $importResult = $importer->import($data, $forcedOwner, $forcedProperty, $forcedUnit);
 
                 $contractFile->update([
                     'tenant_id' => $importResult['tenant']->id ?? $contractFile->tenant_id,
@@ -71,7 +75,7 @@ class ContractFileController extends Controller
             return response()->json([
                 'status' => 'ok',
                 'message' => $request->boolean('apply')
-                    ? 'تم رفع العقد واستخراج البيانات وتحديث السجلات'
+                    ? 'تم رفع العقد واستخراج بياناته وحفظها في السجلات'
                     : 'تم رفع العقد واستخراج البيانات للمراجعة',
                 'contract_file' => $contractFile->fresh(),
                 'extracted_data' => $data,

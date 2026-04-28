@@ -10,19 +10,29 @@ class Unit extends Model
 {
     protected $fillable = [
         'property_id',
+        'owner_id',
+        'unit_scope',
         'parent_unit_id',
         'unit_number',
         'floor',
         'type',
+        'area',
+        'is_furnished',
+        'furnishing_status',
         'is_subdivided',
         'rooms_count',
         'bathrooms_count',
         'has_kitchen',
         'kitchen_type',
         'is_kitchen_installed',
+        'kitchen_cabinets_installed',
         'has_living_room',
         'is_rooftop',
         'orientation',
+        'ac_units_count',
+        'electricity_meter_number',
+        'water_meter_number',
+        'gas_meter_number',
         'rent_amount',
         'status',
         'notes',
@@ -32,13 +42,22 @@ class Unit extends Model
         'is_subdivided' => 'boolean',
         'has_kitchen' => 'boolean',
         'is_kitchen_installed' => 'boolean',
+        'kitchen_cabinets_installed' => 'boolean',
         'has_living_room' => 'boolean',
         'is_rooftop' => 'boolean',
+        'is_furnished' => 'boolean',
+        'area' => 'decimal:2',
+        'rent_amount' => 'decimal:2',
     ];
 
     public function property(): BelongsTo
     {
         return $this->belongsTo(Property::class);
+    }
+
+    public function owner(): BelongsTo
+    {
+        return $this->belongsTo(Owner::class);
     }
 
     public function parentUnit(): BelongsTo

@@ -22,6 +22,25 @@ Route::get('/health', function () {
 
 Route::post('/auth/login', [AuthController::class, 'login']);
 
+/*
+|--------------------------------------------------------------------------
+| Phase 1 security routes: relation manager
+|--------------------------------------------------------------------------
+| Important for PHPUnit:
+| Use require, not require_once, and do not guard this block with constants.
+| Laravel refreshes the app between tests inside the same PHP process.
+*/
+Route::middleware(['auth.api', 'api.scope'])->group(function () {
+    foreach ([
+        __DIR__ . '/relation_manager_routes.php',
+        __DIR__ . '/relation_related_routes.php',
+    ] as $relationRouteFile) {
+        if (is_file($relationRouteFile)) {
+            require $relationRouteFile;
+        }
+    }
+});
+
 // PHASE2_ROUTE_MODULES: api.php was split into routes/api/*.php for maintainability.
 Route::middleware(['auth.api', 'api.scope'])->group(function () {
     foreach ([
@@ -44,21 +63,13 @@ Route::middleware(['auth.api', 'api.scope'])->group(function () {
         __DIR__ . '/api/16_occupancy.php',
         __DIR__ . '/api/17_renewals.php',
         __DIR__ . '/api/18_utility.php',
+        __DIR__ . '/api/20_edit_delete_center_stable.php',
         __DIR__ . '/api/19_receipts.php',
+        __DIR__ . '/api/21_phase3_compat_overrides.php',
+        __DIR__ . '/api/99_owner_direct_units_hotfix.php',
     ] as $routeModule) {
         if (is_file($routeModule)) {
             require $routeModule;
         }
     }
-
-    // RELATION_MANAGER_HOTFIX: load relation-manager route files that were outside api.php before phase 2 splitting.
-    foreach ([
-        __DIR__ . '/relation_manager_routes.php',
-        __DIR__ . '/relation_related_routes.php',
-    ] as $relationRouteFile) {
-        if (is_file($relationRouteFile)) {
-            require_once $relationRouteFile;
-        }
-    }
-
 });

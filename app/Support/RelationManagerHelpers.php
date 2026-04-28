@@ -1,5 +1,8 @@
 <?php
 
+// Phase 2: extracted helper functions for RelationManagerHelpers.
+// Functions stay guarded to support repeated Laravel/PHPUnit bootstraps.
+
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
@@ -136,7 +139,7 @@ if (!function_exists('mr_soft_or_hard_delete_by_id')) {
 }
 
 if (!function_exists('mr_owner_options')) {
-    function mr_owner_options(): array
+    function mr_owner_options(?int $ownerScopeId = null): array
     {
         if (!mr_has_table('owners')) {
             return [];
@@ -160,6 +163,10 @@ if (!function_exists('mr_owner_options')) {
         }
 
         $query = DB::table('owners')->select($cols);
+
+        if ($ownerScopeId !== null) {
+            $query->where('id', $ownerScopeId);
+        }
 
         if (in_array('deleted_at', $cols, true)) {
             $query->whereNull('deleted_at');
@@ -189,7 +196,7 @@ if (!function_exists('mr_owner_options')) {
 }
 
 if (!function_exists('mr_property_options')) {
-    function mr_property_options(): array
+    function mr_property_options(?int $ownerScopeId = null): array
     {
         if (!mr_has_table('properties')) {
             return [];
@@ -216,6 +223,14 @@ if (!function_exists('mr_property_options')) {
         }
 
         $query = DB::table('properties')->select($cols);
+
+        if ($ownerScopeId !== null) {
+            if (in_array('owner_id', $cols, true)) {
+                $query->where('owner_id', $ownerScopeId);
+            } else {
+                $query->whereRaw('1 = 0');
+            }
+        }
 
         if (in_array('deleted_at', $cols, true)) {
             $query->whereNull('deleted_at');
@@ -251,7 +266,7 @@ if (!function_exists('mr_property_options')) {
 }
 
 if (!function_exists('mr_unit_options')) {
-    function mr_unit_options(): array
+    function mr_unit_options(?int $ownerScopeId = null): array
     {
         if (!mr_has_table('units')) {
             return [];
@@ -278,6 +293,11 @@ if (!function_exists('mr_unit_options')) {
         }
 
         $query = DB::table('units')->select($cols);
+
+        if ($ownerScopeId !== null) {
+            $unitIds = mr_owned_unit_ids($ownerScopeId);
+            $query->whereIn('id', count($unitIds) > 0 ? $unitIds : [-1]);
+        }
 
         if (in_array('deleted_at', $cols, true)) {
             $query->whereNull('deleted_at');
@@ -311,7 +331,7 @@ if (!function_exists('mr_unit_options')) {
 }
 
 if (!function_exists('mr_tenant_options')) {
-    function mr_tenant_options(): array
+    function mr_tenant_options(?int $ownerScopeId = null): array
     {
         if (!mr_has_table('tenants')) {
             return [];
@@ -324,6 +344,11 @@ if (!function_exists('mr_tenant_options')) {
         }
 
         $query = DB::table('tenants')->select($cols);
+
+        if ($ownerScopeId !== null) {
+            $tenantIds = mr_owned_tenant_ids($ownerScopeId);
+            $query->whereIn('id', count($tenantIds) > 0 ? $tenantIds : [-1]);
+        }
 
         if (in_array('deleted_at', $cols, true)) {
             $query->whereNull('deleted_at');
@@ -345,7 +370,7 @@ if (!function_exists('mr_tenant_options')) {
 }
 
 if (!function_exists('mr_contract_options')) {
-    function mr_contract_options(): array
+    function mr_contract_options(?int $ownerScopeId = null): array
     {
         if (!mr_has_table('contracts')) {
             return [];
@@ -358,6 +383,11 @@ if (!function_exists('mr_contract_options')) {
         }
 
         $query = DB::table('contracts')->select($cols);
+
+        if ($ownerScopeId !== null) {
+            $contractIds = mr_owned_contract_ids($ownerScopeId);
+            $query->whereIn('id', count($contractIds) > 0 ? $contractIds : [-1]);
+        }
 
         if (in_array('deleted_at', $cols, true)) {
             $query->whereNull('deleted_at');
@@ -381,15 +411,172 @@ if (!function_exists('mr_contract_options')) {
 }
 
 if (!function_exists('mr_relation_options_array')) {
-    function mr_relation_options_array(): array
+    function mr_relation_options_array(?int $ownerScopeId = null): array
     {
         return [
-            'owners' => mr_owner_options(),
-            'properties' => mr_property_options(),
-            'units' => mr_unit_options(),
-            'tenants' => mr_tenant_options(),
-            'contracts' => mr_contract_options(),
+            'owners' => mr_owner_options($ownerScopeId),
+            'properties' => mr_property_options($ownerScopeId),
+            'units' => mr_unit_options($ownerScopeId),
+            'tenants' => mr_tenant_options($ownerScopeId),
+            'contracts' => mr_contract_options($ownerScopeId),
         ];
+    }
+}
+
+
+if (!function_exists('mr_user_is_admin')) {
+    function mr_user_is_admin($user): bool
+    {
+        if (!$user) {
+            return false;
+        }
+
+        $role = method_exists($user, 'effectiveRole')
+            ? $user->effectiveRole()
+            : strtolower(trim((string) ($user->role ?? 'admin')));
+
+        return in_array($role, ['admin', 'manager', 'super_admin'], true);
+    }
+}
+
+if (!function_exists('mr_request_owner_scope_id')) {
+    function mr_request_owner_scope_id(Request $request): ?int
+    {
+        $user = $request->user();
+
+        if (!$user || mr_user_is_admin($user)) {
+            return null;
+        }
+
+        $ownerId = (int) ($user->owner_id ?? 0);
+
+        return $ownerId > 0 ? $ownerId : 0;
+    }
+}
+
+if (!function_exists('mr_owner_scope_forbidden_response')) {
+    function mr_owner_scope_forbidden_response()
+    {
+        return response()->json([
+            'status' => 'error',
+            'message' => 'هذا الإجراء غير متاح لهذا الحساب أو خارج نطاق المالك المرتبط به.',
+        ], 403);
+    }
+}
+
+if (!function_exists('mr_owned_property_ids')) {
+    function mr_owned_property_ids(int $ownerId): array
+    {
+        if ($ownerId <= 0 || !mr_has_table('properties') || !mr_has_col('properties', 'owner_id')) {
+            return [];
+        }
+
+        $query = DB::table('properties')->where('owner_id', $ownerId);
+
+        if (mr_has_col('properties', 'deleted_at')) {
+            $query->whereNull('deleted_at');
+        }
+
+        return $query->pluck('id')->map(fn($v) => (int) $v)->values()->all();
+    }
+}
+
+if (!function_exists('mr_owned_unit_ids')) {
+    function mr_owned_unit_ids(int $ownerId): array
+    {
+        if ($ownerId <= 0 || !mr_has_table('units') || !mr_has_col('units', 'id')) {
+            return [];
+        }
+
+        $propertyIds = mr_owned_property_ids($ownerId);
+        $query = DB::table('units')->where(function ($q) use ($ownerId, $propertyIds) {
+            $hasScope = false;
+
+            if (mr_has_col('units', 'owner_id')) {
+                $q->where('owner_id', $ownerId);
+                $hasScope = true;
+            }
+
+            if (count($propertyIds) > 0 && mr_has_col('units', 'property_id')) {
+                $hasScope ? $q->orWhereIn('property_id', $propertyIds) : $q->whereIn('property_id', $propertyIds);
+                $hasScope = true;
+            }
+
+            if (!$hasScope) {
+                $q->whereRaw('1 = 0');
+            }
+        });
+
+        if (mr_has_col('units', 'deleted_at')) {
+            $query->whereNull('deleted_at');
+        }
+
+        return $query->pluck('id')->map(fn($v) => (int) $v)->values()->all();
+    }
+}
+
+if (!function_exists('mr_owned_contract_ids')) {
+    function mr_owned_contract_ids(int $ownerId): array
+    {
+        if ($ownerId <= 0 || !mr_has_table('contracts') || !mr_has_col('contracts', 'id')) {
+            return [];
+        }
+
+        $propertyIds = mr_owned_property_ids($ownerId);
+        $unitIds = mr_owned_unit_ids($ownerId);
+
+        $query = DB::table('contracts')->where(function ($q) use ($ownerId, $propertyIds, $unitIds) {
+            $hasScope = false;
+
+            if (mr_has_col('contracts', 'owner_id')) {
+                $q->where('owner_id', $ownerId);
+                $hasScope = true;
+            }
+
+            if (count($propertyIds) > 0 && mr_has_col('contracts', 'property_id')) {
+                $hasScope ? $q->orWhereIn('property_id', $propertyIds) : $q->whereIn('property_id', $propertyIds);
+                $hasScope = true;
+            }
+
+            if (count($unitIds) > 0 && mr_has_col('contracts', 'unit_id')) {
+                $hasScope ? $q->orWhereIn('unit_id', $unitIds) : $q->whereIn('unit_id', $unitIds);
+                $hasScope = true;
+            }
+
+            if (!$hasScope) {
+                $q->whereRaw('1 = 0');
+            }
+        });
+
+        if (mr_has_col('contracts', 'deleted_at')) {
+            $query->whereNull('deleted_at');
+        }
+
+        return $query->pluck('id')->map(fn($v) => (int) $v)->values()->all();
+    }
+}
+
+if (!function_exists('mr_owned_tenant_ids')) {
+    function mr_owned_tenant_ids(int $ownerId): array
+    {
+        if ($ownerId <= 0 || !mr_has_table('contracts') || !mr_has_col('contracts', 'tenant_id')) {
+            return [];
+        }
+
+        $contractIds = mr_owned_contract_ids($ownerId);
+
+        if (count($contractIds) === 0) {
+            return [];
+        }
+
+        return DB::table('contracts')
+            ->whereIn('id', $contractIds)
+            ->whereNotNull('tenant_id')
+            ->pluck('tenant_id')
+            ->map(fn($v) => (int) $v)
+            ->unique()
+            ->values()
+            ->all();
     }
 }
 
@@ -462,195 +649,3 @@ if (!function_exists('mr_delete_properties_cascade')) {
         ];
     }
 }
-
-$relationOptionsHandler = function () {
-    return response()->json(mr_relation_options_array());
-};
-
-$createPropertyHandler = function (Request $request) {
-    if (!mr_has_table('properties')) {
-        return response()->json(['message' => 'جدول العقارات غير موجود'], 422);
-    }
-
-    $ownerId = $request->input('owner_id');
-    $title = trim((string) ($request->input('title') ?: $request->input('name') ?: ''));
-
-    if (!$ownerId) {
-        return response()->json(['message' => 'يجب اختيار المالك'], 422);
-    }
-
-    if (mr_has_table('owners') && !DB::table('owners')->where('id', $ownerId)->exists()) {
-        return response()->json(['message' => 'المالك غير موجود'], 404);
-    }
-
-    if ($title === '') {
-        return response()->json(['message' => 'يجب كتابة اسم أو عنوان العقار'], 422);
-    }
-
-    $data = [];
-    mr_set_if_column($data, 'properties', 'owner_id', $ownerId);
-    mr_set_if_column($data, 'properties', 'title', $title);
-    mr_set_if_column($data, 'properties', 'name', $title);
-    mr_set_if_column($data, 'properties', 'property_name', $title);
-    mr_set_if_column($data, 'properties', 'property_type', $request->input('property_type'), true);
-    mr_set_if_column($data, 'properties', 'management_type', $request->input('management_type'), true);
-    mr_set_if_column($data, 'properties', 'city', $request->input('city'), true);
-    mr_set_if_column($data, 'properties', 'district', $request->input('district'), true);
-    mr_set_if_column($data, 'properties', 'address', $request->input('address'), true);
-    mr_set_if_column($data, 'properties', 'deed_number', $request->input('deed_number'), true);
-    mr_set_if_column($data, 'properties', 'floors_count', $request->input('floors_count'), true);
-    mr_set_if_column($data, 'properties', 'parking_spots_count', $request->input('parking_spots_count'), true);
-    mr_touch_columns($data, 'properties', true);
-
-    $id = DB::table('properties')->insertGetId($data);
-
-    return response()->json(['message' => 'تم إنشاء العقار وربطه بالمالك', 'id' => $id, 'options' => mr_relation_options_array()]);
-};
-
-$createUnitHandler = function (Request $request) {
-    if (!mr_has_table('units')) {
-        return response()->json(['message' => 'جدول الوحدات غير موجود'], 422);
-    }
-
-    $ownerId = $request->input('owner_id');
-    $propertyId = $request->input('property_id');
-    $unitScope = $request->input('unit_scope') ?: ($propertyId ? 'property' : 'owner');
-    $unitNumber = trim((string) ($request->input('unit_number') ?: $request->input('title') ?: $request->input('name') ?: ''));
-
-    if (!$ownerId) {
-        return response()->json(['message' => 'يجب اختيار المالك'], 422);
-    }
-
-    if (mr_has_table('owners') && !DB::table('owners')->where('id', $ownerId)->exists()) {
-        return response()->json(['message' => 'المالك غير موجود'], 404);
-    }
-
-    if ($unitScope === 'property') {
-        if (!$propertyId) {
-            return response()->json(['message' => 'يجب اختيار العقار إذا كانت الوحدة داخل عقار/عمارة'], 422);
-        }
-
-        if (mr_has_table('properties')) {
-            $property = DB::table('properties')->where('id', $propertyId)->first();
-
-            if (!$property) {
-                return response()->json(['message' => 'العقار غير موجود'], 404);
-            }
-
-            if (isset($property->owner_id) && (string) $property->owner_id !== (string) $ownerId) {
-                return response()->json(['message' => 'العقار المختار لا يتبع المالك المحدد'], 422);
-            }
-        }
-    } else {
-        $propertyId = null;
-        $unitScope = 'owner';
-    }
-
-    if ($unitNumber === '') {
-        return response()->json(['message' => 'يجب كتابة رقم الوحدة'], 422);
-    }
-
-    $data = [];
-    mr_set_if_column($data, 'units', 'property_id', $propertyId);
-    mr_set_if_column($data, 'units', 'owner_id', $ownerId);
-    mr_set_if_column($data, 'units', 'unit_scope', $unitScope);
-    mr_set_if_column($data, 'units', 'unit_number', $unitNumber);
-    mr_set_if_column($data, 'units', 'title', $unitNumber);
-    mr_set_if_column($data, 'units', 'name', $unitNumber);
-    mr_set_if_column($data, 'units', 'type', $request->input('type'), true);
-    mr_set_if_column($data, 'units', 'status', $request->input('status'), true);
-    mr_set_if_column($data, 'units', 'floor', $request->input('floor'), true);
-    mr_set_if_column($data, 'units', 'rent_amount', $request->input('rent_amount'), true);
-    mr_set_if_column($data, 'units', 'rooms_count', $request->input('rooms_count'), true);
-    mr_set_if_column($data, 'units', 'bathrooms_count', $request->input('bathrooms_count'), true);
-    mr_set_if_column($data, 'units', 'notes', $request->input('notes'), true);
-    mr_touch_columns($data, 'units', true);
-
-    $id = DB::table('units')->insertGetId($data);
-
-    return response()->json(['message' => 'تم إنشاء الوحدة وربطها بالمالك', 'id' => $id, 'options' => mr_relation_options_array()]);
-};
-
-$cleanupOrphansHandler = function () {
-    if (!mr_has_table('properties') || !mr_has_col('properties', 'owner_id')) {
-        return response()->json(['message' => 'لا يوجد حقل مالك في جدول العقارات', 'deleted' => ['properties' => 0]]);
-    }
-
-    $query = DB::table('properties')->where(function ($q) {
-        $q->whereNull('owner_id')->orWhere('owner_id', '')->orWhere('owner_id', 0);
-    });
-
-    if (mr_has_table('owners')) {
-        $ownerIds = DB::table('owners')->pluck('id')->map(fn($v) => (string) $v)->all();
-
-        if (count($ownerIds) > 0) {
-            $query->orWhere(function ($q) use ($ownerIds) {
-                $q->whereNotNull('owner_id')->where('owner_id', '!=', '')->whereNotIn('owner_id', $ownerIds);
-            });
-        }
-    }
-
-    $propertyIds = $query->pluck('id')->map(fn($v) => (int) $v)->all();
-    $deleted = mr_delete_properties_cascade($propertyIds);
-
-    return response()->json([
-        'message' => 'تم حذف العقارات التي ليس لها مالك',
-        'deleted' => $deleted,
-        'options' => mr_relation_options_array(),
-    ]);
-};
-
-$deleteOwnerCascadeHandler = function (Request $request, $ownerId = null) {
-    $ownerId = $ownerId ?: $request->input('owner_id');
-
-    if (!$ownerId || !mr_has_table('owners') || !DB::table('owners')->where('id', $ownerId)->exists()) {
-        return response()->json(['message' => 'المالك غير موجود'], 404);
-    }
-
-    $propertyIds = [];
-    if (mr_has_table('properties') && mr_has_col('properties', 'owner_id')) {
-        $propertyIds = DB::table('properties')->where('owner_id', $ownerId)->pluck('id')->map(fn($v) => (int) $v)->all();
-    }
-
-    $deleted = mr_delete_properties_cascade($propertyIds);
-
-    if (mr_has_table('units') && mr_has_col('units', 'owner_id')) {
-        $directUnitIds = DB::table('units')
-            ->where('owner_id', $ownerId)
-            ->where(function ($q) {
-                $q->whereNull('property_id')->orWhere('property_id', '')->orWhere('property_id', 0);
-            })
-            ->pluck('id')
-            ->map(fn($v) => (int) $v)
-            ->all();
-
-        $deleted['direct_units'] = mr_soft_or_hard_delete_by_id('units', $directUnitIds);
-    }
-
-    foreach (['owner_bank_accounts', 'owner_payouts'] as $table) {
-        mr_soft_or_hard_delete($table, 'owner_id', [(int) $ownerId]);
-    }
-
-    mr_soft_or_hard_delete_by_id('owners', [(int) $ownerId]);
-
-    return response()->json([
-        'message' => 'تم حذف المالك وجميع عقاراته ووحداته المرتبطة',
-        'deleted' => $deleted,
-        'options' => mr_relation_options_array(),
-    ]);
-};
-
-Route::get('/relation-manager/options', $relationOptionsHandler);
-Route::get('/my/relation-manager/options', $relationOptionsHandler);
-
-Route::post('/relation-manager/create-property', $createPropertyHandler);
-Route::post('/my/relation-manager/create-property', $createPropertyHandler);
-
-Route::post('/relation-manager/create-unit', $createUnitHandler);
-Route::post('/my/relation-manager/create-unit', $createUnitHandler);
-
-Route::post('/relation-manager/cleanup-orphan-properties', $cleanupOrphansHandler);
-Route::post('/my/relation-manager/cleanup-orphan-properties', $cleanupOrphansHandler);
-
-Route::post('/relation-manager/delete-owner-cascade/{ownerId?}', $deleteOwnerCascadeHandler);
-Route::post('/my/relation-manager/delete-owner-cascade/{ownerId?}', $deleteOwnerCascadeHandler);

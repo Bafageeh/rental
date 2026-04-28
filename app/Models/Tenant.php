@@ -11,6 +11,7 @@ class Tenant extends Model
         'name',
         'phone',
         'national_id',
+        'identity_type',
         'birth_date',
         'nationality',
         'email',
