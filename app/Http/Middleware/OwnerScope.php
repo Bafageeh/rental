@@ -12,7 +12,13 @@ class OwnerScope
     {
         $user = $request->user();
 
-        if ($user && ($user->role ?? 'admin') === 'owner' && ! empty($user->owner_id)) {
+        $role = $user
+            ? (method_exists($user, 'effectiveRole')
+                ? $user->effectiveRole()
+                : strtolower(trim((string) ($user->role ?? 'admin'))))
+            : null;
+
+        if ($user && $role === 'owner' && ! empty($user->owner_id)) {
             $request->merge(['owner_scope_id' => $user->owner_id]);
         }
 
