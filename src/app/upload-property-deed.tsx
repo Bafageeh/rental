@@ -72,6 +72,23 @@ type DeedPropertyData = {
   elevators_count?: string | number | null;
 };
 
+const emptyDeedForm: DeedPropertyData = {
+  name: '', deed_number: '', document_date_hijri: '', document_status: '', document_restrictions: '', previous_document_date_hijri: '', previous_document_number: '', operation_type: '',
+  deed_owner_identifier: '', deed_owner_name: '', deed_owner_nationality: '', deed_ownership_percentage: '',
+  city: '', district: '', address: '', national_short_address: '', property_area: '', property_type: 'عمارة', usage_type: 'residential', management_type: 'managed',
+  real_estate_identity_number: '', deed_property_type_text: '', deed_usage_text: '', plot_number: '', plan_number: '', block_number: '', deed_neighboring_part: '', deed_location_text: '', deed_property_model: '',
+  deed_mortgage_status: '', deed_mortgagee_name: '', deed_mortgagee_entity_number: '', deed_mortgage_amount: '', deed_mortgage_due_date: '', deed_mortgage_notes: '',
+  deed_north_boundary_type: '', deed_north_boundary_description: '', deed_north_boundary_length: '',
+  deed_south_boundary_type: '', deed_south_boundary_description: '', deed_south_boundary_length: '',
+  deed_east_boundary_type: '', deed_east_boundary_description: '', deed_east_boundary_length: '',
+  deed_west_boundary_type: '', deed_west_boundary_description: '', deed_west_boundary_length: '',
+  floors_count: '', parking_spots_count: '', elevators_count: '',
+};
+
+function freshEmptyDeedForm(): DeedPropertyData {
+  return { ...emptyDeedForm };
+}
+
 function firstParam(value: string | string[] | undefined): string {
   if (Array.isArray(value)) return value[0] || '';
   return value || '';
@@ -140,29 +157,26 @@ export default function UploadPropertyDeedScreen() {
   const [error, setError] = useState('');
   const [extracted, setExtracted] = useState<DeedPropertyData | null>(null);
   const [createdPropertyId, setCreatedPropertyId] = useState<number | null>(null);
-  const [form, setForm] = useState<DeedPropertyData>({
-    name: '', deed_number: '', document_date_hijri: '', document_status: '', document_restrictions: '', previous_document_date_hijri: '', previous_document_number: '', operation_type: '',
-    deed_owner_identifier: '', deed_owner_name: '', deed_owner_nationality: '', deed_ownership_percentage: '',
-    city: '', district: '', address: '', national_short_address: '', property_area: '', property_type: 'عمارة', usage_type: 'residential', management_type: 'managed',
-    real_estate_identity_number: '', deed_property_type_text: '', deed_usage_text: '', plot_number: '', plan_number: '', block_number: '', deed_neighboring_part: '', deed_location_text: '', deed_property_model: '',
-    deed_mortgage_status: '', deed_mortgagee_name: '', deed_mortgagee_entity_number: '', deed_mortgage_amount: '', deed_mortgage_due_date: '', deed_mortgage_notes: '',
-    deed_north_boundary_type: '', deed_north_boundary_description: '', deed_north_boundary_length: '',
-    deed_south_boundary_type: '', deed_south_boundary_description: '', deed_south_boundary_length: '',
-    deed_east_boundary_type: '', deed_east_boundary_description: '', deed_east_boundary_length: '',
-    deed_west_boundary_type: '', deed_west_boundary_description: '', deed_west_boundary_length: '',
-    floors_count: '', parking_spots_count: '', elevators_count: '',
-  });
+  const [form, setForm] = useState<DeedPropertyData>(() => freshEmptyDeedForm());
 
   const ownerLabel = useMemo(() => ownerName || (ownerId ? `مالك #${ownerId}` : 'سيتم اختيار المالك الافتراضي'), [ownerId, ownerName]);
+
+  function resetDeedScreen(successMessage = '') {
+    setSelectedFile(null);
+    setExtracted(null);
+    setCreatedPropertyId(null);
+    setError('');
+    setMessage(successMessage);
+    setForm(freshEmptyDeedForm());
+  }
 
   function setField(key: keyof DeedPropertyData, value: string) { setForm((previous) => ({ ...previous, [key]: value })); }
 
   async function pickFile() {
-    setError(''); setMessage(''); setCreatedPropertyId(null);
+    setError(''); setMessage(''); setCreatedPropertyId(null); setExtracted(null); setForm(freshEmptyDeedForm());
     const result = await DocumentPicker.getDocumentAsync({ type: 'application/pdf', copyToCacheDirectory: true, multiple: false });
     if (result.canceled) return;
     setSelectedFile(result.assets?.[0] || null);
-    setExtracted(null);
   }
 
   function fillFormFromExtracted(property: DeedPropertyData) {
@@ -208,11 +222,12 @@ export default function UploadPropertyDeedScreen() {
       setLoading(true); setError(''); setMessage('');
       const json = await apiPostFormData('/property-deeds/extract', buildFormData(true));
       const propertyId = Number(json?.property?.id || 0);
-      setCreatedPropertyId(propertyId || null);
-      setMessage(json?.message || 'تم إنشاء العقار من الصك.');
-      Alert.alert('تم', json?.message || 'تم إنشاء العقار من الصك.', [
+      const successMessage = json?.message || 'تم إنشاء العقار من الصك.';
+      resetDeedScreen(successMessage);
+      setLoading(false);
+      Alert.alert('تم', successMessage, [
         { text: 'عرض العقار', onPress: () => propertyId ? router.replace(`/property/${propertyId}` as any) : router.replace('/properties' as any) },
-        { text: 'البقاء هنا', style: 'cancel' },
+        { text: 'إضافة صك آخر', style: 'cancel' },
       ]);
     } catch (e) { setError(e instanceof Error ? e.message : 'تعذر إنشاء العقار من الصك'); }
     finally { setLoading(false); }
@@ -305,7 +320,6 @@ export default function UploadPropertyDeedScreen() {
         {loading ? <View style={styles.loadingBox}><ActivityIndicator color={colors.primary} /><Text style={styles.loadingText}>جاري المعالجة...</Text></View> : null}
         {message ? <Text style={styles.successText}>{message}</Text> : null}
         {error ? <Text style={styles.errorText}>{error}</Text> : null}
-        {createdPropertyId ? <TouchableOpacity style={styles.openButton} onPress={() => router.replace(`/property/${createdPropertyId}` as any)}><Text style={styles.openButtonText}>فتح العقار الجديد</Text></TouchableOpacity> : null}
       </ScrollView>
     </SafeAreaView>
   );
