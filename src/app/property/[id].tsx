@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
 import {
+  Alert,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -78,6 +79,13 @@ type PropertyDetail = {
   floors_count?: number;
   elevators_count?: number;
   notes?: string;
+  units_count?: number;
+  property_contracts_count?: number;
+  unit_contracts_count?: number;
+  whole_property_contract_exists?: boolean;
+  can_create_whole_property_contract?: boolean;
+  can_create_unit_contract?: boolean;
+  can_create_contract?: boolean;
   owner?: { id: number; name?: string; type?: string };
   units?: Array<{
     id: number;
@@ -106,10 +114,6 @@ function unitContractsCount(unit: NonNullable<PropertyDetail['units']>[number]) 
 
 function hasValue(value: unknown) {
   return value !== null && value !== undefined && String(value).trim() !== '' && String(value).trim() !== '-';
-}
-
-function displayValue(value: unknown) {
-  return hasValue(value) ? String(value) : undefined;
 }
 
 function moneyValue(value: unknown) {
@@ -171,9 +175,20 @@ export default function PropertyDetailScreen() {
   const available = units.filter((u) => u.status === 'available').length;
   const totalRent = units.reduce((s, u) => s + (u.rent_amount || 0), 0);
   const totalExpenses = (data.expenses || []).reduce((s, e) => s + (e.amount || 0), 0);
-  const totalContracts = units.reduce((sum, unit) => sum + unitContractsCount(unit), 0);
+  const unitContracts = units.reduce((sum, unit) => sum + unitContractsCount(unit), 0);
+  const propertyContracts = Number(data.property_contracts_count || 0);
+  const totalContracts = propertyContracts + Number(data.unit_contracts_count ?? unitContracts);
   const hasAnyContracts = totalContracts > 0;
   const hasUnitsWithoutContract = units.some((unit) => unitContractsCount(unit) === 0);
+  const canCreateWholePropertyContract = typeof data.can_create_whole_property_contract === 'boolean'
+    ? data.can_create_whole_property_contract
+    : totalContracts === 0;
+  const canCreateUnitContract = typeof data.can_create_unit_contract === 'boolean'
+    ? data.can_create_unit_contract
+    : units.length > 0 && propertyContracts === 0 && hasUnitsWithoutContract;
+  const shouldShowCreateContract = typeof data.can_create_contract === 'boolean'
+    ? data.can_create_contract
+    : canCreateWholePropertyContract || canCreateUnitContract;
   const propertyId = data.id;
   const encodedPropertyName = encodeURIComponent(data.name || `عقار #${propertyId}`);
 
@@ -182,13 +197,36 @@ export default function PropertyDetailScreen() {
     router.push(`${path}?property_id=${propertyId}&property_name=${encodedPropertyName}${separator}${extraQuery}` as any);
   }
 
-  function openCreateContractForUnit(unit?: NonNullable<PropertyDetail['units']>[number]) {
-    const parts = [`property_id=${propertyId}`, `property_name=${encodedPropertyName}`];
+  function pushCreateContract(scope: 'property' | 'unit', unit?: NonNullable<PropertyDetail['units']>[number]) {
+    const parts = [`property_id=${propertyId}`, `property_name=${encodedPropertyName}`, `contract_scope=${scope}`];
     if (data.owner?.id) parts.push(`owner_id=${data.owner.id}`);
     if (data.owner?.name) parts.push(`owner_name=${encodeURIComponent(data.owner.name)}`);
-    if (unit?.id) parts.push(`unit_id=${unit.id}`);
-    if (unit?.unit_number) parts.push(`unit_name=${encodeURIComponent(unit.unit_number)}`);
+    if (scope === 'unit' && unit?.id) parts.push(`unit_id=${unit.id}`);
+    if (scope === 'unit' && unit?.unit_number) parts.push(`unit_name=${encodeURIComponent(unit.unit_number)}`);
     router.push(`/create-contract?${parts.join('&')}` as any);
+  }
+
+  function chooseContractTarget() {
+    if (!shouldShowCreateContract) {
+      Alert.alert('تنبيه', 'لا يمكن إنشاء عقد جديد؛ يوجد عقد مسجل على هذا العقار أو وحداته.');
+      return;
+    }
+
+    if (canCreateWholePropertyContract && canCreateUnitContract && units.length > 0) {
+      Alert.alert('إنشاء عقد', 'اختر نطاق العقد:', [
+        { text: 'العقار بالكامل', onPress: () => pushCreateContract('property') },
+        { text: 'وحدة معينة', onPress: () => pushCreateContract('unit') },
+        { text: 'إلغاء', style: 'cancel' },
+      ]);
+      return;
+    }
+
+    if (canCreateWholePropertyContract) {
+      pushCreateContract('property');
+      return;
+    }
+
+    pushCreateContract('unit');
   }
 
   return (
@@ -222,7 +260,7 @@ export default function PropertyDetailScreen() {
           <View style={styles.servicesGrid}>
             <TouchableOpacity style={styles.serviceButton} onPress={() => openPropertyService('/expenses')}><Text style={styles.serviceIcon}>📉</Text><Text style={styles.serviceText}>المصروفات</Text></TouchableOpacity>
             {hasAnyContracts ? <TouchableOpacity style={styles.serviceButton} onPress={() => openPropertyService('/contracts')}><Text style={styles.serviceIcon}>📑</Text><Text style={styles.serviceText}>العقود</Text></TouchableOpacity> : null}
-            {hasUnitsWithoutContract ? <TouchableOpacity style={[styles.serviceButton, styles.createContractService]} onPress={() => openCreateContractForUnit()}><Text style={styles.serviceIcon}>📝</Text><Text style={styles.serviceText}>إنشاء عقد</Text></TouchableOpacity> : null}
+            {shouldShowCreateContract ? <TouchableOpacity style={[styles.serviceButton, styles.createContractService]} onPress={chooseContractTarget}><Text style={styles.serviceIcon}>📝</Text><Text style={styles.serviceText}>إنشاء عقد</Text></TouchableOpacity> : null}
             <TouchableOpacity style={styles.serviceButton} onPress={() => openPropertyService('/documents', 'entity_type=property')}><Text style={styles.serviceIcon}>📁</Text><Text style={styles.serviceText}>المستندات</Text></TouchableOpacity>
             <TouchableOpacity style={styles.serviceButton} onPress={() => openPropertyService('/files')}><Text style={styles.serviceIcon}>📂</Text><Text style={styles.serviceText}>الملفات والوسائط</Text></TouchableOpacity>
           </View>
@@ -304,7 +342,7 @@ export default function PropertyDetailScreen() {
                     </View>
                     <View style={styles.unitActionsColumn}>
                       <StatusBadge status={unit.status} size="sm" />
-                      {!hasContract ? <TouchableOpacity style={styles.unitCreateContractButton} onPress={(event) => { event.stopPropagation?.(); openCreateContractForUnit(unit); }}><Text style={styles.unitCreateContractIcon}>📝</Text><Text style={styles.unitCreateContractText}>إنشاء عقد</Text></TouchableOpacity> : null}
+                      {!hasContract && canCreateUnitContract ? <TouchableOpacity style={styles.unitCreateContractButton} onPress={(event) => { event.stopPropagation?.(); pushCreateContract('unit', unit); }}><Text style={styles.unitCreateContractIcon}>📝</Text><Text style={styles.unitCreateContractText}>إنشاء عقد</Text></TouchableOpacity> : null}
                       <Text style={styles.unitRent}>{money(unit.rent_amount)}</Text>
                     </View>
                   </View>
