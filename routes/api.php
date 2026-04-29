@@ -48,6 +48,7 @@ Route::middleware(['auth.api', 'api.scope'])->group(function () {
         __DIR__ . '/api/01_owners.php',
         __DIR__ . '/api/02_properties.php',
         __DIR__ . '/api/03_units.php',
+        __DIR__ . '/api/02b_units_whole_property_override.php',
         __DIR__ . '/api/04_tenants.php',
         __DIR__ . '/api/05_expenses.php',
         __DIR__ . '/api/06_reports.php',
