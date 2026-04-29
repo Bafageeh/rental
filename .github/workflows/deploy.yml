@@ -1,0 +1,67 @@
+name: Deploy Expo Mobile
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-mobile-main
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Deploy mobile app to server
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Validate deployment secrets
+        run: |
+          test -n "${{ secrets.DEPLOY_HOST }}" || (echo "Missing DEPLOY_HOST" && exit 1)
+          test -n "${{ secrets.DEPLOY_USER }}" || (echo "Missing DEPLOY_USER" && exit 1)
+          test -n "${{ secrets.DEPLOY_PORT }}" || (echo "Missing DEPLOY_PORT" && exit 1)
+          test -n "${{ secrets.DEPLOY_SSH_KEY }}" || (echo "Missing DEPLOY_SSH_KEY" && exit 1)
+
+      - name: Deploy over SSH
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
+
+          ssh -i ~/.ssh/deploy_key \
+            -p "${{ secrets.DEPLOY_PORT }}" \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" 'bash -s' <<'REMOTE'
+          set -e
+          cd /home/pmsa/apps/my-rentals-mobile
+
+          git fetch origin main
+          git reset --hard origin/main
+
+          mkdir -p /home/pmsa/apps/.cache /home/pmsa/apps/.tmp
+
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            npm install
+          fi
+
+          pkill -f "expo start" || true
+          pkill -f "metro" || true
+
+          nohup env \
+            BROWSER=none \
+            EXPO_NO_TELEMETRY=1 \
+            REACT_NATIVE_PACKAGER_HOSTNAME=my.pm.sa \
+            XDG_CACHE_HOME=/home/pmsa/apps/.cache \
+            TMPDIR=/home/pmsa/apps/.tmp \
+            TMP=/home/pmsa/apps/.tmp \
+            TEMP=/home/pmsa/apps/.tmp \
+            npx expo start --clear --go --host lan --port 8081 \
+            > /home/pmsa/apps/my-rentals-mobile/expo.log 2>&1 &
+          REMOTE
