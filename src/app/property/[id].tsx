@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
 import {
   RefreshControl,
@@ -67,7 +68,19 @@ export default function PropertyDetailScreen() {
     endpoint: `/properties/${id}`,
   });
 
-  if (loading) return <LoadingState />;
+  const shouldReturnAfterDelete = !!error && /No query results|not found|غير موجود/i.test(String(error));
+
+  useEffect(() => {
+    if (!shouldReturnAfterDelete) return;
+
+    const timer = setTimeout(() => {
+      smartBack();
+    }, 250);
+
+    return () => clearTimeout(timer);
+  }, [shouldReturnAfterDelete]);
+
+  if (loading || shouldReturnAfterDelete) return <LoadingState />;
   if (error || !data) return <ErrorState message={error || 'غير موجود'} onRetry={reload} />;
 
   const rented = (data.units || []).filter((u) => u.status === 'rented').length;
