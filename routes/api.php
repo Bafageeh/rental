@@ -63,6 +63,7 @@ Route::middleware(['auth.api', 'api.scope'])->group(function () {
         __DIR__ . '/api/16_occupancy.php',
         __DIR__ . '/api/17_renewals.php',
         __DIR__ . '/api/18_utility.php',
+        __DIR__ . '/api/100_contract_cascade_delete.php',
         __DIR__ . '/api/20_edit_delete_center_stable.php',
         __DIR__ . '/api/19_receipts.php',
         __DIR__ . '/api/21_phase3_compat_overrides.php',
