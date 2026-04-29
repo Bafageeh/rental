@@ -25,7 +25,7 @@ jobs:
 
       - name: Deploy over SSH
         shell: bash
-        timeout-minutes: 12
+        timeout-minutes: 10
         run: |
           set -euo pipefail
           mkdir -p ~/.ssh
@@ -41,20 +41,23 @@ jobs:
           set -e
           cd /home/pmsa/apps/my-rentals-mobile
 
-          pkill -f "expo start" || true
-          pkill -f "metro" || true
-          pkill -f "node.*8081" || true
-
           git fetch origin main
           git reset --hard origin/main
 
           mkdir -p /home/pmsa/apps/.cache /home/pmsa/apps/.tmp
-          rm -rf node_modules .expo /home/pmsa/apps/.cache/metro-* /home/pmsa/apps/.cache/haste-map-* || true
 
-          npm ci --no-audit --no-fund
-          npm install --no-save --no-audit --no-fund "@expo/metro-runtime@6.1.1" "@expo/log-box@55.0.10" "@babel/runtime@7.29.2"
+          # لا نحذف node_modules هنا حتى لا تتكرر مشكلة فقدان حزم Expo.
+          # npm install يضيف أي dependency جديدة ويحافظ على بيئة التشغيل المستقرة.
+          npm install --no-audit --no-fund
 
-          node -e "require.resolve('expo-router/entry'); require.resolve('@expo/metro-runtime'); require.resolve('@expo/log-box/src/LogBox'); require.resolve('@babel/runtime/helpers/asyncToGenerator'); console.log('runtime ok')"
+          node -e "require.resolve('expo-router/entry'); require.resolve('@babel/runtime/helpers/slicedToArray'); console.log('mobile dependencies ok')"
+
+          pkill -f "expo start" || true
+          pkill -f "metro" || true
+          pkill -f "node.*8081" || true
+          if command -v fuser >/dev/null 2>&1; then fuser -k 8081/tcp || true; fi
+
+          rm -rf .expo /home/pmsa/apps/.cache/metro-* /home/pmsa/apps/.cache/haste-map-* || true
 
           nohup env \
             BROWSER=none \
@@ -68,6 +71,6 @@ jobs:
             npx expo start --clear --go --host lan --port 8081 \
             </dev/null > /home/pmsa/apps/my-rentals-mobile/expo.log 2>&1 &
 
-          sleep 10
-          tail -n 160 /home/pmsa/apps/my-rentals-mobile/expo.log || true
+          sleep 8
+          tail -n 120 /home/pmsa/apps/my-rentals-mobile/expo.log || true
           REMOTE
