@@ -226,6 +226,7 @@ function AppTabs() {
       <Tabs.Screen name="tenant-statements" options={{ href: null, title: "كشوف المستأجرين" }} />
       <Tabs.Screen name="create-contract" options={{ href: null, title: "عقد جديد" }} />
       <Tabs.Screen name="upload-contract" options={{ href: null, title: "رفع عقد" }} />
+      <Tabs.Screen name="upload-property-deed" options={{ href: null, title: "رفع صك" }} />
       <Tabs.Screen name="contract-renewals" options={{ href: null, title: "تجديد العقود" }} />
       <Tabs.Screen name="alerts" options={{ href: null, title: "التنبيهات" }} />
       <Tabs.Screen name="smart-alerts" options={{ href: null, title: "تنبيهات ذكية" }} />
