@@ -136,6 +136,7 @@ export default function PropertiesScreen() {
   const [searchText, setSearchText] = useState('');
   const [owners, setOwners] = useState<OptionRecord[]>([]);
   const [showCreate, setShowCreate] = useState(createParam === '1');
+  const [createMode, setCreateMode] = useState<'choice' | 'manual'>('choice');
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
     owner_id: ownerIdParam,
@@ -185,6 +186,23 @@ export default function PropertiesScreen() {
     }
   }, [search]);
 
+  function openCreateOptions() {
+    setShowCreate(true);
+    setCreateMode('choice');
+  }
+
+  function closeCreate() {
+    setShowCreate(false);
+    setCreateMode('choice');
+  }
+
+  function openDeedUpload() {
+    const query = ownerIdParam
+      ? `?owner_id=${encodeURIComponent(ownerIdParam)}&owner_name=${encodeURIComponent(scopedOwnerName || `مالك #${ownerIdParam}`)}`
+      : '';
+    router.push(`/upload-property-deed${query}` as any);
+  }
+
   function setField(key: keyof typeof form, value: string) {
     setForm((previous) => ({ ...previous, [key]: value }));
   }
@@ -221,7 +239,7 @@ export default function PropertiesScreen() {
         floors_count: '',
         parking_spots_count: '',
       }));
-      setShowCreate(false);
+      closeCreate();
       refresh();
     } catch (e) {
       Alert.alert('تعذر حفظ العقار', e instanceof Error ? e.message : 'حدث خطأ غير متوقع');
@@ -249,8 +267,8 @@ export default function PropertiesScreen() {
           <Text style={styles.scopedOwnerText}>المالك: {scopedOwnerName || `#${ownerIdParam}`}</Text>
         ) : null}
 
-        <TouchableOpacity style={styles.createToggleButton} onPress={() => setShowCreate(!showCreate)}>
-          <Text style={styles.createToggleText}>{showCreate ? 'إغلاق نموذج إضافة العقار' : 'إضافة عقار جديد'}</Text>
+        <TouchableOpacity style={styles.createToggleButton} onPress={showCreate ? closeCreate : openCreateOptions}>
+          <Text style={styles.createToggleText}>{showCreate ? 'إغلاق إضافة العقار' : 'إضافة عقار جديد'}</Text>
         </TouchableOpacity>
 
         <View style={styles.searchContainer}>
@@ -278,30 +296,60 @@ export default function PropertiesScreen() {
         onEndReachedThreshold={0.3}
         ListHeaderComponent={showCreate ? (
           <View style={styles.formCard}>
-            <Text style={styles.formTitle}>إضافة عقار جديد</Text>
+            {createMode === 'choice' ? (
+              <View>
+                <Text style={styles.formTitle}>كيف تريد إضافة العقار؟</Text>
+                <Text style={styles.formHint}>اختر الطريقة المناسبة. يمكنك الإدخال يدويًا أو رفع الصك ليتم سحب البيانات ومراجعتها قبل الحفظ.</Text>
 
-            <DropdownSelect
-              label="اسم المالك"
-              value={form.owner_id}
-              options={ownerOptions}
-              placeholder="اختر المالك"
-              required
-              disabled={Boolean(ownerIdParam)}
-              onChange={(value) => setField('owner_id', value)}
-            />
+                <TouchableOpacity style={styles.choiceCard} onPress={() => setCreateMode('manual')} activeOpacity={0.85}>
+                  <Text style={styles.choiceIcon}>⌨️</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.choiceTitle}>إدخالات يدوية</Text>
+                    <Text style={styles.choiceText}>تعبئة اسم العقار، المالك، المدينة، رقم الصك، والمواقف يدويًا.</Text>
+                  </View>
+                </TouchableOpacity>
 
-            <TextInput style={styles.input} value={form.name} onChangeText={(value) => setField('name', value)} placeholder="اسم العقار" textAlign="right" />
-            <DropdownSelect label="نوع العقار" value={form.property_type} options={propertyTypeOptions} onChange={(value) => setField('property_type', value)} />
-            <DropdownSelect label="نوع الإدارة" value={form.management_type} options={managementTypeOptions} onChange={(value) => setField('management_type', value)} />
-            <TextInput style={styles.input} value={form.city} onChangeText={(value) => setField('city', value)} placeholder="المدينة" textAlign="right" />
-            <TextInput style={styles.input} value={form.district} onChangeText={(value) => setField('district', value)} placeholder="الحي" textAlign="right" />
-            <TextInput style={styles.input} value={form.deed_number} onChangeText={(value) => setField('deed_number', value)} placeholder="رقم الصك" textAlign="right" />
-            <TextInput style={styles.input} value={form.floors_count} onChangeText={(value) => setField('floors_count', value)} placeholder="عدد الأدوار" keyboardType="number-pad" textAlign="right" />
-            <TextInput style={styles.input} value={form.parking_spots_count} onChangeText={(value) => setField('parking_spots_count', value)} placeholder="عدد المواقف" keyboardType="number-pad" textAlign="right" />
+                <TouchableOpacity style={styles.choiceCard} onPress={openDeedUpload} activeOpacity={0.85}>
+                  <Text style={styles.choiceIcon}>📄</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.choiceTitle}>رفع الصك وسحب البيانات</Text>
+                    <Text style={styles.choiceText}>رفع PDF للصك ثم مراجعة البيانات المستخرجة قبل إنشاء العقار.</Text>
+                  </View>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <View>
+                <View style={styles.formHeaderRow}>
+                  <TouchableOpacity onPress={() => setCreateMode('choice')}>
+                    <Text style={styles.backToChoice}>تغيير الطريقة</Text>
+                  </TouchableOpacity>
+                  <Text style={styles.formTitle}>إضافة عقار يدويًا</Text>
+                </View>
 
-            <TouchableOpacity style={styles.saveButton} onPress={createProperty} disabled={saving}>
-              <Text style={styles.saveButtonText}>{saving ? 'جاري الحفظ...' : 'حفظ العقار'}</Text>
-            </TouchableOpacity>
+                <DropdownSelect
+                  label="اسم المالك"
+                  value={form.owner_id}
+                  options={ownerOptions}
+                  placeholder="اختر المالك"
+                  required
+                  disabled={Boolean(ownerIdParam)}
+                  onChange={(value) => setField('owner_id', value)}
+                />
+
+                <TextInput style={styles.input} value={form.name} onChangeText={(value) => setField('name', value)} placeholder="اسم العقار" textAlign="right" />
+                <DropdownSelect label="نوع العقار" value={form.property_type} options={propertyTypeOptions} onChange={(value) => setField('property_type', value)} />
+                <DropdownSelect label="نوع الإدارة" value={form.management_type} options={managementTypeOptions} onChange={(value) => setField('management_type', value)} />
+                <TextInput style={styles.input} value={form.city} onChangeText={(value) => setField('city', value)} placeholder="المدينة" textAlign="right" />
+                <TextInput style={styles.input} value={form.district} onChangeText={(value) => setField('district', value)} placeholder="الحي" textAlign="right" />
+                <TextInput style={styles.input} value={form.deed_number} onChangeText={(value) => setField('deed_number', value)} placeholder="رقم الصك" textAlign="right" />
+                <TextInput style={styles.input} value={form.floors_count} onChangeText={(value) => setField('floors_count', value)} placeholder="عدد الأدوار" keyboardType="number-pad" textAlign="right" />
+                <TextInput style={styles.input} value={form.parking_spots_count} onChangeText={(value) => setField('parking_spots_count', value)} placeholder="عدد المواقف" keyboardType="number-pad" textAlign="right" />
+
+                <TouchableOpacity style={styles.saveButton} onPress={createProperty} disabled={saving}>
+                  <Text style={styles.saveButtonText}>{saving ? 'جاري الحفظ...' : 'حفظ العقار'}</Text>
+                </TouchableOpacity>
+              </View>
+            )}
           </View>
         ) : null}
         ListEmptyComponent={
@@ -313,7 +361,7 @@ export default function PropertiesScreen() {
               message="أضف أول عقار لبدء إدارة إيجاراتك"
               actionLabel="إضافة عقار"
               icon="🏢"
-              onAction={() => setShowCreate(true)}
+              onAction={openCreateOptions}
             />
           )
         }
@@ -403,6 +451,29 @@ const styles = StyleSheet.create({
     textAlign: 'right',
     marginBottom: spacing.md,
   },
+  formHint: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    textAlign: 'right',
+    lineHeight: 21,
+    marginBottom: spacing.md,
+  },
+  formHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.sm },
+  backToChoice: { color: colors.primary, fontWeight: '900' },
+  choiceCard: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: spacing.md,
+    backgroundColor: colors.surfaceSubtle,
+    borderRadius: radii.lg,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+  },
+  choiceIcon: { fontSize: 28 },
+  choiceTitle: { color: colors.text, fontWeight: '900', textAlign: 'right', marginBottom: 4 },
+  choiceText: { color: colors.textSecondary, fontWeight: '700', textAlign: 'right', lineHeight: 19, fontSize: 12 },
   input: {
     minHeight: 44,
     backgroundColor: '#f9fafb',
