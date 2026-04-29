@@ -69,6 +69,7 @@ Route::middleware(['auth.api', 'api.scope'])->group(function () {
         __DIR__ . '/api/21_phase3_compat_overrides.php',
         __DIR__ . '/api/99_owner_direct_units_hotfix.php',
         __DIR__ . '/api/101_property_parking_counts_hotfix.php',
+        __DIR__ . '/api/102_property_cascade_delete.php',
     ] as $routeModule) {
         if (is_file($routeModule)) {
             require $routeModule;
