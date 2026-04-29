@@ -24,10 +24,68 @@ use Illuminate\Support\Facades\Schema;
 |--------------------------------------------------------------------------
 */
 
+if (!function_exists('mr_contract_target_unit')) {
+    function mr_contract_target_unit(array $data): Unit
+    {
+        if (!empty($data['unit_id'])) {
+            return Unit::findOrFail((int) $data['unit_id']);
+        }
+
+        if (empty($data['property_id'])) {
+            abort(response()->json([
+                'status' => 'error',
+                'message' => 'يجب تحديد وحدة أو عقار لإنشاء العقد.',
+            ], 422));
+        }
+
+        $property = Property::findOrFail((int) $data['property_id']);
+
+        return Unit::firstOrCreate(
+            [
+                'property_id' => $property->id,
+                'unit_number' => 'العقار كامل',
+            ],
+            [
+                'owner_id' => $property->owner_id,
+                'unit_scope' => 'property',
+                'floor' => null,
+                'type' => 'whole_property',
+                'area' => $property->property_area,
+                'is_subdivided' => false,
+                'rent_amount' => 0,
+                'status' => 'available',
+                'notes' => 'وحدة افتراضية تم إنشاؤها تلقائيًا لتأجير العقار كاملًا عند عدم وجود وحدات.',
+            ]
+        );
+    }
+}
+
+if (!function_exists('mr_contract_prevent_duplicate')) {
+    function mr_contract_prevent_duplicate(Unit $unit): void
+    {
+        $existing = Contract::where('unit_id', $unit->id)->first();
+
+        if (!$existing) {
+            return;
+        }
+
+        $assetName = $unit->unit_number === 'العقار كامل'
+            ? 'هذا العقار'
+            : 'هذه الوحدة';
+
+        abort(response()->json([
+            'status' => 'error',
+            'message' => "لا يمكن إنشاء عقد جديد؛ يوجد عقد مسجل مسبقًا على {$assetName}. النظام يسمح بعقد واحد فقط لكل عقار أو وحدة.",
+            'existing_contract_id' => $existing->id,
+        ], 422));
+    }
+}
+
 Route::post('/contracts', function (Request $request) {
     $data = $request->validate([
         'tenant_id' => ['required', 'integer', 'exists:tenants,id'],
-        'unit_id' => ['required', 'integer', 'exists:units,id'],
+        'unit_id' => ['nullable', 'integer', 'exists:units,id'],
+        'property_id' => ['nullable', 'integer', 'exists:properties,id'],
         'contract_number' => ['nullable', 'string', 'max:255'],
         'start_date' => ['required', 'date'],
         'end_date' => ['required', 'date', 'after_or_equal:start_date'],
@@ -40,9 +98,12 @@ Route::post('/contracts', function (Request $request) {
         'notes' => ['nullable', 'string'],
     ]);
 
+    $targetUnit = mr_contract_target_unit($data);
+    mr_contract_prevent_duplicate($targetUnit);
+
     $contract = Contract::create([
         'tenant_id' => $data['tenant_id'],
-        'unit_id' => $data['unit_id'],
+        'unit_id' => $targetUnit->id,
         'contract_number' => $data['contract_number'] ?? ('MAN-' . now()->format('YmdHis')),
         'start_date' => $data['start_date'],
         'end_date' => $data['end_date'],
@@ -56,7 +117,7 @@ Route::post('/contracts', function (Request $request) {
         'notes' => $data['notes'] ?? null,
     ]);
 
-    Unit::where('id', $data['unit_id'])->update([
+    Unit::where('id', $targetUnit->id)->update([
         'status' => 'rented',
         'rent_amount' => $data['rent_amount'],
     ]);
@@ -169,6 +230,20 @@ Route::post('/contracts/{contract}/close', function (Contract $contract) {
 });
 
 Route::post('/contracts/{contract}/activate', function (Contract $contract) {
+    $targetUnit = $contract->unit;
+    if ($targetUnit) {
+        $otherContract = Contract::where('unit_id', $targetUnit->id)
+            ->where('id', '!=', $contract->id)
+            ->first();
+
+        if ($otherContract) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'لا يمكن تفعيل العقد؛ يوجد عقد آخر مسجل على نفس العقار أو الوحدة.',
+            ], 422);
+        }
+    }
+
     $contract->update([
         'status' => 'active',
     ]);
