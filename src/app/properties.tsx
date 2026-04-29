@@ -21,8 +21,8 @@ import {
 } from '../components/ui/shared';
 import { colors, typography, spacing, radii } from '../constants/theme';
 import { apiGetScoped, apiPostAny } from '../lib/api';
+import { smartBack } from '../lib/navigationHistory';
 
-import { smartBack } from "@/lib/navigationHistory";
 type Property = {
   id: number;
   name?: string;
