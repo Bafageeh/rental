@@ -1,5 +1,6 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   Alert,
   FlatList,
@@ -132,6 +133,12 @@ export default function PropertiesScreen() {
     loadMore,
     search,
   } = useList<Property>({ endpoint });
+
+  useFocusEffect(
+    useCallback(() => {
+      refresh();
+    }, [refresh]),
+  );
 
   const [searchText, setSearchText] = useState('');
   const [owners, setOwners] = useState<OptionRecord[]>([]);
