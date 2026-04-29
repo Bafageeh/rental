@@ -2,14 +2,9 @@
 
 /*
 |--------------------------------------------------------------------------
-| Legacy deed extractor shim
+| Legacy deed extractor disabled
 |--------------------------------------------------------------------------
-| Kept only for backwards compatibility. The active extractor is implemented
-| in 104_property_deed_upsert_and_qr.php so we do not register old duplicate
-| routes that return incomplete deed fields.
+| The active electronic deed extractor is registered in
+| routes/api/104_property_deed_upsert_and_qr.php. This file intentionally
+| does not register duplicate routes.
 */
-
-$activeExtractor = __DIR__ . '/104_property_deed_upsert_and_qr.php';
-if (is_file($activeExtractor)) {
-    require $activeExtractor;
-}
