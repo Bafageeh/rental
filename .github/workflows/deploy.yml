@@ -25,7 +25,7 @@ jobs:
 
       - name: Deploy over SSH
         shell: bash
-        timeout-minutes: 10
+        timeout-minutes: 12
         run: |
           set -euo pipefail
           mkdir -p ~/.ssh
@@ -49,19 +49,12 @@ jobs:
           git reset --hard origin/main
 
           mkdir -p /home/pmsa/apps/.cache /home/pmsa/apps/.tmp
-
           rm -rf node_modules .expo /home/pmsa/apps/.cache/metro-* /home/pmsa/apps/.cache/haste-map-* || true
 
-          if [ -f package-lock.json ]; then
-            npm ci --no-audit --no-fund
-          else
-            npm install --no-audit --no-fund
-          fi
+          npm ci --no-audit --no-fund
+          npm install --no-save --no-audit --no-fund "@expo/metro-runtime@6.1.1" "@expo/log-box@55.0.10" "@babel/runtime@7.29.2"
 
-          # expo-router in SDK 55 needs these runtime helpers during Metro bundling.
-          npm install --no-save --no-audit --no-fund @expo/metro-runtime@6.1.2 @babel/runtime@7.29.2
-
-          node -e "require.resolve('expo-router/entry'); require.resolve('@expo/metro-runtime'); require.resolve('@babel/runtime/helpers/asyncToGenerator'); console.log('expo runtime dependencies ok')"
+          node -e "require.resolve('expo-router/entry'); require.resolve('@expo/metro-runtime'); require.resolve('@expo/log-box/src/LogBox'); require.resolve('@babel/runtime/helpers/asyncToGenerator'); console.log('runtime ok')"
 
           nohup env \
             BROWSER=none \
@@ -75,6 +68,6 @@ jobs:
             npx expo start --clear --go --host lan --port 8081 \
             </dev/null > /home/pmsa/apps/my-rentals-mobile/expo.log 2>&1 &
 
-          sleep 8
-          tail -n 120 /home/pmsa/apps/my-rentals-mobile/expo.log || true
+          sleep 10
+          tail -n 160 /home/pmsa/apps/my-rentals-mobile/expo.log || true
           REMOTE
