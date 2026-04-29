@@ -41,10 +41,17 @@ jobs:
           set -e
           cd /home/pmsa/apps/my-rentals-mobile
 
+          pkill -f "expo start" || true
+          pkill -f "metro" || true
+          pkill -f "node.*8081" || true
+
           git fetch origin main
           git reset --hard origin/main
 
           mkdir -p /home/pmsa/apps/.cache /home/pmsa/apps/.tmp
+
+          # أعد بناء node_modules لأن التشغيل السابق حذف بعض الحزم أثناء محاولات الإصلاح.
+          rm -rf node_modules .expo /home/pmsa/apps/.cache/metro-* /home/pmsa/apps/.cache/haste-map-* || true
 
           if [ -f package-lock.json ]; then
             npm ci --no-audit --no-fund
@@ -52,12 +59,12 @@ jobs:
             npm install --no-audit --no-fund
           fi
 
-          pkill -f "expo start" || true
-          pkill -f "metro" || true
+          node -e "require.resolve('expo-router/entry'); console.log('expo-router entry ok')"
 
           nohup env \
             BROWSER=none \
             EXPO_NO_TELEMETRY=1 \
+            EXPO_PUBLIC_API_BASE_URL=https://my.pm.sa/api \
             REACT_NATIVE_PACKAGER_HOSTNAME=my.pm.sa \
             XDG_CACHE_HOME=/home/pmsa/apps/.cache \
             TMPDIR=/home/pmsa/apps/.tmp \
@@ -66,6 +73,6 @@ jobs:
             npx expo start --clear --go --host lan --port 8081 \
             </dev/null > /home/pmsa/apps/my-rentals-mobile/expo.log 2>&1 &
 
-          sleep 5
-          tail -n 80 /home/pmsa/apps/my-rentals-mobile/expo.log || true
+          sleep 8
+          tail -n 120 /home/pmsa/apps/my-rentals-mobile/expo.log || true
           REMOTE
