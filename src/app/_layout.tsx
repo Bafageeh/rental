@@ -170,7 +170,7 @@ function AppTabs() {
       <Tabs.Screen
         name="index"
         options={{
-          title: "الرئيسية ✓",
+          title: "الرئيسية",
           tabBarIcon: ({ color, size }) => <TabIcon name="home" color={color} size={size} />,
           tabBarAccessibilityLabel: "الرئيسية",
         }}
