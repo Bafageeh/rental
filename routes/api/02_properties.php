@@ -124,11 +124,18 @@ Route::post('/properties', function (Request $request) {
 });
 
 Route::get('/properties/{property}', function (Property $property) {
-    return $property->load([
+    $property->load([
         'owner',
         'units.childUnits',
+        'units.contracts',
         'parkingSpots',
         'expenses.category',
         'files',
     ]);
+
+    $property->units->each(function ($unit) {
+        $unit->contracts_count = $unit->relationLoaded('contracts') ? $unit->contracts->count() : 0;
+    });
+
+    return $property;
 });
