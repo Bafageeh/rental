@@ -32,22 +32,21 @@ function HeaderQuickActions() {
   const mainRoutes = ["/", "/properties", "/payments", "/statistics", "/more", "/login"];
   const showBack = loggedIn && !mainRoutes.includes(pathname);
 
-  async function performLogout() {
-    try {
-      await apiPost("/auth/logout");
-    } catch {
-      // حتى لو فشل الطلب بسبب انقطاع الشبكة أو انتهاء الجلسة، نمسح الجلسة المحلية.
-    }
-
-    await logout();
-    resetNavigationHistory();
-    router.replace("/login" as any);
+  function performLogout() {
+    apiPost("/auth/logout")
+      .catch(() => undefined)
+      .then(() => logout())
+      .catch(() => undefined)
+      .then(() => {
+        resetNavigationHistory();
+        router.replace("/login" as any);
+      });
   }
 
   function confirmLogout() {
     Alert.alert("تسجيل الخروج", "هل تريد تسجيل الخروج من التطبيق؟", [
       { text: "إلغاء", style: "cancel" },
-      { text: "خروج", style: "destructive", onPress: () => void performLogout() },
+      { text: "خروج", style: "destructive", onPress: performLogout },
     ]);
   }
 
