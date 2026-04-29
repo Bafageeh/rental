@@ -27,18 +27,57 @@ use Illuminate\Support\Facades\Schema;
 if (!function_exists('mr_contract_target_unit')) {
     function mr_contract_target_unit(array $data): Unit
     {
-        if (!empty($data['unit_id'])) {
-            return Unit::findOrFail((int) $data['unit_id']);
+        $scope = $data['contract_scope'] ?? (!empty($data['unit_id']) ? 'unit' : 'property');
+
+        if ($scope === 'unit') {
+            if (empty($data['unit_id'])) {
+                abort(response()->json([
+                    'status' => 'error',
+                    'message' => 'اختر الوحدة التي تريد إنشاء العقد عليها.',
+                ], 422));
+            }
+
+            $unit = Unit::findOrFail((int) $data['unit_id']);
+
+            $wholeContractExists = Unit::where('property_id', $unit->property_id)
+                ->where(function ($query) {
+                    $query->where('type', 'whole_property')->orWhere('unit_number', 'العقار كامل');
+                })
+                ->whereHas('contracts')
+                ->exists();
+
+            if ($wholeContractExists) {
+                abort(response()->json([
+                    'status' => 'error',
+                    'message' => 'لا يمكن إنشاء عقد على وحدة؛ يوجد عقد على العقار بالكامل.',
+                ], 422));
+            }
+
+            return $unit;
         }
 
         if (empty($data['property_id'])) {
             abort(response()->json([
                 'status' => 'error',
-                'message' => 'يجب تحديد وحدة أو عقار لإنشاء العقد.',
+                'message' => 'يجب تحديد العقار لإنشاء عقد على العقار بالكامل.',
             ], 422));
         }
 
         $property = Property::findOrFail((int) $data['property_id']);
+        $actualUnitIds = Unit::where('property_id', $property->id)
+            ->where('unit_number', '!=', 'العقار كامل')
+            ->where(function ($query) {
+                $query->whereNull('type')->orWhere('type', '!=', 'whole_property');
+            })
+            ->pluck('id')
+            ->all();
+
+        if (!empty($actualUnitIds) && Contract::whereIn('unit_id', $actualUnitIds)->exists()) {
+            abort(response()->json([
+                'status' => 'error',
+                'message' => 'لا يمكن إنشاء عقد على العقار بالكامل؛ توجد عقود على وحدات داخل العقار.',
+            ], 422));
+        }
 
         return Unit::firstOrCreate(
             [
@@ -54,7 +93,7 @@ if (!function_exists('mr_contract_target_unit')) {
                 'is_subdivided' => false,
                 'rent_amount' => 0,
                 'status' => 'available',
-                'notes' => 'وحدة افتراضية تم إنشاؤها تلقائيًا لتأجير العقار كاملًا عند عدم وجود وحدات.',
+                'notes' => 'وحدة نظامية افتراضية لتسجيل عقد على العقار بالكامل، وليست وحدة فعلية ضمن العقار.',
             ]
         );
     }
@@ -69,9 +108,7 @@ if (!function_exists('mr_contract_prevent_duplicate')) {
             return;
         }
 
-        $assetName = $unit->unit_number === 'العقار كامل'
-            ? 'هذا العقار'
-            : 'هذه الوحدة';
+        $assetName = $unit->unit_number === 'العقار كامل' ? 'هذا العقار' : 'هذه الوحدة';
 
         abort(response()->json([
             'status' => 'error',
@@ -86,6 +123,7 @@ Route::post('/contracts', function (Request $request) {
         'tenant_id' => ['required', 'integer', 'exists:tenants,id'],
         'unit_id' => ['nullable', 'integer', 'exists:units,id'],
         'property_id' => ['nullable', 'integer', 'exists:properties,id'],
+        'contract_scope' => ['nullable', 'string', 'in:property,unit'],
         'contract_number' => ['nullable', 'string', 'max:255'],
         'start_date' => ['required', 'date'],
         'end_date' => ['required', 'date', 'after_or_equal:start_date'],
@@ -131,18 +169,11 @@ Route::post('/contracts', function (Request $request) {
 
     for ($i = 0; $i < $paymentsCount; $i++) {
         $dueDate = $startDate->copy();
-
-        if ($cycle === 'monthly') {
-            $dueDate->addMonthsNoOverflow($i);
-        } elseif ($cycle === 'quarterly') {
-            $dueDate->addMonthsNoOverflow($i * 3);
-        } elseif ($cycle === 'semi_annual') {
-            $dueDate->addMonthsNoOverflow($i * 6);
-        } elseif ($cycle === 'annual') {
-            $dueDate->addYears($i);
-        } else {
-            $dueDate->addMonthsNoOverflow($i);
-        }
+        if ($cycle === 'monthly') $dueDate->addMonthsNoOverflow($i);
+        elseif ($cycle === 'quarterly') $dueDate->addMonthsNoOverflow($i * 3);
+        elseif ($cycle === 'semi_annual') $dueDate->addMonthsNoOverflow($i * 6);
+        elseif ($cycle === 'annual') $dueDate->addYears($i);
+        else $dueDate->addMonthsNoOverflow($i);
 
         Payment::create([
             'contract_id' => $contract->id,
@@ -156,11 +187,7 @@ Route::post('/contracts', function (Request $request) {
     return response()->json([
         'status' => 'ok',
         'message' => 'تم إنشاء العقد والدفعات بنجاح',
-        'contract' => $contract->fresh()->load([
-            'tenant',
-            'unit.property.owner',
-            'payments',
-        ]),
+        'contract' => $contract->fresh()->load(['tenant', 'unit.property.owner', 'payments']),
     ], 201);
 });
 
@@ -170,9 +197,7 @@ Route::get('/contracts', function (Request $request) {
         'unit.property.owner',
         'parkingSpot',
         'files',
-        'payments' => function ($query) {
-            $query->orderBy('due_date');
-        },
+        'payments' => function ($query) { $query->orderBy('due_date'); },
     ]);
 
     if ($request->filled('property_id')) {
@@ -182,9 +207,7 @@ Route::get('/contracts', function (Request $request) {
         });
     }
 
-    if ($request->filled('unit_id')) {
-        $query->where('unit_id', (int) $request->input('unit_id'));
-    }
+    if ($request->filled('unit_id')) $query->where('unit_id', (int) $request->input('unit_id'));
 
     if ($request->filled('search')) {
         $search = trim((string) $request->input('search'));
@@ -192,15 +215,9 @@ Route::get('/contracts', function (Request $request) {
             $searchQuery
                 ->where('contract_number', 'like', "%{$search}%")
                 ->orWhere('government_contract_number', 'like', "%{$search}%")
-                ->orWhereHas('tenant', function ($tenantQuery) use ($search) {
-                    $tenantQuery->where('name', 'like', "%{$search}%");
-                })
-                ->orWhereHas('unit', function ($unitQuery) use ($search) {
-                    $unitQuery->where('unit_number', 'like', "%{$search}%");
-                })
-                ->orWhereHas('unit.property', function ($propertyQuery) use ($search) {
-                    $propertyQuery->where('name', 'like', "%{$search}%");
-                });
+                ->orWhereHas('tenant', fn($tenantQuery) => $tenantQuery->where('name', 'like', "%{$search}%"))
+                ->orWhereHas('unit', fn($unitQuery) => $unitQuery->where('unit_number', 'like', "%{$search}%"))
+                ->orWhereHas('unit.property', fn($propertyQuery) => $propertyQuery->where('name', 'like', "%{$search}%"));
         });
     }
 
@@ -208,116 +225,37 @@ Route::get('/contracts', function (Request $request) {
 });
 
 Route::post('/contracts/{contract}/close', function (Contract $contract) {
-    $contract->update([
-        'status' => 'ended',
-    ]);
-
-    if ($contract->unit_id) {
-        Unit::where('id', $contract->unit_id)->update([
-            'status' => 'available',
-        ]);
-    }
-
-    return response()->json([
-        'status' => 'ok',
-        'message' => 'تم إغلاق العقد وإتاحة الوحدة',
-        'contract' => $contract->fresh()->load([
-            'tenant',
-            'unit.property.owner',
-            'payments',
-        ]),
-    ]);
+    $contract->update(['status' => 'ended']);
+    if ($contract->unit_id) Unit::where('id', $contract->unit_id)->update(['status' => 'available']);
+    return response()->json(['status' => 'ok', 'message' => 'تم إغلاق العقد وإتاحة الوحدة', 'contract' => $contract->fresh()->load(['tenant', 'unit.property.owner', 'payments'])]);
 });
 
 Route::post('/contracts/{contract}/activate', function (Contract $contract) {
     $targetUnit = $contract->unit;
     if ($targetUnit) {
-        $otherContract = Contract::where('unit_id', $targetUnit->id)
-            ->where('id', '!=', $contract->id)
-            ->first();
-
-        if ($otherContract) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'لا يمكن تفعيل العقد؛ يوجد عقد آخر مسجل على نفس العقار أو الوحدة.',
-            ], 422);
-        }
+        $otherContract = Contract::where('unit_id', $targetUnit->id)->where('id', '!=', $contract->id)->first();
+        if ($otherContract) return response()->json(['status' => 'error', 'message' => 'لا يمكن تفعيل العقد؛ يوجد عقد آخر مسجل على نفس العقار أو الوحدة.'], 422);
     }
-
-    $contract->update([
-        'status' => 'active',
-    ]);
-
-    if ($contract->unit_id) {
-        Unit::where('id', $contract->unit_id)->update([
-            'status' => 'rented',
-        ]);
-    }
-
-    return response()->json([
-        'status' => 'ok',
-        'message' => 'تم تفعيل العقد وتحديث حالة الوحدة إلى مؤجرة',
-        'contract' => $contract->fresh()->load([
-            'tenant',
-            'unit.property.owner',
-            'payments',
-        ]),
-    ]);
+    $contract->update(['status' => 'active']);
+    if ($contract->unit_id) Unit::where('id', $contract->unit_id)->update(['status' => 'rented']);
+    return response()->json(['status' => 'ok', 'message' => 'تم تفعيل العقد وتحديث حالة الوحدة إلى مؤجرة', 'contract' => $contract->fresh()->load(['tenant', 'unit.property.owner', 'payments'])]);
 });
 
 Route::get('/payments', function () {
-    return Payment::with([
-        'contract.tenant',
-        'contract.unit.property.owner',
-    ])
-        ->orderBy('due_date')
-        ->get();
+    return Payment::with(['contract.tenant', 'contract.unit.property.owner'])->orderBy('due_date')->get();
 });
 
 Route::post('/payments/{payment}/mark-paid', function (Payment $payment) {
-    $payment->update([
-        'status' => 'paid',
-        'paid_date' => now()->toDateString(),
-    ]);
-
-    return response()->json([
-        'status' => 'ok',
-        'message' => 'تم تسجيل الدفعة كمدفوعة',
-        'payment' => $payment->fresh()->load([
-            'contract.tenant',
-            'contract.unit.property.owner',
-        ]),
-    ]);
+    $payment->update(['status' => 'paid', 'paid_date' => now()->toDateString()]);
+    return response()->json(['status' => 'ok', 'message' => 'تم تسجيل الدفعة كمدفوعة', 'payment' => $payment->fresh()->load(['contract.tenant', 'contract.unit.property.owner'])]);
 });
 
 Route::post('/payments/{payment}/mark-due', function (Payment $payment) {
-    $payment->update([
-        'status' => 'due',
-        'paid_date' => null,
-    ]);
-
-    return response()->json([
-        'status' => 'ok',
-        'message' => 'تم إرجاع الدفعة إلى مستحقة',
-        'payment' => $payment->fresh()->load([
-            'contract.tenant',
-            'contract.unit.property.owner',
-        ]),
-    ]);
+    $payment->update(['status' => 'due', 'paid_date' => null]);
+    return response()->json(['status' => 'ok', 'message' => 'تم إرجاع الدفعة إلى مستحقة', 'payment' => $payment->fresh()->load(['contract.tenant', 'contract.unit.property.owner'])]);
 });
 
 Route::post('/payments/{payment}/mark-overdue', function (Payment $payment) {
-    $payment->update([
-        'status' => 'overdue',
-        'paid_date' => null,
-    ]);
-
-    return response()->json([
-        'status' => 'ok',
-        'message' => 'تم تسجيل الدفعة كمتأخرة',
-        'payment' => $payment->fresh()->load([
-            'contract.tenant',
-            'contract.unit.property.owner',
-        ]),
-    ]);
+    $payment->update(['status' => 'overdue', 'paid_date' => null]);
+    return response()->json(['status' => 'ok', 'message' => 'تم تسجيل الدفعة كمتأخرة', 'payment' => $payment->fresh()->load(['contract.tenant', 'contract.unit.property.owner'])]);
 });
