@@ -67,6 +67,7 @@ Route::middleware(['auth.api', 'api.scope'])->group(function () {
         __DIR__ . '/api/102_property_cascade_delete.php',
         __DIR__ . '/api/103_property_deed_extract.php',
         __DIR__ . '/api/104_property_deed_upsert_and_qr.php',
+        __DIR__ . '/api/106_deed_398490000202_fields.php',
         __DIR__ . '/api/20_edit_delete_center_stable.php',
         __DIR__ . '/api/19_receipts.php',
         __DIR__ . '/api/21_phase3_compat_overrides.php',
