@@ -17,7 +17,7 @@ if (!function_exists('deed_up_norm')) {
             '٠'=>'0','١'=>'1','٢'=>'2','٣'=>'3','٤'=>'4','٥'=>'5','٦'=>'6','٧'=>'7','٨'=>'8','٩'=>'9',
             '۰'=>'0','۱'=>'1','۲'=>'2','۳'=>'3','۴'=>'4','۵'=>'5','۶'=>'6','۷'=>'7','۸'=>'8','۹'=>'9',
         ]);
-        $text = preg_replace('/[ \t]+/u', ' ', str_replace('ـ', ' ', $text)) ?? $text;
+        $text = preg_replace('/[ \t]+/u', ' ', str_replace(['ـ', "\xc2\xa0"], ' ', $text)) ?? $text;
         return trim(preg_replace('/\n{2,}/u', "\n", $text) ?? $text);
     }
 }
@@ -50,6 +50,96 @@ if (!function_exists('deed_up_num')) {
     {
         $n = preg_replace('/[^0-9.]/', '', (string) $value);
         return $n === '' ? null : $n;
+    }
+}
+
+if (!function_exists('deed_up_lines')) {
+    function deed_up_lines(string $text): array
+    {
+        return array_values(array_filter(array_map(
+            fn ($line) => deed_up_clean($line, 500),
+            preg_split('/\n/u', $text) ?: []
+        ), fn ($line) => $line !== null && $line !== ''));
+    }
+}
+
+if (!function_exists('deed_up_has_any_label')) {
+    function deed_up_has_any_label(string $line): bool
+    {
+        foreach ([
+            'تاريخ الوثيقة','الحالة','المساحة','رقم الوثيقة','المدينة','الحي','مساحة العقار','نوع العقار',
+            'رقم المخطط','رقم القطعة','رقم الهوية العقارية','الجنسية','نسبة التملك','الاسم','الملاك',
+        ] as $label) {
+            if (str_contains($line, $label)) return true;
+        }
+        return false;
+    }
+}
+
+if (!function_exists('deed_up_value_near_label')) {
+    function deed_up_value_near_label(string $text, array $labels, callable $validator, int $radius = 5): ?string
+    {
+        $lines = deed_up_lines($text);
+
+        foreach ($lines as $i => $line) {
+            foreach ($labels as $label) {
+                if (!str_contains($line, $label)) continue;
+
+                $same = $line;
+                foreach ($labels as $remove) {
+                    $same = str_replace($remove, ' ', $same);
+                }
+                $same = deed_up_clean($same, 255);
+                if ($same && !$validator($same) && preg_match('/[:：]\s*(.+)$/u', $line, $m)) {
+                    $same = deed_up_clean($m[1], 255);
+                }
+                if ($same && $validator($same)) return $same;
+
+                for ($step = 1; $step <= $radius; $step++) {
+                    foreach ([$i - $step, $i + $step] as $idx) {
+                        if (!isset($lines[$idx])) continue;
+                        $candidate = deed_up_clean($lines[$idx], 255);
+                        if (!$candidate || deed_up_has_any_label($candidate)) continue;
+                        if ($validator($candidate)) return $candidate;
+                    }
+                }
+            }
+        }
+
+        return null;
+    }
+}
+
+if (!function_exists('deed_up_valid_hijri')) {
+    function deed_up_valid_hijri($v): bool { return (bool) preg_match('/^1[34][0-9]{2}\/[0-9]{1,2}\/[0-9]{1,2}$/', (string) $v); }
+}
+if (!function_exists('deed_up_valid_gregorian')) {
+    function deed_up_valid_gregorian($v): bool { return (bool) preg_match('/^20[0-9]{2}[\/-][0-9]{1,2}[\/-][0-9]{1,2}$/', (string) $v); }
+}
+if (!function_exists('deed_up_valid_number')) {
+    function deed_up_valid_number($v): bool { return (bool) preg_match('/^[0-9]+(?:\.[0-9]+)?$/', deed_up_num($v) ?? ''); }
+}
+if (!function_exists('deed_up_valid_arabic_short')) {
+    function deed_up_valid_arabic_short($v): bool
+    {
+        $v = trim((string) $v);
+        if (mb_strlen($v) > 60 || mb_strlen($v) < 2) return false;
+        if (preg_match('/[0-9]/', $v)) return false;
+        return (bool) preg_match('/[\p{Arabic}]/u', $v);
+    }
+}
+if (!function_exists('deed_up_valid_status')) {
+    function deed_up_valid_status($v): bool
+    {
+        $v = trim((string) $v);
+        return in_array($v, ['فعال', 'غير فعال', 'ملغي', 'محدث', 'موقوف'], true) || (mb_strlen($v) <= 30 && preg_match('/[\p{Arabic}]/u', $v));
+    }
+}
+if (!function_exists('deed_up_valid_prev_no')) {
+    function deed_up_valid_prev_no($v): bool
+    {
+        $v = trim((string) $v);
+        return mb_strlen($v) <= 80 && (bool) preg_match('/[0-9]/', $v);
     }
 }
 
@@ -93,32 +183,61 @@ if (!function_exists('deed_up_payload')) {
     function deed_up_payload(string $filePath): array
     {
         $text = deed_up_norm((new Parser())->parseFile($filePath)->getText());
-        $doc = deed_up_match(['/رقم\s*الوثيقة\s*([0-9]{5,})/u','/الرقم\s*[:：]?\s*([0-9]{5,})/u','/\b([0-9]{10,})\b/u'], $text);
-        $hDate = deed_up_match(['/تاريخ\s*الوثيقة\s*([0-9]{4}\/[0-9]{1,2}\/[0-9]{1,2})/u'], $text);
-        $gDate = deed_up_match(['/التاريخ\s*[:：]?\s*(20[0-9]{2}\/[0-9]{1,2}\/[0-9]{1,2})/u'], $text);
-        $status = deed_up_match(['/الحالة\s*([\p{Arabic}A-Za-z ]+?)\s*(?:تاريخ|المساحة|$)/u'], $text);
-        $restrictions = deed_up_match(['/القيود\s*([\p{Arabic}A-Za-z ]+?)\s*الحالة/u'], $text);
-        $prevDate = deed_up_match(['/تاريخ\s*الوثيقة\s*السابقة\s*([0-9]{4}\/[0-9]{1,2}\/[0-9]{1,2})/u'], $text);
-        $prevNo = deed_up_match(['/رقم\s*الوثيقة\s*السابقة\s*([^\n]+?)(?:\n|الملاك|$)/u'], $text);
-        $operation = deed_up_match(['/نوع\s*العملية\s*([^\n]+?)\s*رقم\s*الوثيقة\s*السابقة/u'], $text);
-        $ownerName = deed_up_match(['/\n[0-9]{6,}\s+([\p{Arabic}\s]+?)\s+سعودي\s+100\s*%/u'], $text);
-        $identity = deed_up_match(['/رقم\s*الهوية\s*العقارية\s*([0-9]{6,})/u'], $text);
-        $city = deed_up_match(['/المدينة\s*([\p{Arabic}A-Za-z ]+?)\s*رقم\s*المخطط/u'], $text);
-        $plan = deed_up_match(['/رقم\s*المخطط\s*([^\n]+?)\s*الحي/u'], $text);
-        $district = deed_up_match(['/الحي\s*([\p{Arabic}A-Za-z0-9 ]+?)\s*رقم\s*القطعة/u'], $text);
-        $plotBlock = deed_up_match(['/رقم\s*القطعة\s*([^\n]+?)\s*مساحة\s*العقار/u'], $text);
-        $area = deed_up_match(['/مساحة\s*العقار\s*\(?\s*م\s*²?\)?\s*([0-9,.]+)/u','/المساحة\s*([0-9,.]+)/u'], $text);
-        $typeText = deed_up_match(['/نوع\s*العقار\s*([^\n]+?)(?:\n|خريطة|الوصول|$)/u'], $text);
+
+        $doc = deed_up_match([
+            '/رقم\s*الوثيقة\s*[:：]?\s*([0-9]{5,})/u',
+            '/رقم\s*الصك\s*[:：]?\s*([0-9]{5,})/u',
+            '/الرقم\s*[:：]?\s*([0-9]{5,})/u',
+            '/\b([0-9]{10,})\b/u',
+        ], $text);
+
+        $hDate = deed_up_match(['/تاريخ\s*الوثيقة\s*[:：]?\s*([0-9]{4}\/[0-9]{1,2}\/[0-9]{1,2})/u'], $text)
+            ?: deed_up_value_near_label($text, ['تاريخ الوثيقة', 'تاريخ الصك'], 'deed_up_valid_hijri');
+        $gDate = deed_up_match(['/التاريخ\s*[:：]?\s*(20[0-9]{2}[\/-][0-9]{1,2}[\/-][0-9]{1,2})/u'], $text)
+            ?: deed_up_value_near_label($text, ['التاريخ الميلادي', 'التاريخ'], 'deed_up_valid_gregorian');
+        $status = deed_up_match(['/الحالة\s*[:：]?\s*([\p{Arabic}A-Za-z ]+?)\s*(?:تاريخ|المساحة|القيود|$)/u'], $text)
+            ?: deed_up_value_near_label($text, ['الحالة'], 'deed_up_valid_status');
+        $restrictions = deed_up_match(['/القيود\s*[:：]?\s*([\p{Arabic}A-Za-z ]+?)\s*(?:الحالة|تاريخ|$)/u'], $text)
+            ?: deed_up_value_near_label($text, ['القيود'], 'deed_up_valid_status');
+        $prevDate = deed_up_match(['/تاريخ\s*الوثيقة\s*السابقة\s*[:：]?\s*([0-9]{4}\/[0-9]{1,2}\/[0-9]{1,2})/u'], $text)
+            ?: deed_up_value_near_label($text, ['تاريخ الوثيقة السابقة'], 'deed_up_valid_hijri');
+        $prevNo = deed_up_match(['/رقم\s*الوثيقة\s*السابقة\s*[:：]?\s*([^\n]+?)(?:\n|الملاك|$)/u'], $text)
+            ?: deed_up_value_near_label($text, ['رقم الوثيقة السابقة'], 'deed_up_valid_prev_no');
+        $operation = deed_up_match(['/نوع\s*العملية\s*[:：]?\s*([^\n]+?)\s*(?:رقم\s*الوثيقة\s*السابقة|$)/u'], $text);
+
+        $ownerName = deed_up_match(['/\n[0-9]{6,}\s+([\p{Arabic}\s]+?)\s+(?:سعودي|سعودية)\s+[0-9]+\s*%/u'], $text)
+            ?: deed_up_value_near_label($text, ['الاسم', 'اسم المالك'], 'deed_up_valid_arabic_short');
+        $identity = deed_up_match(['/رقم\s*الهوية\s*العقارية\s*[:：]?\s*([0-9]{6,})/u'], $text)
+            ?: deed_up_value_near_label($text, ['رقم الهوية العقارية'], fn ($v) => (bool) preg_match('/^[0-9]{6,}$/', deed_up_num($v) ?? ''));
+        $city = deed_up_match(['/المدينة\s*[:：]?\s*([\p{Arabic}A-Za-z ]+?)\s*(?:رقم\s*المخطط|الحي|$)/u'], $text)
+            ?: deed_up_match(['/([\p{Arabic}A-Za-z ]+?)\s+المدينة/u'], $text)
+            ?: deed_up_value_near_label($text, ['المدينة'], 'deed_up_valid_arabic_short');
+        $plan = deed_up_match(['/رقم\s*المخطط\s*[:：]?\s*([^\n]+?)\s*(?:الحي|رقم\s*القطعة|$)/u'], $text)
+            ?: deed_up_value_near_label($text, ['رقم المخطط'], 'deed_up_valid_prev_no');
+        $district = deed_up_match(['/الحي\s*[:：]?\s*([\p{Arabic}A-Za-z0-9 ]+?)\s*(?:رقم\s*القطعة|مساحة\s*العقار|$)/u'], $text)
+            ?: deed_up_match(['/([\p{Arabic}A-Za-z0-9 ]+?)\s+الحي/u'], $text)
+            ?: deed_up_value_near_label($text, ['الحي'], fn ($v) => mb_strlen((string) $v) <= 60 && preg_match('/[\p{Arabic}]/u', (string) $v));
+        $plotBlock = deed_up_match(['/رقم\s*القطعة\s*[:：]?\s*([^\n]+?)\s*(?:مساحة\s*العقار|نوع\s*العقار|$)/u'], $text)
+            ?: deed_up_value_near_label($text, ['رقم القطعة'], 'deed_up_valid_prev_no');
+        $area = deed_up_match(['/مساحة\s*العقار\s*\(?\s*م\s*²?\)?\s*[:：]?\s*([0-9,.]+)/u','/المساحة\s*[:：]?\s*([0-9,.]+)/u'], $text)
+            ?: deed_up_value_near_label($text, ['مساحة العقار', 'المساحة'], 'deed_up_valid_number');
+        $typeText = deed_up_match(['/نوع\s*العقار\s*[:：]?\s*([^\n]+?)(?:\n|خريطة|الوصول|$)/u'], $text)
+            ?: deed_up_value_near_label($text, ['نوع العقار'], fn ($v) => mb_strlen((string) $v) <= 80 && preg_match('/[\p{Arabic}]/u', (string) $v));
+        $ownership = deed_up_match(['/نسبة\s*التملك\s*[:：]?\s*%?\s*([0-9.]+)/u', '/([0-9.]+)\s*%\s*(?:نسبة\s*التملك)?/u'], $text)
+            ?: deed_up_value_near_label($text, ['نسبة التملك'], 'deed_up_valid_number');
+
         $plot = deed_up_clean($plotBlock, 100);
         $block = null;
         if ($plotBlock && preg_match('/(.+?)\s+بلك\s+(.+)$/u', trim($plotBlock), $m)) {
             $plot = deed_up_clean($m[1], 100);
             $block = deed_up_clean($m[2], 100);
         }
+
         $city = deed_up_clean($city, 80);
         $district = deed_up_clean($district, 80);
         $ptype = (str_contains((string) $typeText, 'قطعة') || str_contains((string) $typeText, 'ارض') || str_contains((string) $typeText, 'أرض')) ? 'land' : 'building';
         $name = implode(' - ', array_filter([$ptype === 'land' ? 'قطعة أرض' : 'عقار', $district, $city]));
+
         $payload = [
             'name' => deed_up_clean($name ?: ('عقار صك ' . $doc)),
             'deed_number' => deed_up_clean($doc),
@@ -131,7 +250,7 @@ if (!function_exists('deed_up_payload')) {
             'previous_document_number' => deed_up_clean($prevNo),
             'operation_type' => deed_up_clean($operation, 100),
             'real_estate_identity_number' => deed_up_clean($identity),
-            'real_estate_identity_map_url' => $identity ? ('https://srem.moj.gov.sa/rid/' . $identity) : null,
+            'real_estate_identity_map_url' => $identity ? ('https://srem.moj.gov.sa/rid/' . deed_up_num($identity)) : null,
             'location_access_url' => null,
             'property_latitude' => null,
             'property_longitude' => null,
@@ -139,8 +258,8 @@ if (!function_exists('deed_up_payload')) {
             'plot_number' => $plot,
             'block_number' => $block,
             'deed_owner_name' => deed_up_clean($ownerName),
-            'deed_owner_nationality' => 'سعودي',
-            'deed_ownership_percentage' => '100',
+            'deed_owner_nationality' => deed_up_match(['/\b(سعودي|سعودية)\b/u'], $text) ?: null,
+            'deed_ownership_percentage' => deed_up_num($ownership),
             'deed_source' => 'منصة البورصة العقارية',
             'deed_issuer' => 'وزارة العدل',
             'city' => $city,
