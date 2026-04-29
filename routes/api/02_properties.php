@@ -24,33 +24,27 @@ use Illuminate\Support\Facades\Schema;
 |--------------------------------------------------------------------------
 */
 
-if (!function_exists('mr_property_default_contract_unit')) {
-    function mr_property_default_contract_unit(Property $property): Unit
+if (!function_exists('mr_visible_units_query')) {
+    function mr_visible_units_query($query)
     {
-        return Unit::firstOrCreate(
-            [
-                'property_id' => $property->id,
-                'unit_number' => 'العقار كامل',
-            ],
-            [
-                'owner_id' => $property->owner_id,
-                'unit_scope' => 'property',
-                'parent_unit_id' => null,
-                'floor' => null,
-                'type' => 'whole_property',
-                'area' => $property->property_area,
-                'is_subdivided' => false,
-                'rent_amount' => 0,
-                'status' => 'available',
-                'notes' => 'وحدة افتراضية خاصة بإنشاء عقد للعقار كاملًا عندما لا توجد وحدات فعلية.',
-            ]
-        );
+        return $query
+            ->where('unit_number', '!=', 'العقار كامل')
+            ->where(function ($unitQuery) {
+                $unitQuery->whereNull('type')->orWhere('type', '!=', 'whole_property');
+            });
     }
 }
 
 Route::get('/properties', function (Request $request) {
     $query = Property::with(['owner'])
-        ->withCount(['units', 'parkingSpots', 'expenses', 'files']);
+        ->withCount([
+            'units' => function ($unitQuery) {
+                mr_visible_units_query($unitQuery);
+            },
+            'parkingSpots',
+            'expenses',
+            'files',
+        ]);
 
     if ($request->filled('owner_id')) {
         $query->where('owner_id', $request->integer('owner_id'));
@@ -148,14 +142,11 @@ Route::post('/properties', function (Request $request) {
 });
 
 Route::get('/properties/{property}', function (Property $property) {
-    if (!Unit::where('property_id', $property->id)->exists()) {
-        mr_property_default_contract_unit($property);
-    }
-
     $property->load([
         'owner',
-        'units.childUnits',
-        'units.contracts',
+        'units' => function ($unitQuery) {
+            mr_visible_units_query($unitQuery)->with(['childUnits', 'contracts']);
+        },
         'parkingSpots',
         'expenses.category',
         'files',
@@ -164,6 +155,26 @@ Route::get('/properties/{property}', function (Property $property) {
     $property->units->each(function ($unit) {
         $unit->contracts_count = $unit->relationLoaded('contracts') ? $unit->contracts->count() : 0;
     });
+
+    $visibleUnitIds = $property->units->pluck('id')->all();
+    $unitContractsCount = empty($visibleUnitIds) ? 0 : Contract::whereIn('unit_id', $visibleUnitIds)->count();
+
+    $wholeUnitIds = Unit::where('property_id', $property->id)
+        ->where(function ($unitQuery) {
+            $unitQuery->where('type', 'whole_property')->orWhere('unit_number', 'العقار كامل');
+        })
+        ->pluck('id')
+        ->all();
+
+    $wholeContractsCount = empty($wholeUnitIds) ? 0 : Contract::whereIn('unit_id', $wholeUnitIds)->count();
+
+    $property->units_count = $property->units->count();
+    $property->property_contracts_count = $wholeContractsCount;
+    $property->unit_contracts_count = $unitContractsCount;
+    $property->whole_property_contract_exists = $wholeContractsCount > 0;
+    $property->can_create_whole_property_contract = $wholeContractsCount === 0 && $unitContractsCount === 0;
+    $property->can_create_unit_contract = $wholeContractsCount === 0 && $property->units->contains(fn ($unit) => (int) ($unit->contracts_count ?? 0) === 0);
+    $property->can_create_contract = $property->can_create_whole_property_contract || $property->can_create_unit_contract;
 
     return $property;
 });
