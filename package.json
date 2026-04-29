@@ -13,6 +13,7 @@
     "start:tunnel": "mkdir -p /home/pmsa/apps/.tmp && TMPDIR=/home/pmsa/apps/.tmp TMP=/home/pmsa/apps/.tmp TEMP=/home/pmsa/apps/.tmp npx expo start --clear --tunnel"
   },
   "dependencies": {
+    "@babel/runtime": "^7.29.2",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@react-navigation/bottom-tabs": "^7.15.5",
     "@react-navigation/elements": "^2.9.10",
