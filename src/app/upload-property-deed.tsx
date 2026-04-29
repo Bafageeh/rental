@@ -51,6 +51,24 @@ function valueToString(value: unknown) {
   return String(value);
 }
 
+function normalizePropertyTypeForForm(value: unknown) {
+  const raw = valueToString(value).trim().toLowerCase();
+  if (['apartment', 'unit', 'flat', 'شقة', 'وحدة', 'وحده'].includes(raw)) return 'وحدة';
+  if (['land', 'أرض', 'ارض', 'قطعة أرض', 'قطعة الارض'].includes(raw)) return 'أرض';
+  if (['villa', 'فيلا'].includes(raw)) return 'فيلا';
+  if (['commercial', 'تجاري'].includes(raw)) return 'تجاري';
+  return 'عمارة';
+}
+
+function normalizePropertyTypeForApi(value: unknown) {
+  const raw = valueToString(value).trim().toLowerCase();
+  if (['وحدة', 'وحده', 'شقة', 'apartment', 'unit', 'flat'].includes(raw)) return 'apartment';
+  if (['أرض', 'ارض', 'قطعة أرض', 'قطعة الارض', 'land'].includes(raw)) return 'land';
+  if (['فيلا', 'villa'].includes(raw)) return 'villa';
+  if (['تجاري', 'commercial'].includes(raw)) return 'commercial';
+  return 'building';
+}
+
 function Field({
   label,
   value,
@@ -99,7 +117,7 @@ export default function UploadPropertyDeedScreen() {
     address: '',
     national_short_address: '',
     property_area: '',
-    property_type: 'building',
+    property_type: 'عمارة',
     usage_type: 'residential',
     management_type: 'managed',
     floors_count: '',
@@ -139,7 +157,7 @@ export default function UploadPropertyDeedScreen() {
       address: valueToString(property.address),
       national_short_address: valueToString(property.national_short_address),
       property_area: valueToString(property.property_area),
-      property_type: valueToString(property.property_type || 'building'),
+      property_type: normalizePropertyTypeForForm(property.property_type),
       usage_type: valueToString(property.usage_type || 'residential'),
       management_type: valueToString(property.management_type || 'managed'),
       floors_count: valueToString(property.floors_count),
@@ -163,10 +181,14 @@ export default function UploadPropertyDeedScreen() {
     if (ownerId) formData.append('owner_id', ownerId);
     if (apply) formData.append('apply', '1');
 
-    Object.entries(form).forEach(([key, value]) => {
-      const text = valueToString(value).trim();
-      if (text !== '') formData.append(key, text);
-    });
+    // لا نرسل الحقول الافتراضية عند القراءة فقط حتى لا تغطي على بيانات الصك المستخرجة.
+    if (apply) {
+      Object.entries(form).forEach(([key, value]) => {
+        const text = valueToString(value).trim();
+        if (text === '') return;
+        formData.append(key, key === 'property_type' ? normalizePropertyTypeForApi(text) : text);
+      });
+    }
 
     return formData;
   }
@@ -262,7 +284,7 @@ export default function UploadPropertyDeedScreen() {
         {extracted ? (
           <View style={styles.card}>
             <Text style={styles.cardTitle}>2) مراجعة البيانات المستخرجة</Text>
-            <Text style={styles.cardHint}>يمكنك تعديل أي حقل قبل اعتماد إنشاء العقار.</Text>
+            <Text style={styles.cardHint}>إذا كان الصك يحتوي على كلمة شقة فسيتم تسجيله كوحدة مملوكة مباشرة للمالك.</Text>
 
             <Field label="اسم العقار" value={valueToString(form.name)} onChangeText={(value) => setField('name', value)} />
             <Field label="رقم الصك" value={valueToString(form.deed_number)} onChangeText={(value) => setField('deed_number', value)} />
