@@ -25,6 +25,7 @@ jobs:
 
       - name: Deploy over SSH
         shell: bash
+        timeout-minutes: 10
         run: |
           set -euo pipefail
           mkdir -p ~/.ssh
@@ -46,9 +47,9 @@ jobs:
           mkdir -p /home/pmsa/apps/.cache /home/pmsa/apps/.tmp
 
           if [ -f package-lock.json ]; then
-            npm ci
+            npm ci --no-audit --no-fund
           else
-            npm install
+            npm install --no-audit --no-fund
           fi
 
           pkill -f "expo start" || true
@@ -63,5 +64,8 @@ jobs:
             TMP=/home/pmsa/apps/.tmp \
             TEMP=/home/pmsa/apps/.tmp \
             npx expo start --clear --go --host lan --port 8081 \
-            > /home/pmsa/apps/my-rentals-mobile/expo.log 2>&1 &
+            </dev/null > /home/pmsa/apps/my-rentals-mobile/expo.log 2>&1 &
+
+          sleep 5
+          tail -n 80 /home/pmsa/apps/my-rentals-mobile/expo.log || true
           REMOTE
