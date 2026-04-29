@@ -51,12 +51,45 @@ function money(value: any) {
   return formatMoney(numeric);
 }
 
+function reverseText(value: string) {
+  return Array.from(value).reverse().join('');
+}
+
+function cleanCycleText(value: any) {
+  return display(value)
+    .replace(/[\u200E\u200F\u202A-\u202E\u2066-\u2069]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function cycleLabel(value: any) {
+  const raw = cleanCycleText(value);
+  const reversed = reverseText(raw);
+  const both = `${raw} ${reversed}`.toLowerCase();
+
   if (value === 'quarterly') return 'ربع سنوي';
   if (value === 'monthly') return 'شهري';
   if (value === 'semi_annual') return 'نصف سنوي';
   if (value === 'annual') return 'سنوي';
-  return display(value);
+
+  // بعض ملفات PDF ترسل القيمة العربية مقلوبة بصريًا، مثل: "يعبر" بدل "ربعي".
+  if (both.includes('quarter') || both.includes('ربعي') || both.includes('ربع سنوي') || both.includes('يعبر')) {
+    return 'ربع سنوي';
+  }
+
+  if (both.includes('monthly') || both.includes('شهري') || both.includes('يرهش')) {
+    return 'شهري';
+  }
+
+  if (both.includes('semi') || both.includes('نصف سنوي') || both.includes('يونس فصن')) {
+    return 'نصف سنوي';
+  }
+
+  if (both.includes('annual') || both.includes('سنوي') || both.includes('يونس')) {
+    return 'سنوي';
+  }
+
+  return raw || '-';
 }
 
 function InfoRow({ label, value, warning = false }: { label: string; value: string; warning?: boolean }) {
@@ -373,7 +406,7 @@ const styles = StyleSheet.create({
     borderTopColor: colors.borderLight,
     gap: spacing.sm,
   },
-  infoLabel: { color: colors.textSecondary, fontSize: 12, fontWeight: '900', minWidth: 112, textAlign: 'right' },
-  infoValue: { flex: 1, color: colors.text, fontWeight: '900', textAlign: 'right', lineHeight: 20 },
+  infoLabel: { color: colors.textSecondary, fontSize: 12, fontWeight: '900', minWidth: 112, textAlign: 'right', writingDirection: 'rtl' },
+  infoValue: { flex: 1, color: colors.text, fontWeight: '900', textAlign: 'right', writingDirection: 'rtl', lineHeight: 20 },
   infoValueWarning: { color: colors.warningDark },
 });
