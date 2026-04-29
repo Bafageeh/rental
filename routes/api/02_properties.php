@@ -24,6 +24,30 @@ use Illuminate\Support\Facades\Schema;
 |--------------------------------------------------------------------------
 */
 
+if (!function_exists('mr_property_default_contract_unit')) {
+    function mr_property_default_contract_unit(Property $property): Unit
+    {
+        return Unit::firstOrCreate(
+            [
+                'property_id' => $property->id,
+                'unit_number' => 'العقار كامل',
+            ],
+            [
+                'owner_id' => $property->owner_id,
+                'unit_scope' => 'property',
+                'parent_unit_id' => null,
+                'floor' => null,
+                'type' => 'whole_property',
+                'area' => $property->property_area,
+                'is_subdivided' => false,
+                'rent_amount' => 0,
+                'status' => 'available',
+                'notes' => 'وحدة افتراضية خاصة بإنشاء عقد للعقار كاملًا عندما لا توجد وحدات فعلية.',
+            ]
+        );
+    }
+}
+
 Route::get('/properties', function (Request $request) {
     $query = Property::with(['owner'])
         ->withCount(['units', 'parkingSpots', 'expenses', 'files']);
@@ -124,6 +148,10 @@ Route::post('/properties', function (Request $request) {
 });
 
 Route::get('/properties/{property}', function (Property $property) {
+    if (!Unit::where('property_id', $property->id)->exists()) {
+        mr_property_default_contract_unit($property);
+    }
+
     $property->load([
         'owner',
         'units.childUnits',
