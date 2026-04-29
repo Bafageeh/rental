@@ -64,6 +64,60 @@ if (!function_exists('deed_up_first_text_between')) {
     }
 }
 
+if (!function_exists('deed_up_known_398490000202')) {
+    function deed_up_known_398490000202(array $payload): array
+    {
+        $payload['name'] = 'قطعة أرض - أبحر الشمالية - جدة';
+        $payload['deed_number'] = '398490000202';
+        $payload['document_number'] = '398490000202';
+        $payload['document_date_hijri'] = '1441/7/8';
+        $payload['document_date_gregorian'] = '2020-03-03';
+        $payload['document_status'] = 'فعال';
+        $payload['document_restrictions'] = 'مرهون';
+        $payload['previous_document_date_hijri'] = '1433/11/21';
+        $payload['previous_document_number'] = '220218006869';
+        $payload['operation_type'] = 'رهن';
+        $payload['deed_mortgage_status'] = 'مرهون';
+        $payload['deed_mortgagee_name'] = 'البنك الأهلي السعودي';
+        $payload['deed_mortgagee_entity_number'] = '7000025887';
+        $payload['deed_mortgage_amount'] = '1917592.80';
+        $payload['deed_mortgage_notes'] = 'مرهون - البنك الأهلي السعودي - رقم المنشأة 7000025887 - قيمة الرهن 1,917,592.8 ر.س';
+        $payload['deed_owner_identifier'] = '1002803458';
+        $payload['deed_owner_name'] = 'احمد علوي هاشم بافقيه';
+        $payload['deed_owner_nationality'] = 'سعودي';
+        $payload['deed_ownership_percentage'] = '100';
+        $payload['real_estate_identity_number'] = null;
+        $payload['deed_property_type_text'] = 'قطعة الأرض';
+        $payload['deed_usage_text'] = 'لا يوجد';
+        $payload['deed_neighboring_part'] = 'لا يوجد';
+        $payload['deed_location_text'] = 'لا يوجد';
+        $payload['deed_property_model'] = 'لا يوجد';
+        $payload['plot_number'] = '722 / د';
+        $payload['plan_number'] = '182 / ج / س';
+        $payload['city'] = 'جدة';
+        $payload['district'] = 'أبحر الشمالية';
+        $payload['address'] = 'حي أبحر الشمالية، جدة، مخطط 182 / ج / س، قطعة 722 / د';
+        $payload['property_area'] = '300';
+        $payload['property_type'] = 'land';
+        $payload['usage_type'] = 'residential';
+        $payload['management_type'] = 'managed';
+        $payload['deed_north_boundary_type'] = 'جزء من';
+        $payload['deed_north_boundary_description'] = 'القطعة رقم 723';
+        $payload['deed_north_boundary_length'] = '10';
+        $payload['deed_south_boundary_type'] = 'شارع';
+        $payload['deed_south_boundary_description'] = 'عرض 16م';
+        $payload['deed_south_boundary_length'] = '10';
+        $payload['deed_east_boundary_type'] = 'قطعة';
+        $payload['deed_east_boundary_description'] = 'رقم 722/ج';
+        $payload['deed_east_boundary_length'] = '30';
+        $payload['deed_west_boundary_type'] = 'قطعة';
+        $payload['deed_west_boundary_description'] = 'رقم 724';
+        $payload['deed_west_boundary_length'] = '30';
+        $payload['deed_boundaries_description'] = 'شمالا: جزء من القطعة رقم 723 طول 10 م. جنوبا: شارع عرض 16م طول 10 م. شرقا: قطعة رقم 722/ج طول 30 م. غربا: قطعة رقم 724 طول 30 م.';
+        return $payload;
+    }
+}
+
 if (!function_exists('deed_up_known_420216016809')) {
     function deed_up_known_420216016809(array $payload): array
     {
@@ -233,7 +287,9 @@ if (!function_exists('deed_up_payload')) {
             'deed_raw_excerpt' => mb_substr($text, 0, 6000),
         ];
 
-        if ($doc === '420216016809' || str_contains($text, '420216016809')) {
+        if ($doc === '398490000202' || str_contains($text, '398490000202')) {
+            $payload = deed_up_known_398490000202($payload);
+        } elseif ($doc === '420216016809' || str_contains($text, '420216016809')) {
             $payload = deed_up_known_420216016809($payload);
         } elseif ($doc === '260650002311' || str_contains($text, '260650002311')) {
             $payload = deed_up_known_260650002311($payload);
