@@ -50,7 +50,6 @@ jobs:
 
           mkdir -p /home/pmsa/apps/.cache /home/pmsa/apps/.tmp
 
-          # أعد بناء node_modules لأن التشغيل السابق حذف بعض الحزم أثناء محاولات الإصلاح.
           rm -rf node_modules .expo /home/pmsa/apps/.cache/metro-* /home/pmsa/apps/.cache/haste-map-* || true
 
           if [ -f package-lock.json ]; then
@@ -59,7 +58,10 @@ jobs:
             npm install --no-audit --no-fund
           fi
 
-          node -e "require.resolve('expo-router/entry'); console.log('expo-router entry ok')"
+          # expo-router in SDK 55 needs these runtime helpers during Metro bundling.
+          npm install --no-save --no-audit --no-fund @expo/metro-runtime@6.1.2 @babel/runtime@7.29.2
+
+          node -e "require.resolve('expo-router/entry'); require.resolve('@expo/metro-runtime'); require.resolve('@babel/runtime/helpers/asyncToGenerator'); console.log('expo runtime dependencies ok')"
 
           nohup env \
             BROWSER=none \
