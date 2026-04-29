@@ -234,7 +234,7 @@ export default function DashboardScreen() {
   const occupancy = Math.round(s?.occupancy_rate ?? 0);
   const occupancyColor = getOccupancyColor(occupancy);
   const firstName = user?.name?.split(' ')[0]?.trim() || 'مدير';
-  const greeting = loggedIn ? `مرحبا عزيزي، ${firstName} 👋` : 'إيجاراتي 🏢';
+  const greeting = loggedIn ? `اهلا، ${firstName} 👋` : 'إيجاراتي 🏢';
   const subGreeting = loggedIn
     ? isAdmin
       ? 'لوحة المدير'
