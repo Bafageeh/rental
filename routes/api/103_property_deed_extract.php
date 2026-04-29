@@ -4,10 +4,9 @@
 |--------------------------------------------------------------------------
 | Property deed extraction
 |--------------------------------------------------------------------------
-| Allows creating a property either manually or by uploading a title deed PDF.
-| The extractor is intentionally conservative: it previews extracted fields and
-| lets the mobile app send corrected values before applying and creating the
-| property.
+| Supports electronic title deed PDFs from the Real Estate Market / Ministry
+| of Justice. It previews extracted fields, then creates the property and saves
+| the uploaded deed as a downloadable property document when apply=1.
 */
 
 use App\Models\Owner;
@@ -15,6 +14,7 @@ use App\Models\Property;
 use App\Models\PropertyFile;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Schema;
 use Smalot\PdfParser\Parser;
 
 if (!function_exists('mrdeed_normalize_text')) {
@@ -52,7 +52,7 @@ if (!function_exists('mrdeed_first_match')) {
 }
 
 if (!function_exists('mrdeed_clean_short')) {
-    function mrdeed_clean_short(?string $value, int $max = 255): ?string
+    function mrdeed_clean_short($value, int $max = 255): ?string
     {
         $value = trim((string) $value);
         if ($value === '' || $value === '-') return null;
@@ -71,15 +71,48 @@ if (!function_exists('mrdeed_number')) {
     }
 }
 
+if (!function_exists('mrdeed_gregorian_date')) {
+    function mrdeed_gregorian_date($value): ?string
+    {
+        $value = mrdeed_clean_short($value, 50);
+        if (!$value) return null;
+        if (preg_match('/(20\d{2})[\/-](\d{1,2})[\/-](\d{1,2})/', $value, $m)) {
+            return sprintf('%04d-%02d-%02d', (int) $m[1], (int) $m[2], (int) $m[3]);
+        }
+        return null;
+    }
+}
+
+if (!function_exists('mrdeed_percentage')) {
+    function mrdeed_percentage($value): ?float
+    {
+        $number = mrdeed_number($value);
+        return $number === null ? null : (float) $number;
+    }
+}
+
 if (!function_exists('mrdeed_property_type')) {
     function mrdeed_property_type(?string $value): string
     {
         $value = mb_strtolower((string) $value);
         if (str_contains($value, 'فيلا') || str_contains($value, 'villa')) return 'villa';
         if (str_contains($value, 'شقة') || str_contains($value, 'apartment')) return 'apartment';
-        if (str_contains($value, 'أرض') || str_contains($value, 'ارض') || str_contains($value, 'land')) return 'land';
+        if (str_contains($value, 'أرض') || str_contains($value, 'ارض') || str_contains($value, 'قطعة')) return 'land';
         if (str_contains($value, 'تجاري') || str_contains($value, 'commercial') || str_contains($value, 'محل')) return 'commercial';
         return 'building';
+    }
+}
+
+if (!function_exists('mrdeed_type_label')) {
+    function mrdeed_type_label(string $type): string
+    {
+        return match ($type) {
+            'land' => 'قطعة أرض',
+            'apartment' => 'شقة مستقلة',
+            'villa' => 'فيلا',
+            'commercial' => 'عقار تجاري',
+            default => 'عقار',
+        };
     }
 }
 
@@ -90,65 +123,97 @@ if (!function_exists('mrdeed_extract_data')) {
         $pdf = $parser->parseFile($filePath);
         $text = mrdeed_normalize_text($pdf->getText());
 
-        $deedNumber = mrdeed_first_match([
-            '/(?:رقم\s*الصك|رقم\s*الوثيقة|رقم\s*المستند|رقم\s*الصك\s*العقاري)\s*[:\-]?\s*([0-9]{5,})/u',
-            '/(?:Title\s*Deed\s*(?:No|Number)|Deed\s*(?:No|Number))\s*[:\-]?\s*([0-9]{5,})/ui',
+        $documentNumber = mrdeed_first_match([
+            '/رقم\s*الوثيقة\s*([0-9]{5,})/u',
+            '/الرقم\s*[:：]?\s*([0-9]{5,})/u',
             '/\b([0-9]{10,})\b/u',
         ], $text);
+        $documentDateHijri = mrdeed_first_match(['/تاريخ\s*الوثيقة\s*([0-9]{4}\/[0-9]{1,2}\/[0-9]{1,2})/u'], $text);
+        $documentDateGregorian = mrdeed_first_match(['/التاريخ\s*[:：]?\s*(20[0-9]{2}\/[0-9]{1,2}\/[0-9]{1,2})/u'], $text);
+        $documentStatus = mrdeed_first_match(['/الحالة\s*([\p{Arabic}A-Za-z ]+?)\s*(?:تاريخ|المساحة|$)/u'], $text);
+        $restrictions = mrdeed_first_match(['/القيود\s*([\p{Arabic}A-Za-z ]+?)\s*الحالة/u'], $text);
+        $previousDate = mrdeed_first_match(['/تاريخ\s*الوثيقة\s*السابقة\s*([0-9]{4}\/[0-9]{1,2}\/[0-9]{1,2})/u'], $text);
+        $operationType = mrdeed_first_match(['/نوع\s*العملية\s*([^\n]+?)\s*رقم\s*الوثيقة\s*السابقة/u'], $text);
+        $previousNumber = mrdeed_first_match(['/رقم\s*الوثيقة\s*السابقة\s*([^\n]+?)(?:\n|الملاك|$)/u'], $text);
 
-        $city = mrdeed_first_match([
-            '/(?:المدينة|مدينة)\s*[:\-]?\s*([\p{Arabic}A-Za-z ]{2,40})/u',
-            '/City\s*[:\-]?\s*([\p{Arabic}A-Za-z ]{2,40})/ui',
-        ], $text);
+        $ownerIdentifier = mrdeed_first_match(['/الملاك\s*رقم\s*الهوية\s*الاسم\s*الجنسية\s*نسبة\s*التملك\s*([0-9]{6,})/u'], $text)
+            ?: mrdeed_first_match(['/\n([0-9]{6,})\s+([\p{Arabic}\s]+?)\s+سعودي\s+100/u'], $text, 1);
+        $ownerName = mrdeed_first_match(['/\n[0-9]{6,}\s+([\p{Arabic}\s]+?)\s+سعودي\s+100\s*%/u'], $text);
+        $ownerNationality = mrdeed_first_match(['/\n[0-9]{6,}\s+[\p{Arabic}\s]+?\s+(سعودي|سعودية)\s+100\s*%/u'], $text);
+        $ownershipPercentage = mrdeed_first_match(['/\n[0-9]{6,}\s+[\p{Arabic}\s]+?\s+(?:سعودي|سعودية)\s+([0-9.]+)\s*%/u'], $text);
 
-        $district = mrdeed_first_match([
-            '/(?:الحي|حي)\s*[:\-]?\s*([\p{Arabic}A-Za-z0-9 ]{2,50})/u',
-            '/District\s*[:\-]?\s*([\p{Arabic}A-Za-z0-9 ]{2,50})/ui',
-        ], $text);
+        $realEstateIdentity = mrdeed_first_match(['/رقم\s*الهوية\s*العقارية\s*([0-9]{6,})/u'], $text);
+        $city = mrdeed_first_match(['/المدينة\s*([\p{Arabic}A-Za-z ]+?)\s*رقم\s*المخطط/u'], $text);
+        $planNumber = mrdeed_first_match(['/رقم\s*المخطط\s*([^\n]+?)\s*الحي/u'], $text);
+        $district = mrdeed_first_match(['/الحي\s*([\p{Arabic}A-Za-z0-9 ]+?)\s*رقم\s*القطعة/u'], $text);
+        $plotBlock = mrdeed_first_match(['/رقم\s*القطعة\s*([^\n]+?)\s*مساحة\s*العقار/u'], $text);
+        $area = mrdeed_first_match(['/مساحة\s*العقار\s*\(?\s*م\s*²?\)?\s*([0-9,.]+)/u', '/المساحة\s*([0-9,.]+)/u'], $text);
+        $propertyTypeText = mrdeed_first_match(['/نوع\s*العقار\s*([^\n]+?)(?:\n|خريطة|الوصول|$)/u'], $text);
 
-        $area = mrdeed_first_match([
-            '/(?:المساحة|مساحة\s*العقار|إجمالي\s*المساحة|اجمالي\s*المساحة)\s*[:\-]?\s*([0-9,.]+)\s*(?:م|م2|م²|متر|sqm)?/u',
-            '/(?:Area|Total\s*Area)\s*[:\-]?\s*([0-9,.]+)/ui',
-        ], $text);
-
-        $address = mrdeed_first_match([
-            '/(?:العنوان|الموقع)\s*[:\-]?\s*(.{4,140}?)(?:\n|رقم|المدينة|الحي|المساحة|$)/u',
-            '/(?:Address|Location)\s*[:\-]?\s*(.{4,140}?)(?:\n|Deed|City|District|Area|$)/ui',
-        ], $text);
-
-        $shortAddress = mrdeed_first_match([
-            '/(?:العنوان\s*المختصر|الرمز\s*المختصر|National\s*Short\s*Address)\s*[:\-]?\s*([A-Za-z0-9]{4,8})/ui',
-            '/\b([A-Z]{4}[0-9]{4})\b/u',
-        ], $text);
-
-        $typeText = mrdeed_first_match([
-            '/(?:نوع\s*العقار|نوع\s*الملك|نوع\s*الاستخدام)\s*[:\-]?\s*([\p{Arabic}A-Za-z ]{2,40})/u',
-            '/(?:Property\s*Type|Real\s*Estate\s*Type)\s*[:\-]?\s*([\p{Arabic}A-Za-z ]{2,40})/ui',
-        ], $text);
+        $plotNumber = mrdeed_clean_short($plotBlock, 100);
+        $blockNumber = null;
+        if ($plotBlock && preg_match('/(.+?)\s+بلك\s+(.+)$/u', trim($plotBlock), $m)) {
+            $plotNumber = mrdeed_clean_short($m[1], 100);
+            $blockNumber = mrdeed_clean_short($m[2], 100);
+        }
 
         $cleanCity = mrdeed_clean_short($city, 80);
         $cleanDistrict = mrdeed_clean_short($district, 80);
-        $nameParts = array_filter([$cleanDistrict, $cleanCity]);
-        $name = count($nameParts) ? 'عقار ' . implode(' - ', $nameParts) : ($deedNumber ? 'عقار صك ' . $deedNumber : 'عقار مستورد من صك');
+        $type = mrdeed_property_type($propertyTypeText);
+        $nameParts = array_filter([mrdeed_type_label($type), $cleanDistrict, $cleanCity]);
+        $name = implode(' - ', $nameParts) ?: ($documentNumber ? 'عقار صك ' . $documentNumber : 'عقار مستورد من صك');
+        $addressParts = array_filter([
+            $cleanDistrict ? 'حي ' . $cleanDistrict : null,
+            $cleanCity,
+            $planNumber ? 'مخطط ' . trim($planNumber) : null,
+            $plotNumber ? 'قطعة ' . trim($plotNumber) : null,
+            $blockNumber ? 'بلك ' . trim($blockNumber) : null,
+        ]);
 
         return [
             'property' => [
                 'name' => mrdeed_clean_short($name, 255),
-                'deed_number' => mrdeed_clean_short($deedNumber, 255),
+                'deed_number' => mrdeed_clean_short($documentNumber, 255),
+                'document_number' => mrdeed_clean_short($documentNumber, 255),
+                'document_date_hijri' => mrdeed_clean_short($documentDateHijri, 50),
+                'document_date_gregorian' => mrdeed_gregorian_date($documentDateGregorian),
+                'document_status' => mrdeed_clean_short($documentStatus, 100),
+                'document_restrictions' => mrdeed_clean_short($restrictions, 255),
+                'previous_document_date_hijri' => mrdeed_clean_short($previousDate, 50),
+                'previous_document_number' => mrdeed_clean_short($previousNumber, 255),
+                'operation_type' => mrdeed_clean_short($operationType, 100),
+                'real_estate_identity_number' => mrdeed_clean_short($realEstateIdentity, 255),
+                'plan_number' => mrdeed_clean_short($planNumber, 255),
+                'plot_number' => mrdeed_clean_short($plotNumber, 100),
+                'block_number' => mrdeed_clean_short($blockNumber, 100),
+                'deed_owner_identifier' => mrdeed_clean_short($ownerIdentifier, 255),
+                'deed_owner_name' => mrdeed_clean_short($ownerName, 255),
+                'deed_owner_nationality' => mrdeed_clean_short($ownerNationality, 100),
+                'deed_ownership_percentage' => mrdeed_percentage($ownershipPercentage),
+                'deed_source' => 'منصة البورصة العقارية',
+                'deed_issuer' => 'وزارة العدل',
+                'deed_notes' => 'وثيقة تملك عقار إلكترونية. القيود: ' . (mrdeed_clean_short($restrictions, 255) ?: '-') . '. الحالة: ' . (mrdeed_clean_short($documentStatus, 100) ?: '-'),
                 'city' => $cleanCity,
                 'district' => $cleanDistrict,
-                'address' => mrdeed_clean_short($address, 500),
-                'national_short_address' => mrdeed_clean_short($shortAddress, 8),
+                'address' => count($addressParts) ? implode('، ', $addressParts) : null,
+                'national_short_address' => null,
                 'property_area' => mrdeed_number($area),
-                'property_type' => mrdeed_property_type($typeText),
-                'usage_type' => str_contains(mb_strtolower((string) $typeText), 'تجاري') ? 'commercial' : 'residential',
+                'property_type' => $type,
+                'usage_type' => str_contains(mb_strtolower((string) $propertyTypeText), 'تجاري') ? 'commercial' : 'residential',
                 'management_type' => 'managed',
                 'floors_count' => null,
                 'parking_spots_count' => null,
                 'elevators_count' => null,
+                'deed_raw_excerpt' => mb_substr($text, 0, 6000),
+            ],
+            'deed_owner' => [
+                'identifier' => mrdeed_clean_short($ownerIdentifier, 255),
+                'name' => mrdeed_clean_short($ownerName, 255),
+                'nationality' => mrdeed_clean_short($ownerNationality, 100),
+                'ownership_percentage' => mrdeed_percentage($ownershipPercentage),
             ],
             'confidence_notes' => [
-                'راجع البيانات المستخرجة قبل الاعتماد، لأن تنسيق الصكوك قد يختلف من ملف لآخر.',
+                'تم تجهيز الحقول بناءً على وثيقة تملك عقار إلكترونية. راجع القيم قبل الاعتماد إذا كان تنسيق الصك مختلفًا.',
             ],
             'raw_text_excerpt' => mb_substr($text, 0, 3000),
         ];
@@ -168,88 +233,115 @@ if (!function_exists('mrdeed_owner_id')) {
     }
 }
 
-Route::post('/property-deeds/extract', function (Request $request) {
-    $data = $request->validate([
-        'file' => ['required', 'file', 'mimes:pdf', 'max:20480'],
-        'owner_id' => ['nullable', 'integer', 'exists:owners,id'],
-        'apply' => ['nullable', 'boolean'],
-        'name' => ['nullable', 'string', 'max:255'],
-        'deed_number' => ['nullable', 'string', 'max:255'],
-        'city' => ['nullable', 'string', 'max:255'],
-        'district' => ['nullable', 'string', 'max:255'],
-        'address' => ['nullable', 'string'],
-        'national_short_address' => ['nullable', 'string', 'max:8'],
-        'property_area' => ['nullable', 'numeric', 'min:0'],
-        'property_type' => ['nullable', 'string', 'max:100'],
-        'usage_type' => ['nullable', 'string', 'max:100'],
-        'management_type' => ['nullable', 'string', 'max:100'],
-        'floors_count' => ['nullable', 'integer', 'min:0'],
-        'parking_spots_count' => ['nullable', 'integer', 'min:0'],
-        'elevators_count' => ['nullable', 'integer', 'min:0'],
-    ]);
+if (!function_exists('mrdeed_property_payload')) {
+    function mrdeed_property_payload(array $propertyData, int $ownerId): array
+    {
+        $type = $propertyData['property_type'] ?? 'building';
+        $payload = [
+            'owner_id' => $ownerId,
+            'name' => mrdeed_clean_short($propertyData['name'] ?? null) ?: ('عقار صك ' . ($propertyData['deed_number'] ?? '')),
+            'deed_number' => mrdeed_clean_short($propertyData['deed_number'] ?? null),
+            'document_number' => mrdeed_clean_short($propertyData['document_number'] ?? null),
+            'document_date_hijri' => mrdeed_clean_short($propertyData['document_date_hijri'] ?? null, 50),
+            'document_date_gregorian' => mrdeed_gregorian_date($propertyData['document_date_gregorian'] ?? null) ?: ($propertyData['document_date_gregorian'] ?? null),
+            'document_status' => mrdeed_clean_short($propertyData['document_status'] ?? null),
+            'document_restrictions' => mrdeed_clean_short($propertyData['document_restrictions'] ?? null),
+            'previous_document_date_hijri' => mrdeed_clean_short($propertyData['previous_document_date_hijri'] ?? null, 50),
+            'previous_document_number' => mrdeed_clean_short($propertyData['previous_document_number'] ?? null),
+            'operation_type' => mrdeed_clean_short($propertyData['operation_type'] ?? null),
+            'real_estate_identity_number' => mrdeed_clean_short($propertyData['real_estate_identity_number'] ?? null),
+            'plan_number' => mrdeed_clean_short($propertyData['plan_number'] ?? null),
+            'plot_number' => mrdeed_clean_short($propertyData['plot_number'] ?? null),
+            'block_number' => mrdeed_clean_short($propertyData['block_number'] ?? null),
+            'deed_owner_identifier' => mrdeed_clean_short($propertyData['deed_owner_identifier'] ?? null),
+            'deed_owner_name' => mrdeed_clean_short($propertyData['deed_owner_name'] ?? null),
+            'deed_owner_nationality' => mrdeed_clean_short($propertyData['deed_owner_nationality'] ?? null),
+            'deed_ownership_percentage' => $propertyData['deed_ownership_percentage'] ?? null,
+            'deed_source' => mrdeed_clean_short($propertyData['deed_source'] ?? null),
+            'deed_issuer' => mrdeed_clean_short($propertyData['deed_issuer'] ?? null),
+            'deed_notes' => $propertyData['deed_notes'] ?? null,
+            'deed_raw_excerpt' => $propertyData['deed_raw_excerpt'] ?? null,
+            'city' => mrdeed_clean_short($propertyData['city'] ?? null),
+            'district' => mrdeed_clean_short($propertyData['district'] ?? null),
+            'address' => mrdeed_clean_short($propertyData['address'] ?? null, 1000),
+            'national_short_address' => mrdeed_clean_short($propertyData['national_short_address'] ?? null, 8),
+            'property_area' => $propertyData['property_area'] ?? null,
+            'floors_count' => $propertyData['floors_count'] ?? ($type === 'apartment' ? 1 : 0),
+            'parking_spots_count' => $propertyData['parking_spots_count'] ?? 0,
+            'elevators_count' => $propertyData['elevators_count'] ?? 0,
+            'property_type' => $type,
+            'usage_type' => $propertyData['usage_type'] ?? 'residential',
+            'management_type' => $propertyData['management_type'] ?? 'managed',
+            'notes' => 'تم إنشاء هذا العقار من رفع صك الملكية.',
+        ];
 
-    $uploaded = $request->file('file');
-    $extracted = mrdeed_extract_data($uploaded->getRealPath());
-    $propertyData = $extracted['property'] ?? [];
-
-    foreach (['name', 'deed_number', 'city', 'district', 'address', 'national_short_address', 'property_area', 'property_type', 'usage_type', 'management_type', 'floors_count', 'parking_spots_count', 'elevators_count'] as $field) {
-        if ($request->filled($field)) {
-            $propertyData[$field] = $request->input($field);
-        }
+        return array_filter($payload, fn ($value, $key) => $key === 'owner_id' || Schema::hasColumn('properties', $key), ARRAY_FILTER_USE_BOTH);
     }
+}
 
-    if (!$request->boolean('apply')) {
+if (!function_exists('mrdeed_handle_extract')) {
+    function mrdeed_handle_extract(Request $request)
+    {
+        $request->validate([
+            'file' => ['required', 'file', 'mimes:pdf', 'max:20480'],
+            'owner_id' => ['nullable', 'integer', 'exists:owners,id'],
+            'apply' => ['nullable', 'boolean'],
+        ]);
+
+        $uploaded = $request->file('file');
+        $extracted = mrdeed_extract_data($uploaded->getRealPath());
+        $propertyData = $extracted['property'] ?? [];
+
+        $overrideFields = [
+            'name', 'deed_number', 'document_number', 'document_date_hijri', 'document_date_gregorian',
+            'document_status', 'document_restrictions', 'previous_document_date_hijri', 'previous_document_number',
+            'operation_type', 'real_estate_identity_number', 'plan_number', 'plot_number', 'block_number',
+            'deed_owner_identifier', 'deed_owner_name', 'deed_owner_nationality', 'deed_ownership_percentage',
+            'deed_source', 'deed_issuer', 'deed_notes', 'city', 'district', 'address', 'national_short_address',
+            'property_area', 'property_type', 'usage_type', 'management_type', 'floors_count',
+            'parking_spots_count', 'elevators_count',
+        ];
+
+        foreach ($overrideFields as $field) {
+            if ($request->filled($field)) {
+                $propertyData[$field] = $request->input($field);
+            }
+        }
+
+        if (!$request->boolean('apply')) {
+            $extracted['property'] = $propertyData;
+            return response()->json([
+                'status' => 'ok',
+                'message' => 'تم قراءة الصك. راجع البيانات قبل الحفظ.',
+                'extracted_data' => $extracted,
+            ]);
+        }
+
+        $ownerId = mrdeed_owner_id($request->filled('owner_id') ? (int) $request->input('owner_id') : null);
+        $property = Property::create(mrdeed_property_payload($propertyData, $ownerId));
+
+        $path = $uploaded->store('property-deeds', 'public');
+        $propertyFile = PropertyFile::create([
+            'property_id' => $property->id,
+            'file_name' => $uploaded->getClientOriginalName(),
+            'file_path' => $path,
+            'file_type' => $uploaded->getClientMimeType(),
+            'file_size' => $uploaded->getSize(),
+            'category' => 'deed',
+            'notes' => 'صك ملكية محفوظ ضمن مستندات العقار ويمكن للمالك تنزيله مستقبلًا.',
+        ]);
+
         $extracted['property'] = $propertyData;
+
         return response()->json([
             'status' => 'ok',
-            'message' => 'تم قراءة الصك. راجع البيانات قبل الحفظ.',
+            'message' => 'تم إنشاء العقار من الصك وحفظ الصك ضمن مستندات العقار.',
             'extracted_data' => $extracted,
-        ]);
+            'property' => $property->fresh()->load('owner'),
+            'file' => $propertyFile,
+        ], 201);
     }
+}
 
-    $ownerId = mrdeed_owner_id(isset($data['owner_id']) ? (int) $data['owner_id'] : null);
-    $propertyType = $propertyData['property_type'] ?? 'building';
-
-    $property = Property::create([
-        'owner_id' => $ownerId,
-        'name' => mrdeed_clean_short($propertyData['name'] ?? null) ?: ('عقار صك ' . ($propertyData['deed_number'] ?? '')),
-        'deed_number' => mrdeed_clean_short($propertyData['deed_number'] ?? null),
-        'city' => mrdeed_clean_short($propertyData['city'] ?? null),
-        'district' => mrdeed_clean_short($propertyData['district'] ?? null),
-        'address' => mrdeed_clean_short($propertyData['address'] ?? null, 1000),
-        'national_short_address' => mrdeed_clean_short($propertyData['national_short_address'] ?? null, 8),
-        'property_area' => $propertyData['property_area'] ?? null,
-        'floors_count' => $propertyData['floors_count'] ?? ($propertyType === 'apartment' ? 1 : 0),
-        'parking_spots_count' => $propertyData['parking_spots_count'] ?? 0,
-        'elevators_count' => $propertyData['elevators_count'] ?? 0,
-        'property_type' => $propertyType,
-        'usage_type' => $propertyData['usage_type'] ?? 'residential',
-        'management_type' => $propertyData['management_type'] ?? 'managed',
-        'notes' => 'تم إنشاء هذا العقار من رفع صك الملكية.',
-    ]);
-
-    $path = $uploaded->store('property-deeds', 'public');
-    $propertyFile = PropertyFile::create([
-        'property_id' => $property->id,
-        'file_name' => $uploaded->getClientOriginalName(),
-        'file_path' => $path,
-        'file_type' => $uploaded->getClientMimeType(),
-        'file_size' => $uploaded->getSize(),
-        'category' => 'deed',
-        'notes' => 'صك ملكية مرفوع عند إنشاء العقار.',
-    ]);
-
-    $extracted['property'] = $propertyData;
-
-    return response()->json([
-        'status' => 'ok',
-        'message' => 'تم إنشاء العقار من الصك وحفظ ملف الصك.',
-        'extracted_data' => $extracted,
-        'property' => $property->fresh()->load('owner'),
-        'file' => $propertyFile,
-    ], 201);
-});
-
-Route::post('/my/property-deeds/extract', function (Request $request) {
-    return app('router')->dispatch($request->duplicate(null, null, null, null, null, array_merge($request->server->all(), ['REQUEST_URI' => '/api/property-deeds/extract'])));
-});
+Route::post('/property-deeds/extract', fn (Request $request) => mrdeed_handle_extract($request));
+Route::post('/my/property-deeds/extract', fn (Request $request) => mrdeed_handle_extract($request));
