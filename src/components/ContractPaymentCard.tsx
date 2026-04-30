@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Alert,
   KeyboardAvoidingView,
@@ -55,6 +55,10 @@ function amountInput(value: unknown) {
   return String(n);
 }
 
+function todayText() {
+  return new Date().toISOString().slice(0, 10);
+}
+
 function statusKey(item: RelatedPayment) {
   const status = String(item.status || item.badge || "").trim().toLowerCase();
   const badge = String(item.badge || "").trim();
@@ -92,29 +96,39 @@ function ActionPill({ label, icon, tone, onPress }: { label: string; icon: strin
 
 export default function ContractPaymentCard({ item, index, expanded, onToggle, onChanged }: Props) {
   const insets = useSafeAreaInsets();
+  const [localItem, setLocalItem] = useState<RelatedPayment>(item);
   const [sheetVisible, setSheetVisible] = useState(false);
   const [mode, setMode] = useState<Mode>("pay");
   const [amount, setAmount] = useState(amountInput(item.amount));
   const [note, setNote] = useState(item.notes || "");
   const [saving, setSaving] = useState(false);
 
-  const bottomSafeGap = Math.max(insets.bottom, 18) + 78;
-  const meta = useMemo(() => statusMeta(item), [item.status, item.badge]);
-  const isPaid = statusKey(item) === "paid";
-  const dueDate = item.due_date || item.title || "-";
-  const paidDate = item.paid_date || "لم تسجل بعد";
-  const helperNote = item.notes || item.subtitle || "اضغط على زر الإجراءات للتعديل أو تسجيل الدفع.";
+  useEffect(() => {
+    setLocalItem(item);
+  }, [item.id, item.amount, item.notes, item.status, item.badge, item.paid_date, item.due_date, item.title, item.subtitle]);
+
+  const displayItem = localItem;
+  const bottomSafeGap = Math.max(insets.bottom, 10) + 48;
+  const meta = useMemo(() => statusMeta(displayItem), [displayItem.status, displayItem.badge]);
+  const isPaid = statusKey(displayItem) === "paid";
+  const dueDate = displayItem.due_date || displayItem.title || "-";
+  const paidDate = displayItem.paid_date || "لم تسجل بعد";
+  const helperNote = displayItem.notes || displayItem.subtitle || "اضغط على زر الإجراءات للتعديل أو تسجيل الدفع.";
 
   function openSheet(nextMode: Mode) {
     setMode(nextMode);
-    setAmount(amountInput(item.amount));
-    setNote(item.notes || "");
+    setAmount(amountInput(displayItem.amount));
+    setNote(displayItem.notes || "");
     setSheetVisible(true);
   }
 
   function closeSheet() {
     if (saving) return;
     setSheetVisible(false);
+  }
+
+  function refreshFromServer() {
+    Promise.resolve(onChanged()).catch(() => undefined);
   }
 
   async function saveSheet() {
@@ -128,8 +142,8 @@ export default function ContractPaymentCard({ item, index, expanded, onToggle, o
       setSaving(true);
       await apiPostAny(
         [
-          `/edit-delete-center/payments/${item.id}/update`,
-          `/my/edit-delete-center/payments/${item.id}/update`,
+          `/edit-delete-center/payments/${displayItem.id}/update`,
+          `/my/edit-delete-center/payments/${displayItem.id}/update`,
         ],
         { fields: { amount: String(numericAmount), notes: note.trim() } },
       );
@@ -137,15 +151,23 @@ export default function ContractPaymentCard({ item, index, expanded, onToggle, o
       if (mode === "pay") {
         await apiPostAny(
           [
-            `/payments/${item.id}/mark-paid`,
-            `/my/payments/${item.id}/mark-paid`,
+            `/payments/${displayItem.id}/mark-paid`,
+            `/my/payments/${displayItem.id}/mark-paid`,
           ],
           {},
         );
       }
 
+      setLocalItem((current) => ({
+        ...current,
+        amount: String(numericAmount),
+        notes: note.trim(),
+        status: mode === "pay" ? "paid" : current.status,
+        badge: mode === "pay" ? "مدفوعة" : current.badge,
+        paid_date: mode === "pay" ? todayText() : current.paid_date,
+      }));
       setSheetVisible(false);
-      await onChanged();
+      refreshFromServer();
       Alert.alert("تم", mode === "pay" ? "تم تسجيل الدفع بنجاح" : "تم حفظ تعديل الدفعة");
     } catch (e) {
       Alert.alert("خطأ", e instanceof Error ? e.message : "تعذر حفظ الدفعة");
@@ -164,13 +186,13 @@ export default function ContractPaymentCard({ item, index, expanded, onToggle, o
           try {
             await apiPostAny(
               [
-                `/edit-delete-center/payments/${item.id}/delete`,
-                `/my/edit-delete-center/payments/${item.id}/delete`,
-                `/payments/${item.id}/delete`,
+                `/edit-delete-center/payments/${displayItem.id}/delete`,
+                `/my/edit-delete-center/payments/${displayItem.id}/delete`,
+                `/payments/${displayItem.id}/delete`,
               ],
               {},
             );
-            await onChanged();
+            refreshFromServer();
             Alert.alert("تم", "تم حذف الدفعة");
           } catch (e) {
             Alert.alert("تعذر الحذف", e instanceof Error ? e.message : "تعذر حذف الدفعة");
@@ -195,7 +217,7 @@ export default function ContractPaymentCard({ item, index, expanded, onToggle, o
         <View style={styles.mainRow}>
           <View style={styles.amountPanel}>
             <Text style={styles.amountLabel}>{isPaid ? "المسدد" : "المطلوب"}</Text>
-            <Text style={styles.amountValue}>{amountText(item.amount)}</Text>
+            <Text style={styles.amountValue}>{amountText(displayItem.amount)}</Text>
           </View>
 
           <View style={styles.infoBlock}>
@@ -250,22 +272,21 @@ export default function ContractPaymentCard({ item, index, expanded, onToggle, o
                 <View style={styles.sheetTitleBlock}>
                   <Text style={styles.sheetEyebrow}>{mode === "pay" ? "دفع من تفاصيل العقد" : "تعديل بيانات القسط"}</Text>
                   <Text style={styles.sheetTitle}>{mode === "pay" ? "تسجيل الدفعة" : "تعديل الدفعة"}</Text>
-                  <Text style={styles.sheetSubtitle}>القسط {index + 1} • استحقاق {dueDate}</Text>
+                  <Text style={styles.sheetSubtitle}>القسط {index + 1} • {dueDate}</Text>
                 </View>
               </View>
 
-              <View style={[styles.sheetSummary, { borderColor: meta.border, backgroundColor: meta.card }]}>
+              <View style={[styles.sheetSummary, { borderColor: meta.border, backgroundColor: meta.card }]}> 
                 <View style={styles.sheetSummaryTop}>
                   <Text style={[styles.sheetStatus, { backgroundColor: meta.bg, color: meta.fg }]}>{meta.label}</Text>
                   <Text style={styles.summaryLabel}>{mode === "pay" ? "المبلغ المراد سداده" : "المبلغ الحالي"}</Text>
                 </View>
-                <Text style={styles.summaryAmount}>{amountText(item.amount)}</Text>
-                <Text style={styles.summaryHint}>{mode === "pay" ? "يمكن تعديل المبلغ وكتابة نص الحوالة قبل الحفظ." : "عدّل المبلغ أو الملاحظة وسيتم تحديث البطاقة مباشرة بعد الحفظ."}</Text>
+                <Text style={styles.summaryAmount}>{amountText(displayItem.amount)}</Text>
               </View>
 
               <View style={styles.quickActions}>
-                <TouchableOpacity style={styles.helperButton} onPress={() => setAmount(amountInput(item.amount))} activeOpacity={0.85}>
-                  <Text style={styles.helperText}>اعتماد المبلغ الكامل</Text>
+                <TouchableOpacity style={styles.helperButton} onPress={() => setAmount(amountInput(displayItem.amount))} activeOpacity={0.85}>
+                  <Text style={styles.helperText}>اعتماد المبلغ</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.helperButton} onPress={() => setNote("تم السداد عبر حوالة بنكية.")} activeOpacity={0.85}>
                   <Text style={styles.helperText}>ملاحظة جاهزة</Text>
@@ -282,7 +303,6 @@ export default function ContractPaymentCard({ item, index, expanded, onToggle, o
                 placeholder="مثال: 2500"
                 placeholderTextColor="#9CA3AF"
               />
-              <Text style={styles.inputHint}>القيمة المسجلة حاليًا: {amountText(item.amount)}</Text>
 
               <Text style={styles.fieldLabel}>الملاحظات / نص الحوالة</Text>
               <TextInput
@@ -356,34 +376,32 @@ const styles = StyleSheet.create({
   actionPillText: { color: "#111827", fontSize: 13, fontWeight: "900", textAlign: "center" },
   actionPillTextLight: { color: "#FFFFFF" },
   backdrop: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(17,24,39,0.46)" },
-  sheet: { backgroundColor: "#FFFFFF", borderTopLeftRadius: 34, borderTopRightRadius: 34, paddingTop: 12, maxHeight: "90%" },
-  handle: { alignSelf: "center", width: 86, height: 7, borderRadius: 999, backgroundColor: "#D8D3CB", marginBottom: 8 },
-  sheetScroll: { paddingHorizontal: 18, paddingBottom: 16 },
-  sheetHeader: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 16 },
-  closeButton: { width: 52, height: 52, borderRadius: 26, backgroundColor: "#F7F6F4", borderWidth: 1, borderColor: "#E5E2DD", alignItems: "center", justifyContent: "center" },
-  closeText: { color: "#6B7280", fontSize: 31, lineHeight: 35, fontWeight: "300" },
+  sheet: { backgroundColor: "#FFFFFF", borderTopLeftRadius: 28, borderTopRightRadius: 28, paddingTop: 9, maxHeight: "84%" },
+  handle: { alignSelf: "center", width: 72, height: 6, borderRadius: 999, backgroundColor: "#D8D3CB", marginBottom: 8 },
+  sheetScroll: { paddingHorizontal: 16, paddingBottom: 12 },
+  sheetHeader: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 10 },
+  closeButton: { width: 42, height: 42, borderRadius: 21, backgroundColor: "#F7F6F4", borderWidth: 1, borderColor: "#E5E2DD", alignItems: "center", justifyContent: "center" },
+  closeText: { color: "#6B7280", fontSize: 27, lineHeight: 30, fontWeight: "300" },
   sheetTitleBlock: { flex: 1, alignItems: "flex-end" },
-  sheetEyebrow: { color: "#8D6B2C", fontSize: 12, fontWeight: "900", textAlign: "right", marginBottom: 5 },
-  sheetTitle: { color: "#111827", fontSize: 28, fontWeight: "900", textAlign: "right" },
-  sheetSubtitle: { color: "#7A766F", fontSize: 13, fontWeight: "800", marginTop: 6, textAlign: "right" },
-  sheetSummary: { borderRadius: 26, padding: 16, marginBottom: 13, borderWidth: 1 },
+  sheetEyebrow: { color: "#8D6B2C", fontSize: 11, fontWeight: "900", textAlign: "right", marginBottom: 3 },
+  sheetTitle: { color: "#111827", fontSize: 24, fontWeight: "900", textAlign: "right" },
+  sheetSubtitle: { color: "#7A766F", fontSize: 12, fontWeight: "800", marginTop: 4, textAlign: "right" },
+  sheetSummary: { borderRadius: 20, padding: 13, marginBottom: 10, borderWidth: 1 },
   sheetSummaryTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  sheetStatus: { overflow: "hidden", borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6, fontSize: 12, fontWeight: "900" },
-  summaryLabel: { color: "#6B7280", fontSize: 13, fontWeight: "900", textAlign: "right" },
-  summaryAmount: { color: "#111827", fontSize: 34, fontWeight: "900", textAlign: "right", marginTop: 12 },
-  summaryHint: { color: "#6B6258", fontSize: 13, lineHeight: 20, fontWeight: "700", textAlign: "right", marginTop: 9 },
-  quickActions: { flexDirection: "row-reverse", gap: 9, marginBottom: 14 },
-  helperButton: { flex: 1, minHeight: 44, borderRadius: 999, backgroundColor: "#F7F6F4", borderWidth: 1, borderColor: "#E5E2DD", alignItems: "center", justifyContent: "center", paddingHorizontal: 10 },
+  sheetStatus: { overflow: "hidden", borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5, fontSize: 11, fontWeight: "900" },
+  summaryLabel: { color: "#6B7280", fontSize: 12, fontWeight: "900", textAlign: "right" },
+  summaryAmount: { color: "#111827", fontSize: 28, fontWeight: "900", textAlign: "right", marginTop: 8 },
+  quickActions: { flexDirection: "row-reverse", gap: 8, marginBottom: 10 },
+  helperButton: { flex: 1, minHeight: 38, borderRadius: 999, backgroundColor: "#F7F6F4", borderWidth: 1, borderColor: "#E5E2DD", alignItems: "center", justifyContent: "center", paddingHorizontal: 10 },
   helperText: { color: "#111827", fontSize: 12, fontWeight: "900", textAlign: "center" },
-  fieldLabel: { color: "#111827", fontSize: 16, fontWeight: "900", textAlign: "right", marginBottom: 9, marginTop: 5 },
-  input: { backgroundColor: "#FFFFFF", borderWidth: 1, borderColor: "#DDDBD6", borderRadius: 17, paddingHorizontal: 14, paddingVertical: 13, color: "#111827", fontSize: 17, fontWeight: "800", minHeight: 54, marginBottom: 7 },
-  inputHint: { color: "#8B8983", fontSize: 12, fontWeight: "700", textAlign: "right", marginBottom: 12 },
-  notesInput: { minHeight: 100, textAlignVertical: "top", fontSize: 15, lineHeight: 22 },
-  sheetActionsDock: { paddingHorizontal: 18, paddingTop: 12, backgroundColor: "#FFFFFF", borderTopWidth: 1, borderTopColor: "#EEECE7" },
-  sheetActions: { flexDirection: "row", gap: 12 },
-  cancelButton: { width: 105, minHeight: 58, borderRadius: 20, backgroundColor: "#F7F6F4", borderWidth: 1, borderColor: "#E5E2DD", alignItems: "center", justifyContent: "center" },
-  cancelText: { color: "#111827", fontSize: 15, fontWeight: "900" },
-  saveButton: { flex: 1, minHeight: 58, borderRadius: 20, backgroundColor: "#111827", alignItems: "center", justifyContent: "center" },
-  saveText: { color: "#FFFFFF", fontSize: 16, fontWeight: "900" },
+  fieldLabel: { color: "#111827", fontSize: 14, fontWeight: "900", textAlign: "right", marginBottom: 7, marginTop: 4 },
+  input: { backgroundColor: "#FFFFFF", borderWidth: 1, borderColor: "#DDDBD6", borderRadius: 15, paddingHorizontal: 13, paddingVertical: 10, color: "#111827", fontSize: 16, fontWeight: "800", minHeight: 48, marginBottom: 8 },
+  notesInput: { minHeight: 74, textAlignVertical: "top", fontSize: 14, lineHeight: 20 },
+  sheetActionsDock: { paddingHorizontal: 16, paddingTop: 9, backgroundColor: "#FFFFFF", borderTopWidth: 1, borderTopColor: "#EEECE7" },
+  sheetActions: { flexDirection: "row", gap: 10 },
+  cancelButton: { width: 96, minHeight: 52, borderRadius: 18, backgroundColor: "#F7F6F4", borderWidth: 1, borderColor: "#E5E2DD", alignItems: "center", justifyContent: "center" },
+  cancelText: { color: "#111827", fontSize: 14, fontWeight: "900" },
+  saveButton: { flex: 1, minHeight: 52, borderRadius: 18, backgroundColor: "#111827", alignItems: "center", justifyContent: "center" },
+  saveText: { color: "#FFFFFF", fontSize: 15, fontWeight: "900" },
   disabled: { opacity: 0.65 },
 });
