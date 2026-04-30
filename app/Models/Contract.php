@@ -44,10 +44,10 @@ class Contract extends Model
     ];
 
     protected $casts = [
-        'sealing_date' => 'date',
-        'start_date' => 'date',
-        'end_date' => 'date',
-        'brokerage_fee_due_date' => 'date',
+        'sealing_date' => 'date:Y-m-d',
+        'start_date' => 'date:Y-m-d',
+        'end_date' => 'date:Y-m-d',
+        'brokerage_fee_due_date' => 'date:Y-m-d',
         'rent_amount' => 'decimal:2',
         'parking_fee' => 'decimal:2',
         'services_fee' => 'decimal:2',
