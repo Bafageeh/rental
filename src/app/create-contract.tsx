@@ -45,6 +45,7 @@ type RelationOption = {
 };
 
 type PaymentCycle = "monthly" | "quarterly" | "semi_annual" | "annual";
+type ContractScope = "property" | "unit";
 
 function money(value: string) {
   const number = Number(value || 0);
@@ -86,6 +87,9 @@ export default function CreateContractScreen() {
   const unitNameParam = firstParam(params.unit_name as string | string[] | undefined);
   const ownerIdParam = firstParam(params.owner_id as string | string[] | undefined);
   const ownerNameParam = firstParam(params.owner_name as string | string[] | undefined);
+  const contractScopeParam = firstParam((params.contract_scope || params.target_type) as string | string[] | undefined);
+  const contractScope: ContractScope = contractScopeParam === "property" ? "property" : "unit";
+  const isPropertyContract = contractScope === "property";
   const scopedPropertyId = propertyIdParam ? Number(propertyIdParam) : null;
   const scopedPropertyName = cleanName(propertyNameParam);
   const scopedUnitId = unitIdParam ? Number(unitIdParam) : null;
@@ -131,11 +135,9 @@ export default function CreateContractScreen() {
     selectedUnit?.property?.name ||
     (scopedPropertyId ? `عقار #${scopedPropertyId}` : "وحدة مباشرة أو عقار غير محدد");
 
-  const contextUnitName =
-    scopedUnitName ||
-    selectedUnit?.unit_number ||
-    selectedUnit?.label ||
-    (scopedUnitId ? `وحدة #${scopedUnitId}` : unitId ? `وحدة #${unitId}` : "اختر الوحدة");
+  const contextUnitName = isPropertyContract
+    ? "العقار كامل"
+    : scopedUnitName || selectedUnit?.unit_number || selectedUnit?.label || (scopedUnitId ? `وحدة #${scopedUnitId}` : unitId ? `وحدة #${unitId}` : "اختر الوحدة");
 
   async function load() {
     try {
@@ -149,14 +151,14 @@ export default function CreateContractScreen() {
 
       const [tenantsResult, unitsResult, relationOptions] = await Promise.all([
         apiGetScoped("/tenants", "/my/tenants"),
-        apiGetScoped(`/units${propertyFilter}`, `/my/units${propertyFilter}`),
-        scopedOwnerId ? apiGetScoped("/relation-manager/options", "/my/relation-manager/options") : Promise.resolve(null),
+        isPropertyContract ? Promise.resolve([]) : apiGetScoped(`/units${propertyFilter}`, `/my/units${propertyFilter}`),
+        !isPropertyContract && scopedOwnerId ? apiGetScoped("/relation-manager/options", "/my/relation-manager/options") : Promise.resolve(null),
       ]);
 
       const tenantsList = Array.isArray(tenantsResult) ? tenantsResult : [];
       let loadedUnitsList: Unit[] = Array.isArray(unitsResult) ? unitsResult : [];
 
-      if (scopedOwnerId && relationOptions) {
+      if (!isPropertyContract && scopedOwnerId && relationOptions) {
         const properties = Array.isArray(relationOptions?.properties) ? relationOptions.properties as RelationOption[] : [];
         const propertyById = new Map(properties.map((property) => [String(property.id), property]));
         const relationUnits = Array.isArray(relationOptions?.units) ? relationOptions.units as RelationOption[] : [];
@@ -196,7 +198,9 @@ export default function CreateContractScreen() {
         setTenantId(tenantsList[0].id);
       }
 
-      if (scopedUnitId && unitsList.some((unit: Unit) => Number(unit.id) === Number(scopedUnitId))) {
+      if (isPropertyContract) {
+        setUnitId(null);
+      } else if (scopedUnitId && unitsList.some((unit: Unit) => Number(unit.id) === Number(scopedUnitId))) {
         setUnitId(scopedUnitId);
       } else if (!unitId && unitsList.length > 0) {
         const availableUnit = unitsList.find((unit: Unit) => unit.status !== "rented");
@@ -215,8 +219,14 @@ export default function CreateContractScreen() {
     addQueryParam(parts, "owner_name", contextOwnerName);
     addQueryParam(parts, "property_id", scopedPropertyId || selectedUnit?.property_id || null);
     addQueryParam(parts, "property_name", contextPropertyName);
-    addQueryParam(parts, "unit_id", scopedUnitId || unitId || null);
-    addQueryParam(parts, "unit_name", contextUnitName);
+    addQueryParam(parts, "contract_scope", contractScope);
+    addQueryParam(parts, "target_type", contractScope);
+    if (!isPropertyContract) {
+      addQueryParam(parts, "unit_id", scopedUnitId || unitId || null);
+      addQueryParam(parts, "unit_name", contextUnitName);
+    } else {
+      addQueryParam(parts, "unit_name", "العقار كامل");
+    }
 
     const query = parts.length ? `?${parts.join("&")}` : "";
     router.push(`/upload-contract${query}` as any);
@@ -228,8 +238,13 @@ export default function CreateContractScreen() {
       return;
     }
 
-    if (!unitId) {
+    if (!isPropertyContract && !unitId) {
       Alert.alert("تنبيه", "اختر الوحدة");
+      return;
+    }
+
+    if (isPropertyContract && !scopedPropertyId) {
+      Alert.alert("تنبيه", "يجب تحديد العقار لإنشاء عقد على العقار بالكامل");
       return;
     }
 
@@ -248,7 +263,9 @@ export default function CreateContractScreen() {
 
       const result = await apiPost("/contracts", {
         tenant_id: tenantId,
-        unit_id: unitId,
+        unit_id: isPropertyContract ? null : unitId,
+        property_id: scopedPropertyId || selectedUnit?.property_id || null,
+        contract_scope: contractScope,
         contract_number: contractNumber.trim() || null,
         start_date: startDate.trim(),
         end_date: endDate.trim(),
@@ -278,7 +295,7 @@ export default function CreateContractScreen() {
 
   useEffect(() => {
     load();
-  }, [propertyIdParam, unitIdParam, ownerIdParam]);
+  }, [propertyIdParam, unitIdParam, ownerIdParam, contractScope]);
 
   const cycleOptions: PaymentCycle[] = ["monthly", "quarterly", "semi_annual", "annual"];
   const installmentValue = money(String(Number(rentAmount || 0) / Math.max(Number(paymentsCount || 1), 1)));
@@ -292,8 +309,8 @@ export default function CreateContractScreen() {
           </View>
           <View style={styles.heroTextWrap}>
             <Text style={styles.eyebrow}>عقد إيجار جديد</Text>
-            <Text style={styles.title}>إنشاء عقد وربطه بالوحدة</Text>
-            <Text style={styles.subtitle}>تأكد من بيانات المالك والعقار والوحدة ثم أضف المستأجر والبيانات المالية.</Text>
+            <Text style={styles.title}>{isPropertyContract ? "إنشاء عقد وربطه بالعقار" : "إنشاء عقد وربطه بالوحدة"}</Text>
+            <Text style={styles.subtitle}>تأكد من بيانات المالك والعقار ونطاق العقد ثم أضف المستأجر والبيانات المالية.</Text>
           </View>
           <TouchableOpacity style={styles.uploadButton} onPress={openUploadContract} activeOpacity={0.82}>
             <Ionicons name="cloud-upload-outline" size={18} color="#ffffff" />
@@ -322,9 +339,9 @@ export default function CreateContractScreen() {
               </View>
             </View>
             <View style={styles.contextItemWide}>
-              <Ionicons name="home-outline" size={18} color="#0f766e" />
+              <Ionicons name={isPropertyContract ? "business" : "home-outline"} size={18} color="#0f766e" />
               <View style={styles.contextTextWrap}>
-                <Text style={styles.contextLabel}>الوحدة التابعة للعقد</Text>
+                <Text style={styles.contextLabel}>نطاق العقد</Text>
                 <Text style={styles.contextValue} numberOfLines={1}>{contextUnitName}</Text>
               </View>
             </View>
@@ -363,50 +380,52 @@ export default function CreateContractScreen() {
           ) : null}
         </View>
 
-        <View style={styles.card}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>اختيار الوحدة</Text>
-            <Text style={styles.sectionHint}>
-              {scopedUnitId
-                ? "هذا العقد مرتبط بهذه الوحدة فقط"
-                : scopedPropertyId
-                  ? "تظهر هنا وحدات هذا العقار فقط"
-                  : scopedOwnerId
-                    ? "تظهر هنا وحدات هذا المالك فقط"
-                    : "اختر الوحدة التي سيصدر عليها العقد"}
-            </Text>
-          </View>
+        {!isPropertyContract ? (
+          <View style={styles.card}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>اختيار الوحدة</Text>
+              <Text style={styles.sectionHint}>
+                {scopedUnitId
+                  ? "هذا العقد مرتبط بهذه الوحدة فقط"
+                  : scopedPropertyId
+                    ? "تظهر هنا وحدات هذا العقار فقط"
+                    : scopedOwnerId
+                      ? "تظهر هنا وحدات هذا المالك فقط"
+                      : "اختر الوحدة التي سيصدر عليها العقد"}
+              </Text>
+            </View>
 
-          <View style={styles.chips}>
-            {units.map((unit) => (
-              <TouchableOpacity
-                key={unit.id}
-                style={[styles.unitChip, unitId === unit.id ? styles.chipActive : null]}
-                onPress={() => {
-                  if (scopedUnitId) return;
-                  setUnitId(unit.id);
-                }}
-                activeOpacity={0.82}
-              >
-                <Text style={[styles.unitChipTitle, unitId === unit.id ? styles.chipTextActive : null]} numberOfLines={1}>
-                  {unit.unit_number || unit.label || "وحدة"}
-                </Text>
-                <Text style={[styles.unitChipMeta, unitId === unit.id ? styles.chipMetaActive : null]} numberOfLines={1}>
-                  {unit.property?.name || "وحدة مباشرة"}
-                </Text>
-              </TouchableOpacity>
-            ))}
+            <View style={styles.chips}>
+              {units.map((unit) => (
+                <TouchableOpacity
+                  key={unit.id}
+                  style={[styles.unitChip, unitId === unit.id ? styles.chipActive : null]}
+                  onPress={() => {
+                    if (scopedUnitId) return;
+                    setUnitId(unit.id);
+                  }}
+                  activeOpacity={0.82}
+                >
+                  <Text style={[styles.unitChipTitle, unitId === unit.id ? styles.chipTextActive : null]} numberOfLines={1}>
+                    {unit.unit_number || unit.label || "وحدة"}
+                  </Text>
+                  <Text style={[styles.unitChipMeta, unitId === unit.id ? styles.chipMetaActive : null]} numberOfLines={1}>
+                    {unit.property?.name || "وحدة مباشرة"}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            {!loading && units.length === 0 ? (
+              <Text style={styles.emptyHint}>
+                {scopedUnitId
+                  ? "تعذر العثور على هذه الوحدة."
+                  : scopedOwnerId
+                    ? "لا توجد وحدات لهذا المالك. أضف وحدة أولًا ثم أنشئ العقد."
+                    : "لا توجد وحدات متاحة لهذا العقار. أضف وحدة أولًا ثم أنشئ العقد."}
+              </Text>
+            ) : null}
           </View>
-          {!loading && units.length === 0 ? (
-            <Text style={styles.emptyHint}>
-              {scopedUnitId
-                ? "تعذر العثور على هذه الوحدة."
-                : scopedOwnerId
-                  ? "لا توجد وحدات لهذا المالك. أضف وحدة أولًا ثم أنشئ العقد."
-                  : "لا توجد وحدات متاحة لهذا العقار. أضف وحدة أولًا ثم أنشئ العقد."}
-            </Text>
-          ) : null}
-        </View>
+        ) : null}
 
         <View style={styles.card}>
           <View style={styles.sectionHeader}>
