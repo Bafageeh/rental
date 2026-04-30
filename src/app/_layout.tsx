@@ -163,8 +163,9 @@ function AppTabs() {
           fontSize: 17,
         },
         headerTitleAlign: "center",
-        headerLeft: () => <HeaderQuickActions />,
-        headerLeftContainerStyle: { paddingLeft: 12 },
+        headerLeft: () => null,
+        headerRight: () => <HeaderQuickActions />,
+        headerRightContainerStyle: { paddingRight: 12 },
       }}
     >
       <Tabs.Screen
@@ -263,6 +264,7 @@ function AppTabs() {
       <Tabs.Screen name="unit/[id]" options={{ href: null, title: "تفاصيل الوحدة" }} />
       <Tabs.Screen name="tenant/[id]" options={{ href: null, title: "تفاصيل المستأجر" }} />
       <Tabs.Screen name="contract/[id]" options={{ href: null, title: "تفاصيل العقد" }} />
+      <Tabs.Screen name="payment/[id]" options={{ href: null, title: "تفاصيل الدفعة" }} />
     </Tabs>
   );
 }
@@ -277,7 +279,7 @@ export default function RootLayout() {
 
 const styles = StyleSheet.create({
   headerActions: {
-    flexDirection: "row",
+    flexDirection: "row-reverse",
     alignItems: "center",
     gap: 8,
   },
@@ -293,7 +295,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
   },
   logoutHeaderButton: {
-    flexDirection: "row",
+    flexDirection: "row-reverse",
     gap: 4,
     backgroundColor: colors.dangerBg,
     borderColor: colors.danger,
