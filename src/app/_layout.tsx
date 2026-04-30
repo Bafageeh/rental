@@ -5,6 +5,7 @@ import { useEffect } from "react";
 import { AuthProvider, useAuth } from "../context/AuthContext";
 import { colors } from "../constants/theme";
 import { apiPost } from "../lib/api";
+import { HeaderBackAction as HeaderBackRight, HeaderQuickActions as HeaderActionsLeft } from "../components/AppHeaderActions";
 
 import { resetNavigationHistory, smartBack, trackNavigationRoute } from "../lib/navigationHistory";
 
@@ -163,8 +164,9 @@ function AppTabs() {
           fontSize: 17,
         },
         headerTitleAlign: "center",
-        headerLeft: () => null,
-        headerRight: () => <HeaderQuickActions />,
+        headerLeft: () => <HeaderActionsLeft />,
+        headerLeftContainerStyle: { paddingLeft: 12 },
+        headerRight: () => <HeaderBackRight />,
         headerRightContainerStyle: { paddingRight: 12 },
       }}
     >
@@ -247,7 +249,7 @@ function AppTabs() {
       <Tabs.Screen name="unit-inspections" options={{ href: null, title: "فحص الوحدات" }} />
       <Tabs.Screen name="unit-marketing" options={{ href: null, title: "تسويق الوحدات" }} />
       <Tabs.Screen name="utility-bills" options={{ href: null, title: "الفواتير" }} />
-      <Tabs.Screen name="login" options={{ href: null, title: "تسجيل الدخول", headerLeft: () => null }} />
+      <Tabs.Screen name="login" options={{ href: null, title: "تسجيل الدخول", headerLeft: () => null, headerRight: () => null }} />
       <Tabs.Screen name="my-account" options={{ href: null, title: "حسابي" }} />
       <Tabs.Screen name="system-settings" options={{ href: null, title: "إعدادات النظام" }} />
       <Tabs.Screen name="search" options={{ href: null, title: "البحث" }} />
