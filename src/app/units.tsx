@@ -71,8 +71,12 @@ export default function UnitsScreen() {
   const params = useLocalSearchParams();
   const ownerIdParam = firstParam(params.owner_id as string | string[] | undefined);
   const ownerNameParam = firstParam(params.owner_name as string | string[] | undefined);
+  const propertyIdParam = firstParam(params.property_id as string | string[] | undefined);
+  const propertyNameParam = firstParam(params.property_name as string | string[] | undefined);
+  const unitScopeParam = firstParam(params.unit_scope as string | string[] | undefined);
   const createParam = firstParam(params.create as string | string[] | undefined);
   const scopedOwnerName = ownerNameParam ? decodeURIComponent(ownerNameParam) : "";
+  const scopedPropertyName = propertyNameParam ? decodeURIComponent(propertyNameParam) : "";
   const [owners, setOwners] = useState<OptionRecord[]>([]);
   const [properties, setProperties] = useState<OptionRecord[]>([]);
   const [units, setUnits] = useState<OptionRecord[]>([]);
@@ -83,8 +87,8 @@ export default function UnitsScreen() {
 
   const [form, setForm] = useState({
     owner_id: ownerIdParam,
-    unit_scope: "owner",
-    property_id: "",
+    unit_scope: propertyIdParam || unitScopeParam === "property" ? "property" : "owner",
+    property_id: propertyIdParam,
     unit_number: "",
     type: "apartment",
     floor: "",
@@ -123,11 +127,15 @@ export default function UnitsScreen() {
   }, []);
 
   useEffect(() => {
-    if (!ownerIdParam) return;
-
-    setForm((previous) => ({ ...previous, owner_id: ownerIdParam, property_id: "" }));
     if (createParam === "1") setShowCreate(true);
-  }, [ownerIdParam, createParam]);
+
+    setForm((previous) => ({
+      ...previous,
+      owner_id: ownerIdParam || previous.owner_id,
+      unit_scope: propertyIdParam || unitScopeParam === "property" ? "property" : previous.unit_scope,
+      property_id: propertyIdParam || previous.property_id,
+    }));
+  }, [ownerIdParam, propertyIdParam, unitScopeParam, createParam]);
 
   const ownerOptions = useMemo(() => {
     const options = owners.map((owner) => ({ id: owner.id, label: owner.label }));
@@ -139,22 +147,32 @@ export default function UnitsScreen() {
     return options;
   }, [owners, ownerIdParam, scopedOwnerName]);
 
-  const filteredPropertyOptions = useMemo(() => {
-    if (!form.owner_id) return [];
+  const propertyOptions = useMemo(() => {
+    const options = properties.map((property) => ({ id: property.id, label: property.label, owner_id: property.owner_id }));
 
-    return properties
-      .filter((property) => String(property.owner_id || "") === String(form.owner_id))
+    if (propertyIdParam && !options.some((property) => String(property.id) === String(propertyIdParam))) {
+      options.unshift({ id: Number(propertyIdParam), label: scopedPropertyName || `عقار #${propertyIdParam}`, owner_id: ownerIdParam || null });
+    }
+
+    return options;
+  }, [properties, propertyIdParam, scopedPropertyName, ownerIdParam]);
+
+  const filteredPropertyOptions = useMemo(() => {
+    if (!form.owner_id) return propertyOptions.map((property) => ({ id: property.id, label: property.label }));
+
+    return propertyOptions
+      .filter((property) => String(property.owner_id || "") === String(form.owner_id) || String(property.id) === String(propertyIdParam))
       .map((property) => ({ id: property.id, label: property.label }));
-  }, [properties, form.owner_id]);
+  }, [propertyOptions, form.owner_id, propertyIdParam]);
 
   function setField(key: keyof typeof form, value: string) {
     setForm((previous) => {
       if (key === "owner_id") {
-        return { ...previous, owner_id: value, property_id: "" };
+        return { ...previous, owner_id: value, property_id: propertyIdParam || "" };
       }
 
       if (key === "unit_scope") {
-        return { ...previous, unit_scope: value, property_id: value === "owner" ? "" : previous.property_id };
+        return { ...previous, unit_scope: value, property_id: value === "owner" ? "" : previous.property_id || propertyIdParam };
       }
 
       return { ...previous, [key]: value };
@@ -164,8 +182,8 @@ export default function UnitsScreen() {
   function resetForm() {
     setForm({
       owner_id: ownerIdParam,
-      unit_scope: "owner",
-      property_id: "",
+      unit_scope: propertyIdParam ? "property" : "owner",
+      property_id: propertyIdParam,
       unit_number: "",
       type: "apartment",
       floor: "",
@@ -214,14 +232,22 @@ export default function UnitsScreen() {
 
   function ownerIdForUnit(unit: OptionRecord) {
     if (unit.owner_id) return unit.owner_id;
-    const property = properties.find((item) => String(item.id) === String(unit.property_id));
+    const property = propertyOptions.find((item) => String(item.id) === String(unit.property_id));
     return property?.owner_id;
   }
 
   const visibleUnits = useMemo(() => {
+    if (propertyIdParam) return units.filter((unit) => String(unit.property_id || "") === String(propertyIdParam));
     if (!ownerIdParam) return units;
     return units.filter((unit) => String(ownerIdForUnit(unit) || "") === String(ownerIdParam));
-  }, [units, properties, ownerIdParam]);
+  }, [units, propertyOptions, ownerIdParam, propertyIdParam]);
+
+  const screenTitle = propertyIdParam ? "وحدات العقار" : ownerIdParam ? "وحدات المالك" : "الوحدات";
+  const screenSubtitle = propertyIdParam
+    ? `إضافة أو عرض وحدات العقار: ${scopedPropertyName || `#${propertyIdParam}`}`
+    : ownerIdParam
+      ? `إضافة أو عرض وحدات المالك: ${scopedOwnerName || `#${ownerIdParam}`}`
+      : "إضافة الوحدة تكون إما خاصة بالمالك أو تحت عقار/عمارة";
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -230,12 +256,8 @@ export default function UnitsScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refreshScreen} tintColor="#0F9B6F" />}
       >
         <View style={styles.header}>
-          <Text style={styles.title}>{ownerIdParam ? "وحدات المالك" : "الوحدات"}</Text>
-          <Text style={styles.subtitle}>
-            {ownerIdParam
-              ? `إضافة أو عرض وحدات المالك: ${scopedOwnerName || `#${ownerIdParam}`}`
-              : "إضافة الوحدة تكون إما خاصة بالمالك أو تحت عقار/عمارة"}
-          </Text>
+          <Text style={styles.title}>{screenTitle}</Text>
+          <Text style={styles.subtitle}>{screenSubtitle}</Text>
         </View>
 
         <TouchableOpacity style={styles.primaryButton} onPress={() => setShowCreate(!showCreate)}>
@@ -261,6 +283,7 @@ export default function UnitsScreen() {
               value={form.unit_scope}
               options={unitScopeOptions}
               required
+              disabled={Boolean(propertyIdParam)}
               onChange={(value) => setField("unit_scope", value)}
             />
 
@@ -272,7 +295,7 @@ export default function UnitsScreen() {
                   options={filteredPropertyOptions}
                   placeholder={form.owner_id ? "اختر العقار" : "اختر المالك أولًا"}
                   required
-                  disabled={!form.owner_id}
+                  disabled={!form.owner_id || Boolean(propertyIdParam)}
                   onChange={(value) => setField("property_id", value)}
                 />
 
@@ -304,7 +327,8 @@ export default function UnitsScreen() {
             </TouchableOpacity>
           </View>
         ) : null}
-{loading ? (
+
+        {loading ? (
           <View style={styles.loadingBox}>
             <ActivityIndicator />
             <Text style={styles.loadingText}>جاري تحميل الوحدات...</Text>
@@ -328,7 +352,7 @@ export default function UnitsScreen() {
                 <Text style={styles.cardTitle}>{unit.label}</Text>
               </View>
               <Text style={styles.cardLine}>المالك: {optionName(owners, ownerId)}</Text>
-              <Text style={styles.cardLine}>العقار: {unit.property_id ? optionName(properties, unit.property_id) : "لا يوجد - وحدة مستقلة"}</Text>
+              <Text style={styles.cardLine}>العقار: {unit.property_id ? optionName(propertyOptions, unit.property_id) : "لا يوجد - وحدة مستقلة"}</Text>
               <Text style={styles.cardLine}>الإيجار / الحالة: {valueText(unit.rent_amount)} / {valueText(unit.status)}</Text>
               <InlineEditDeleteActions resource="units" id={unit.id} onChanged={loadData} />
             </View>
