@@ -11,6 +11,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAuth } from '../context/AuthContext';
 import { colors, spacing } from '../constants/theme';
+import { apiPost } from '../lib/api';
+import { resetNavigationHistory } from '../lib/navigationHistory';
 import {
   ActionTile,
   MiniAction,
@@ -26,6 +28,7 @@ import {
   description: string;
   adminOnly?: boolean;
   keywords?: string;
+  action?: 'logout';
 };
 
 type MenuSection = {
@@ -98,6 +101,7 @@ const sections: MenuSection[] = [
       { icon: 'git-compare-outline', label: 'مدير العلاقات', path: '/relations-manager', description: 'أدوات ربط السجلات وتنظيف العلاقات.', adminOnly: true },
       { icon: 'time-outline', label: 'آخر النشاطات', path: '/activity-feed', description: 'آخر عمليات تمت على النظام.' },
       { icon: 'document-lock-outline', label: 'سجل النشاط', path: '/activity-logs', description: 'سجل تدقيق مفصل للعمليات.', adminOnly: true },
+      { icon: 'log-out-outline', label: 'تسجيل الخروج', path: '#logout', description: 'الخروج من التطبيق والعودة لشاشة تسجيل الدخول.', action: 'logout' },
     ],
   },
 ];
@@ -113,7 +117,7 @@ function matchesQuery(item: MenuItem, query: string) {
 }
 
 export default function MoreScreen() {
-  const { loggedIn, isAdmin } = useAuth();
+  const { loggedIn, isAdmin, logout } = useAuth();
   const [query, setQuery] = useState('');
 
   const filteredSections = useMemo(() => {
@@ -124,6 +128,32 @@ export default function MoreScreen() {
       }))
       .filter((section) => section.items.length > 0);
   }, [isAdmin, query]);
+
+  function performLogout() {
+    apiPost('/auth/logout')
+      .catch(() => undefined)
+      .then(() => logout())
+      .catch(() => undefined)
+      .then(() => {
+        resetNavigationHistory();
+        router.replace('/login' as any);
+      });
+  }
+
+  function confirmLogout() {
+    Alert.alert('تسجيل الخروج', 'هل تريد تسجيل الخروج من التطبيق؟', [
+      { text: 'إلغاء', style: 'cancel' },
+      { text: 'خروج', style: 'destructive', onPress: performLogout },
+    ]);
+  }
+
+  function openItem(item: MenuItem) {
+    if (item.action === 'logout') {
+      confirmLogout();
+      return;
+    }
+    open(item.path);
+  }
 
   function open(path: string) {
     if (!loggedIn) {
@@ -165,7 +195,7 @@ export default function MoreScreen() {
                 title={item.label}
                 subtitle={item.description}
                 adminOnly={item.adminOnly}
-                onPress={() => open(item.path)}
+                onPress={() => openItem(item)}
               />
             ))}
           </PhaseSection>
