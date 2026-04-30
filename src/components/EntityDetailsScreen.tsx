@@ -13,7 +13,6 @@ import {
 import { apiGet } from "../lib/api";
 import InlineEditDeleteActions from "./InlineEditDeleteActions";
 
-import { smartBack } from "@/lib/navigationHistory";
 type EntityKey = "owner" | "property" | "unit" | "tenant" | "contract" | string;
 
 type FieldItem = {
@@ -307,17 +306,12 @@ export default function EntityDetailsScreen({ entity, id }: { entity: EntityKey;
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} />}
       >
         <View style={styles.topBar}>
-          <View style={styles.topActions}>
-            {normalizedEntity === "unit" ? (
-              <TouchableOpacity onPress={openAddUnit} style={styles.addUnitButton} activeOpacity={0.85}>
-                <Text style={styles.addUnitButtonText}>＋</Text>
-              </TouchableOpacity>
-            ) : null}
-            <TouchableOpacity onPress={() => smartBack()} style={styles.backButton}>
-              <Text style={styles.backText}>→ رجوع</Text>
-            </TouchableOpacity>
-          </View>
           <Text style={styles.topTitle}>{entityTitle[normalizedEntity] || "التفاصيل"}</Text>
+          {normalizedEntity === "unit" ? (
+            <TouchableOpacity onPress={openAddUnit} style={styles.addUnitButton} activeOpacity={0.85}>
+              <Text style={styles.addUnitButtonText}>＋</Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
 
         <View style={styles.headerCard}>
@@ -412,13 +406,10 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: "#f6f7fb" },
   scroll: { flex: 1 },
   container: { padding: 14, paddingBottom: 28 },
-  topBar: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 10 },
-  topActions: { flexDirection: "row", alignItems: "center", gap: 8 },
+  topBar: { flexDirection: "row-reverse", alignItems: "center", justifyContent: "space-between", marginBottom: 10 },
   addUnitButton: { width: 38, height: 38, borderRadius: 19, backgroundColor: "#0f766e", alignItems: "center", justifyContent: "center" },
   addUnitButtonText: { color: "#ffffff", fontSize: 24, lineHeight: 28, fontWeight: "900" },
   topTitle: { flex: 1, color: "#111827", fontSize: 20, fontWeight: "900", textAlign: "right" },
-  backButton: { backgroundColor: "#fff", borderRadius: 999, paddingHorizontal: 12, paddingVertical: 8, borderWidth: 1, borderColor: "#DDDBD6" },
-  backText: { color: "#111827", fontWeight: "900" },
   detailsActionsBox: { backgroundColor: "#fff", borderRadius: 18, padding: 8, marginBottom: 12, borderWidth: 1, borderColor: "#EDECE9" },
   servicesCard: { backgroundColor: "#fff", borderRadius: 18, padding: 12, marginBottom: 12, borderWidth: 1, borderColor: "#EDECE9" },
   servicesHint: { color: "#6b7280", fontSize: 12, fontWeight: "800", textAlign: "right", marginBottom: 10 },
