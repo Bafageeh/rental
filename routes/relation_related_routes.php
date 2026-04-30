@@ -1,9 +1,11 @@
 <?php
 
-use App\Http\Controllers\Api\RelationRelatedController;
-use Illuminate\Support\Facades\Route;
+// تفاصيل السجلات والعلاقات التابعة.
+// نستخدم override خاص بالعقود حتى تظهر التبويبة باسم الدفعات وتُراجع تواريخ الدفعات عند فتح العقد.
 
 require_once base_path('app/Support/RelationRelatedHelpers.php');
 
-Route::get('/relation-manager/related/{entity}/{id}', [RelationRelatedController::class, 'show'])->middleware('admin.only');
-Route::get('/my/relation-manager/related/{entity}/{id}', [RelationRelatedController::class, 'show']);
+$override = base_path('routes/api/107_contract_details_payments_override.php');
+if (is_file($override)) {
+    require $override;
+}
