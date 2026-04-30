@@ -11,6 +11,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { apiPostAny } from "../lib/api";
 
 type RelatedPayment = {
@@ -90,12 +91,14 @@ function ActionPill({ label, icon, tone, onPress }: { label: string; icon: strin
 }
 
 export default function ContractPaymentCard({ item, index, expanded, onToggle, onChanged }: Props) {
+  const insets = useSafeAreaInsets();
   const [sheetVisible, setSheetVisible] = useState(false);
   const [mode, setMode] = useState<Mode>("pay");
   const [amount, setAmount] = useState(amountInput(item.amount));
   const [note, setNote] = useState(item.notes || "");
   const [saving, setSaving] = useState(false);
 
+  const bottomSafeGap = Math.max(insets.bottom, 18) + 78;
   const meta = useMemo(() => statusMeta(item), [item.status, item.badge]);
   const isPaid = statusKey(item) === "paid";
   const dueDate = item.due_date || item.title || "-";
@@ -251,7 +254,7 @@ export default function ContractPaymentCard({ item, index, expanded, onToggle, o
                 </View>
               </View>
 
-              <View style={[styles.sheetSummary, { borderColor: meta.border, backgroundColor: meta.card }]}> 
+              <View style={[styles.sheetSummary, { borderColor: meta.border, backgroundColor: meta.card }]}>
                 <View style={styles.sheetSummaryTop}>
                   <Text style={[styles.sheetStatus, { backgroundColor: meta.bg, color: meta.fg }]}>{meta.label}</Text>
                   <Text style={styles.summaryLabel}>{mode === "pay" ? "المبلغ المراد سداده" : "المبلغ الحالي"}</Text>
@@ -291,7 +294,9 @@ export default function ContractPaymentCard({ item, index, expanded, onToggle, o
                 placeholder="مثال: حوالة الراجحي - رقم العملية..."
                 placeholderTextColor="#9CA3AF"
               />
+            </ScrollView>
 
+            <View style={[styles.sheetActionsDock, { paddingBottom: bottomSafeGap }]}> 
               <View style={styles.sheetActions}>
                 <TouchableOpacity style={styles.cancelButton} onPress={closeSheet} activeOpacity={0.85}>
                   <Text style={styles.cancelText}>إلغاء</Text>
@@ -300,7 +305,7 @@ export default function ContractPaymentCard({ item, index, expanded, onToggle, o
                   <Text style={styles.saveText}>{saving ? "جاري الحفظ..." : mode === "pay" ? "حفظ الدفع" : "حفظ التعديل"}</Text>
                 </TouchableOpacity>
               </View>
-            </ScrollView>
+            </View>
           </View>
         </KeyboardAvoidingView>
       </Modal>
@@ -353,7 +358,7 @@ const styles = StyleSheet.create({
   backdrop: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(17,24,39,0.46)" },
   sheet: { backgroundColor: "#FFFFFF", borderTopLeftRadius: 34, borderTopRightRadius: 34, paddingTop: 12, maxHeight: "90%" },
   handle: { alignSelf: "center", width: 86, height: 7, borderRadius: 999, backgroundColor: "#D8D3CB", marginBottom: 8 },
-  sheetScroll: { paddingHorizontal: 18, paddingBottom: 28 },
+  sheetScroll: { paddingHorizontal: 18, paddingBottom: 16 },
   sheetHeader: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 16 },
   closeButton: { width: 52, height: 52, borderRadius: 26, backgroundColor: "#F7F6F4", borderWidth: 1, borderColor: "#E5E2DD", alignItems: "center", justifyContent: "center" },
   closeText: { color: "#6B7280", fontSize: 31, lineHeight: 35, fontWeight: "300" },
@@ -374,7 +379,8 @@ const styles = StyleSheet.create({
   input: { backgroundColor: "#FFFFFF", borderWidth: 1, borderColor: "#DDDBD6", borderRadius: 17, paddingHorizontal: 14, paddingVertical: 13, color: "#111827", fontSize: 17, fontWeight: "800", minHeight: 54, marginBottom: 7 },
   inputHint: { color: "#8B8983", fontSize: 12, fontWeight: "700", textAlign: "right", marginBottom: 12 },
   notesInput: { minHeight: 100, textAlignVertical: "top", fontSize: 15, lineHeight: 22 },
-  sheetActions: { flexDirection: "row", gap: 12, marginTop: 14 },
+  sheetActionsDock: { paddingHorizontal: 18, paddingTop: 12, backgroundColor: "#FFFFFF", borderTopWidth: 1, borderTopColor: "#EEECE7" },
+  sheetActions: { flexDirection: "row", gap: 12 },
   cancelButton: { width: 105, minHeight: 58, borderRadius: 20, backgroundColor: "#F7F6F4", borderWidth: 1, borderColor: "#E5E2DD", alignItems: "center", justifyContent: "center" },
   cancelText: { color: "#111827", fontSize: 15, fontWeight: "900" },
   saveButton: { flex: 1, minHeight: 58, borderRadius: 20, backgroundColor: "#111827", alignItems: "center", justifyContent: "center" },
