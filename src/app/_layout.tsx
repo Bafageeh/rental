@@ -1,13 +1,10 @@
 import { Tabs, router, useGlobalSearchParams, usePathname } from "expo-router";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
-import { Alert, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useEffect } from "react";
 import { AuthProvider, useAuth } from "../context/AuthContext";
 import { colors } from "../constants/theme";
-import { apiPost } from "../lib/api";
 import { HeaderBackAction as HeaderBackRight, HeaderQuickActions as HeaderActionsLeft } from "../components/AppHeaderActions";
-
-import { resetNavigationHistory, smartBack, trackNavigationRoute } from "../lib/navigationHistory";
+import { trackNavigationRoute } from "../lib/navigationHistory";
 
 function TabIcon({
   name,
@@ -25,83 +22,6 @@ function TabIcon({
     return <MaterialCommunityIcons name={name as any} size={s} color={color} />;
   }
   return <Ionicons name={name as any} size={s} color={color} />;
-}
-
-function HeaderQuickActions() {
-  const { loggedIn, logout } = useAuth();
-  const pathname = usePathname();
-  const mainRoutes = ["/", "/properties", "/payments", "/statistics", "/more", "/login"];
-  const showBack = loggedIn && !mainRoutes.includes(pathname);
-
-  function performLogout() {
-    apiPost("/auth/logout")
-      .catch(() => undefined)
-      .then(() => logout())
-      .catch(() => undefined)
-      .then(() => {
-        resetNavigationHistory();
-        router.replace("/login" as any);
-      });
-  }
-
-  function confirmLogout() {
-    Alert.alert("تسجيل الخروج", "هل تريد تسجيل الخروج من التطبيق؟", [
-      { text: "إلغاء", style: "cancel" },
-      { text: "خروج", style: "destructive", onPress: performLogout },
-    ]);
-  }
-
-  return (
-    <View style={styles.headerActions}>
-      {showBack ? (
-        <TouchableOpacity
-          style={styles.headerActionButton}
-          onPress={() => smartBack()}
-          activeOpacity={0.75}
-          accessibilityRole="button"
-          accessibilityLabel="رجوع"
-          hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
-        >
-          <Ionicons name="arrow-forward-outline" size={22} color={colors.text} />
-        </TouchableOpacity>
-      ) : null}
-
-      {loggedIn ? (
-        <TouchableOpacity
-          style={[styles.headerActionButton, styles.logoutHeaderButton]}
-          onPress={confirmLogout}
-          activeOpacity={0.75}
-          accessibilityRole="button"
-          accessibilityLabel="تسجيل الخروج"
-          hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
-        >
-          <Ionicons name="log-out-outline" size={18} color={colors.danger} />
-          <Text style={styles.logoutHeaderText}>خروج</Text>
-        </TouchableOpacity>
-      ) : null}
-
-      <TouchableOpacity
-        style={styles.headerActionButton}
-        onPress={() => router.push("/alerts" as any)}
-        activeOpacity={0.75}
-        accessibilityRole="button"
-        accessibilityLabel="التنبيهات"
-        hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
-      >
-        <Ionicons name="notifications-outline" size={22} color={colors.text} />
-      </TouchableOpacity>
-      <TouchableOpacity
-        style={styles.headerActionButton}
-        onPress={() => router.push("/search" as any)}
-        activeOpacity={0.75}
-        accessibilityRole="button"
-        accessibilityLabel="البحث"
-        hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
-      >
-        <Ionicons name="search-outline" size={22} color={colors.text} />
-      </TouchableOpacity>
-    </View>
-  );
 }
 
 function AppTabs() {
@@ -125,10 +45,7 @@ function AppTabs() {
   }, [isLoginRoute, loading, loggedIn]);
 
   useEffect(() => {
-    if (loading || !loggedIn || isLoginRoute) {
-      return;
-    }
-
+    if (loading || !loggedIn || isLoginRoute) return;
     trackNavigationRoute(pathname, routeParams as Record<string, unknown>);
   }, [isLoginRoute, loading, loggedIn, pathname, routeParamsKey]);
 
@@ -211,7 +128,6 @@ function AppTabs() {
         }}
       />
 
-      {/* Hidden screens (accessible via routing only) */}
       <Tabs.Screen name="owners" options={{ href: null, title: "الملاك" }} />
       <Tabs.Screen name="settings" options={{ href: null, title: "الإعدادات" }} />
       <Tabs.Screen name="contracts" options={{ href: null, title: "العقود" }} />
@@ -266,7 +182,6 @@ function AppTabs() {
       <Tabs.Screen name="unit/[id]" options={{ href: null, title: "تفاصيل الوحدة" }} />
       <Tabs.Screen name="tenant/[id]" options={{ href: null, title: "تفاصيل المستأجر" }} />
       <Tabs.Screen name="contract/[id]" options={{ href: null, title: "تفاصيل العقد" }} />
-      <Tabs.Screen name="payment/[id]" options={{ href: null, title: "تفاصيل الدفعة" }} />
     </Tabs>
   );
 }
@@ -278,33 +193,3 @@ export default function RootLayout() {
     </AuthProvider>
   );
 }
-
-const styles = StyleSheet.create({
-  headerActions: {
-    flexDirection: "row-reverse",
-    alignItems: "center",
-    gap: 8,
-  },
-  headerActionButton: {
-    minWidth: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: colors.surfaceSubtle,
-    borderWidth: 1,
-    borderColor: colors.borderLight,
-    paddingHorizontal: 8,
-  },
-  logoutHeaderButton: {
-    flexDirection: "row-reverse",
-    gap: 4,
-    backgroundColor: colors.dangerBg,
-    borderColor: colors.danger,
-  },
-  logoutHeaderText: {
-    color: colors.danger,
-    fontSize: 11,
-    fontWeight: "800",
-  },
-});
