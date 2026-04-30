@@ -1,5 +1,6 @@
 import { router } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   Alert,
   FlatList,
@@ -52,8 +53,6 @@ const STATUS_FILTERS = [
   { key: 'due', label: 'مستحقة' },
   { key: 'paid', label: 'مدفوعة' },
 ] as const;
-
-// ─── Payment Card ────────────────────────────────────────
 
 function PaymentCard({
   item,
@@ -140,8 +139,6 @@ function PaymentCard({
   );
 }
 
-// ─── Main Screen ─────────────────────────────────────────
-
 export default function PaymentsScreen() {
   const { loggedIn } = useAuth();
   const [items, setItems] = useState<Payment[]>([]);
@@ -167,9 +164,11 @@ export default function PaymentsScreen() {
     }
   }, []);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  useFocusEffect(
+    useCallback(() => {
+      load(true);
+    }, [load]),
+  );
 
   const filtered = statusFilter ? items.filter((i) => i.status === statusFilter) : items;
   const overdueTotal = items
@@ -186,7 +185,6 @@ export default function PaymentsScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity
           onPress={() => smartBack()}
@@ -203,7 +201,6 @@ export default function PaymentsScreen() {
         </View>
       </View>
 
-      {/* Overdue Alert */}
       {overdueTotal > 0 && (
         <TouchableOpacity
           style={styles.overdueAlert}
@@ -216,7 +213,6 @@ export default function PaymentsScreen() {
         </TouchableOpacity>
       )}
 
-      {/* Filter Chips */}
       <View style={styles.chips}>
         {STATUS_FILTERS.map((f) => {
           const active = statusFilter === f.key;
@@ -244,7 +240,7 @@ export default function PaymentsScreen() {
           data={filtered}
           keyExtractor={(i) => String(i.id)}
           renderItem={({ item }) => (
-            <PaymentCard item={item} onRefresh={load} canMark={loggedIn} />
+            <PaymentCard item={item} onRefresh={() => load(true)} canMark={loggedIn} />
           )}
           contentContainerStyle={styles.list}
           showsVerticalScrollIndicator={false}
@@ -268,8 +264,6 @@ export default function PaymentsScreen() {
     </SafeAreaView>
   );
 }
-
-// ─── Styles ──────────────────────────────────────────────
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
