@@ -2,6 +2,7 @@ import { router } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   RefreshControl,
   SafeAreaView,
   ScrollView,
@@ -10,7 +11,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { apiGet } from "../lib/api";
+import { apiGet, apiPost } from "../lib/api";
 import InlineEditDeleteActions from "./InlineEditDeleteActions";
 
 type EntityKey = "owner" | "property" | "unit" | "tenant" | "contract" | string;
@@ -31,7 +32,13 @@ type RelatedItem = {
   subtitle?: string;
   badge?: string | null;
   meta?: string[];
-  route?: string;
+  route?: string | null;
+  amount?: number | string | null;
+  due_date?: string | null;
+  paid_date?: string | null;
+  deadline_date?: string | null;
+  notes?: string | null;
+  status?: string | null;
 };
 
 type RelatedSection = {
@@ -119,7 +126,7 @@ function resourceForEntity(entity: string) {
   return entity.endsWith("s") ? entity : `${entity}s`;
 }
 
-function makeRoute(entity: EntityKey, id: number, fallback?: string) {
+function makeRoute(entity: EntityKey, id: number, fallback?: string | null) {
   if (fallback) return fallback;
   const key = normalizeEntity(String(entity));
   return `${routeByEntity[key] || `/${key}`}/${id}`;
@@ -141,6 +148,16 @@ function badgeStyleForText(badge?: string | null) {
   }
 
   return styles.badge;
+}
+
+function paymentAmount(value: unknown) {
+  const n = Number(String(value ?? "").replace(/,/g, ""));
+  if (!Number.isFinite(n)) return valueOrDash(value);
+  return `${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ريال`;
+}
+
+function isPaymentItem(item: RelatedItem) {
+  return normalizeEntity(String(item.entity)) === "payment";
 }
 
 function isPrimaryField(key: string) {
@@ -189,12 +206,21 @@ function EmptyState({ text }: { text: string }) {
   );
 }
 
-function RelatedCard({ item }: { item: RelatedItem }) {
+function RelatedCard({ item, expanded, onToggle, onMarkPaid }: { item: RelatedItem; expanded?: boolean; onToggle?: () => void; onMarkPaid?: () => void }) {
+  const isPayment = isPaymentItem(item);
+  const isPaid = String(item.status || item.badge || "").toLowerCase().includes("paid") || String(item.badge || "").includes("مدفوعة");
+
   return (
     <TouchableOpacity
       activeOpacity={0.85}
       style={styles.relatedCard}
-      onPress={() => router.push(makeRoute(item.entity, item.id, item.route) as never)}
+      onPress={() => {
+        if (isPayment) {
+          onToggle?.();
+          return;
+        }
+        router.push(makeRoute(item.entity, item.id, item.route) as never);
+      }}
     >
       <View style={styles.relatedTopRow}>
         {item.badge ? <Text style={badgeStyleForText(item.badge)}>{item.badge}</Text> : <View />}
@@ -203,13 +229,35 @@ function RelatedCard({ item }: { item: RelatedItem }) {
           <Text numberOfLines={1} style={styles.relatedTitle}>{item.title}</Text>
         </View>
       </View>
-      {item.subtitle ? <Text numberOfLines={1} style={styles.relatedSubtitle}>{item.subtitle}</Text> : null}
+      {item.subtitle ? <Text numberOfLines={2} style={styles.relatedSubtitle}>{item.subtitle}</Text> : null}
       {item.meta && item.meta.length ? (
         <View style={styles.metaRow}>
           {item.meta.slice(0, 3).map((meta) => (
             <Text key={meta} numberOfLines={1} style={styles.metaPill}>{meta}</Text>
           ))}
         </View>
+      ) : null}
+
+      {isPayment ? (
+        <>
+          <View style={styles.paymentQuickRow}>
+            {!isPaid ? (
+              <TouchableOpacity style={styles.payButton} onPress={(event) => { event.stopPropagation?.(); onMarkPaid?.(); }} activeOpacity={0.85}>
+                <Text style={styles.payButtonText}>دفع</Text>
+              </TouchableOpacity>
+            ) : null}
+            <Text style={styles.expandHint}>{expanded ? "إخفاء التفاصيل" : "عرض المبلغ والملاحظات"}</Text>
+          </View>
+          {expanded ? (
+            <View style={styles.inlinePaymentDetails}>
+              <View style={styles.inlineRow}><Text style={styles.inlineValue}>{paymentAmount(item.amount)}</Text><Text style={styles.inlineLabel}>المبلغ</Text></View>
+              <View style={styles.inlineRow}><Text style={styles.inlineValue}>{valueOrDash(item.due_date || item.title)}</Text><Text style={styles.inlineLabel}>تاريخ الاستحقاق</Text></View>
+              <View style={styles.inlineRow}><Text style={styles.inlineValue}>{valueOrDash(item.deadline_date)}</Text><Text style={styles.inlineLabel}>نهاية المهلة</Text></View>
+              <View style={styles.inlineRow}><Text style={styles.inlineValue}>{valueOrDash(item.paid_date)}</Text><Text style={styles.inlineLabel}>تاريخ السداد</Text></View>
+              <View style={styles.inlineRow}><Text style={styles.inlineValue}>{valueOrDash(item.notes)}</Text><Text style={styles.inlineLabel}>ملاحظات</Text></View>
+            </View>
+          ) : null}
+        </>
       ) : null}
     </TouchableOpacity>
   );
@@ -244,6 +292,7 @@ export default function EntityDetailsScreen({ entity, id }: { entity: EntityKey;
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
+  const [expandedPaymentId, setExpandedPaymentId] = useState<number | null>(null);
   const relatedLabel = relatedTabLabel(normalizedEntity);
 
   async function load(isRefresh = false) {
@@ -272,6 +321,23 @@ export default function EntityDetailsScreen({ entity, id }: { entity: EntityKey;
     [data],
   );
   const encodedTitle = encodeURIComponent(data?.title || `${entityTitle[normalizedEntity] || "سجل"} #${id}`);
+
+  async function markPaymentPaid(payment: RelatedItem) {
+    Alert.alert("تأكيد الدفع", `هل تريد تسجيل دفع ${paymentAmount(payment.amount)}؟`, [
+      { text: "إلغاء", style: "cancel" },
+      {
+        text: "تسجيل الدفع",
+        onPress: async () => {
+          try {
+            await apiPost(`/payments/${payment.id}/mark-paid`, {});
+            await load(true);
+          } catch (e) {
+            Alert.alert("خطأ", e instanceof Error ? e.message : "تعذر تسجيل الدفع");
+          }
+        },
+      },
+    ]);
+  }
 
   function getDetailFieldValue(keys: string[]) {
     const fields = data?.fields || [];
@@ -392,7 +458,15 @@ export default function EntityDetailsScreen({ entity, id }: { entity: EntityKey;
                   <Text style={styles.countBadge}>{section.count}</Text>
                   <Text style={styles.sectionTitle}>{section.title}</Text>
                 </View>
-                {section.items.length ? section.items.map((item) => <RelatedCard key={`${item.entity}-${item.id}`} item={item} />) : <EmptyState text="لا توجد عناصر في هذا القسم." />}
+                {section.items.length ? section.items.map((item) => (
+                  <RelatedCard
+                    key={`${item.entity}-${item.id}`}
+                    item={item}
+                    expanded={expandedPaymentId === item.id}
+                    onToggle={() => setExpandedPaymentId((current) => current === item.id ? null : item.id)}
+                    onMarkPaid={() => markPaymentPaid(item)}
+                  />
+                )) : <EmptyState text="لا توجد عناصر في هذا القسم." />}
               </View>
             )) : <EmptyState text={relatedEmptyText(normalizedEntity)} />}
           </View>
@@ -617,6 +691,39 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "800",
   },
+  paymentQuickRow: {
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+    marginTop: 10,
+  },
+  payButton: {
+    backgroundColor: "#16a34a",
+    borderRadius: 999,
+    paddingHorizontal: 18,
+    paddingVertical: 8,
+  },
+  payButtonText: { color: "#fff", fontWeight: "900", fontSize: 13 },
+  expandHint: { color: "#6b7280", fontSize: 12, fontWeight: "800" },
+  inlinePaymentDetails: {
+    backgroundColor: "#fff",
+    borderRadius: 14,
+    padding: 10,
+    marginTop: 10,
+    borderWidth: 1,
+    borderColor: "#EDECE9",
+  },
+  inlineRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 10,
+    paddingVertical: 7,
+    borderBottomWidth: 1,
+    borderBottomColor: "#f3f4f6",
+  },
+  inlineLabel: { width: 112, color: "#6b7280", fontWeight: "900", textAlign: "right", fontSize: 12 },
+  inlineValue: { flex: 1, color: "#111827", fontWeight: "800", textAlign: "right", fontSize: 13 },
   emptyBox: {
     backgroundColor: "#F7F6F4",
     borderRadius: 16,
