@@ -101,13 +101,17 @@ type PropertyDetail = {
   expenses?: Array<{ id: number; amount?: number; title?: string }>;
 };
 
+type ContractScope = 'property' | 'unit';
+type ContractMethod = 'manual' | 'upload';
+type PropertyUnit = NonNullable<PropertyDetail['units']>[number];
+
 const typeMap: Record<string, string> = {
   building: 'عمارة', apartment: 'وحدة', villa: 'فيلا', land: 'أرض', commercial: 'تجاري', other: 'أخرى',
 };
 const usageMap: Record<string, string> = { residential: 'سكني', commercial: 'تجاري', mixed: 'مختلط' };
 const mgmtMap: Record<string, string> = { owned: 'ملك خاص', managed: 'مُدار' };
 
-function unitContractsCount(unit: NonNullable<PropertyDetail['units']>[number]) {
+function unitContractsCount(unit: PropertyUnit) {
   if (typeof unit.contracts_count === 'number') return unit.contracts_count;
   return Array.isArray(unit.contracts) ? unit.contracts.length : 0;
 }
@@ -179,10 +183,11 @@ export default function PropertyDetailScreen() {
   const propertyContracts = Number(data.property_contracts_count || 0);
   const totalContracts = propertyContracts + Number(data.unit_contracts_count ?? unitContracts);
   const hasAnyContracts = totalContracts > 0;
-  const hasUnitsWithoutContract = units.some((unit) => unitContractsCount(unit) === 0);
+  const unitsWithoutContract = units.filter((unit) => unitContractsCount(unit) === 0);
+  const hasUnitsWithoutContract = unitsWithoutContract.length > 0;
   const canCreateWholePropertyContract = typeof data.can_create_whole_property_contract === 'boolean'
     ? data.can_create_whole_property_contract
-    : totalContracts === 0;
+    : propertyContracts === 0;
   const canCreateUnitContract = typeof data.can_create_unit_contract === 'boolean'
     ? data.can_create_unit_contract
     : units.length > 0 && propertyContracts === 0 && hasUnitsWithoutContract;
@@ -197,13 +202,61 @@ export default function PropertyDetailScreen() {
     router.push(`${path}?property_id=${propertyId}&property_name=${encodedPropertyName}${separator}${extraQuery}` as any);
   }
 
-  function pushCreateContract(scope: 'property' | 'unit', unit?: NonNullable<PropertyDetail['units']>[number]) {
-    const parts = [`property_id=${propertyId}`, `property_name=${encodedPropertyName}`, `contract_scope=${scope}`];
+  function contractQuery(scope: ContractScope, unit?: PropertyUnit) {
+    const parts = [
+      `property_id=${propertyId}`,
+      `property_name=${encodedPropertyName}`,
+      `contract_scope=${scope}`,
+      `target_type=${scope}`,
+      'source=property-details',
+    ];
+
     if (data.owner?.id) parts.push(`owner_id=${data.owner.id}`);
     if (data.owner?.name) parts.push(`owner_name=${encodeURIComponent(data.owner.name)}`);
     if (scope === 'unit' && unit?.id) parts.push(`unit_id=${unit.id}`);
     if (scope === 'unit' && unit?.unit_number) parts.push(`unit_name=${encodeURIComponent(unit.unit_number)}`);
-    router.push(`/create-contract?${parts.join('&')}` as any);
+    if (scope === 'property') parts.push('unit_name=%D8%A7%D9%84%D8%B9%D9%82%D8%A7%D8%B1%20%D9%83%D8%A7%D9%85%D9%84');
+
+    return parts.join('&');
+  }
+
+  function openContractFlow(method: ContractMethod, scope: ContractScope, unit?: PropertyUnit) {
+    const query = contractQuery(scope, unit);
+    const target = method === 'upload' ? '/upload-contract' : '/create-contract';
+    router.push(`${target}?${query}` as any);
+  }
+
+  function askContractMethod(scope: ContractScope, unit?: PropertyUnit) {
+    const targetName = scope === 'unit'
+      ? `الوحدة ${unit?.unit_number || unit?.id || ''}`.trim()
+      : 'العقار بالكامل';
+
+    Alert.alert('إضافة عقد', `اختر طريقة إضافة العقد على ${targetName}:`, [
+      { text: 'رفع عقد PDF', onPress: () => openContractFlow('upload', scope, unit) },
+      { text: 'إنشاء عقد يدوي', onPress: () => openContractFlow('manual', scope, unit) },
+      { text: 'إلغاء', style: 'cancel' },
+    ]);
+  }
+
+  function askUnitTarget() {
+    const selectableUnits = unitsWithoutContract.length > 0 ? unitsWithoutContract : units;
+
+    if (selectableUnits.length === 0) {
+      Alert.alert('تنبيه', 'لا توجد وحدات تحت هذا العقار.');
+      return;
+    }
+
+    Alert.alert(
+      'اختر الوحدة',
+      'اختر الوحدة التي تريد إنشاء أو رفع العقد عليها:',
+      [
+        ...selectableUnits.map((unit) => ({
+          text: unit.unit_number || `وحدة #${unit.id}`,
+          onPress: () => askContractMethod('unit', unit),
+        })),
+        { text: 'إلغاء', style: 'cancel' as const },
+      ],
+    );
   }
 
   function chooseContractTarget() {
@@ -212,21 +265,34 @@ export default function PropertyDetailScreen() {
       return;
     }
 
-    if (canCreateWholePropertyContract && canCreateUnitContract && units.length > 0) {
-      Alert.alert('إنشاء عقد', 'اختر نطاق العقد:', [
-        { text: 'العقار بالكامل', onPress: () => pushCreateContract('property') },
-        { text: 'وحدة معينة', onPress: () => pushCreateContract('unit') },
+    if (units.length > 0) {
+      Alert.alert('إنشاء عقد', 'هل تريد العقد على العقار كامل أم على إحدى الوحدات؟', [
+        {
+          text: 'العقار كامل',
+          onPress: () => {
+            if (!canCreateWholePropertyContract) {
+              Alert.alert('تنبيه', 'لا يمكن إنشاء عقد على العقار بالكامل؛ توجد عقود أو قيود مرتبطة بوحدات هذا العقار.');
+              return;
+            }
+            askContractMethod('property');
+          },
+        },
+        {
+          text: 'إحدى الوحدات',
+          onPress: () => {
+            if (!canCreateUnitContract) {
+              Alert.alert('تنبيه', 'لا توجد وحدة متاحة بدون عقد داخل هذا العقار.');
+              return;
+            }
+            askUnitTarget();
+          },
+        },
         { text: 'إلغاء', style: 'cancel' },
       ]);
       return;
     }
 
-    if (canCreateWholePropertyContract) {
-      pushCreateContract('property');
-      return;
-    }
-
-    pushCreateContract('unit');
+    askContractMethod('property');
   }
 
   return (
@@ -260,7 +326,7 @@ export default function PropertyDetailScreen() {
           <View style={styles.servicesGrid}>
             <TouchableOpacity style={styles.serviceButton} onPress={() => openPropertyService('/expenses')}><Text style={styles.serviceIcon}>📉</Text><Text style={styles.serviceText}>المصروفات</Text></TouchableOpacity>
             {hasAnyContracts ? <TouchableOpacity style={styles.serviceButton} onPress={() => openPropertyService('/contracts')}><Text style={styles.serviceIcon}>📑</Text><Text style={styles.serviceText}>العقود</Text></TouchableOpacity> : null}
-            {shouldShowCreateContract ? <TouchableOpacity style={[styles.serviceButton, styles.createContractService]} onPress={chooseContractTarget}><Text style={styles.serviceIcon}>📝</Text><Text style={styles.serviceText}>إنشاء عقد</Text></TouchableOpacity> : null}
+            {shouldShowCreateContract ? <TouchableOpacity style={[styles.serviceButton, styles.createContractService]} onPress={chooseContractTarget}><Text style={styles.serviceIcon}>📝</Text><Text style={styles.serviceText}>إنشاء / رفع عقد</Text></TouchableOpacity> : null}
             <TouchableOpacity style={styles.serviceButton} onPress={() => openPropertyService('/documents', 'entity_type=property')}><Text style={styles.serviceIcon}>📁</Text><Text style={styles.serviceText}>المستندات</Text></TouchableOpacity>
             <TouchableOpacity style={styles.serviceButton} onPress={() => openPropertyService('/files')}><Text style={styles.serviceIcon}>📂</Text><Text style={styles.serviceText}>الملفات والوسائط</Text></TouchableOpacity>
           </View>
@@ -342,7 +408,7 @@ export default function PropertyDetailScreen() {
                     </View>
                     <View style={styles.unitActionsColumn}>
                       <StatusBadge status={unit.status} size="sm" />
-                      {!hasContract && canCreateUnitContract ? <TouchableOpacity style={styles.unitCreateContractButton} onPress={(event) => { event.stopPropagation?.(); pushCreateContract('unit', unit); }}><Text style={styles.unitCreateContractIcon}>📝</Text><Text style={styles.unitCreateContractText}>إنشاء عقد</Text></TouchableOpacity> : null}
+                      {!hasContract && canCreateUnitContract ? <TouchableOpacity style={styles.unitCreateContractButton} onPress={(event) => { event.stopPropagation?.(); askContractMethod('unit', unit); }}><Text style={styles.unitCreateContractIcon}>📝</Text><Text style={styles.unitCreateContractText}>إنشاء / رفع عقد</Text></TouchableOpacity> : null}
                       <Text style={styles.unitRent}>{money(unit.rent_amount)}</Text>
                     </View>
                   </View>
