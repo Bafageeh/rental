@@ -18,7 +18,7 @@ import {
   EmptyState,
   SkeletonList,
 } from '../components/ui/shared';
-import { colors, typography, spacing, radii, money, getStatusConfig } from '../constants/theme';
+import { colors, typography, spacing, radii, money } from '../constants/theme';
 
 import { smartBack } from "@/lib/navigationHistory";
 type ContractItem = {
@@ -38,6 +38,15 @@ type ContractItem = {
   payments?: Array<{ status?: string | null; amount?: number }>;
 };
 
+type StatusFilterValue = string | null;
+
+const statusOptions: Array<{ key: StatusFilterValue; label: string }> = [
+  { key: null, label: 'الكل' },
+  { key: 'active', label: 'نشط' },
+  { key: 'ended', label: 'منتهي' },
+  { key: 'cancelled', label: 'ملغي' },
+];
+
 function firstParam(value: string | string[] | undefined): string {
   if (Array.isArray(value)) return value[0] || '';
   return value || '';
@@ -50,6 +59,12 @@ function buildQuery(params: Record<string, string>) {
   });
   const query = searchParams.toString();
   return query ? `?${query}` : '';
+}
+
+function dateOnly(value?: string | null) {
+  if (!value) return '-';
+  const match = String(value).match(/^(\d{4}-\d{2}-\d{2})/);
+  return match ? match[1] : String(value);
 }
 
 function paymentProgress(payments?: ContractItem['payments']) {
@@ -96,12 +111,12 @@ function ContractCard({ item }: { item: ContractItem }) {
         <View style={styles.detailDivider} />
         <View style={styles.detailItem}>
           <Text style={styles.detailLabel}>البداية</Text>
-          <Text style={styles.detailValue}>{item.start_date || '-'}</Text>
+          <Text style={styles.detailValue}>{dateOnly(item.start_date)}</Text>
         </View>
         <View style={styles.detailDivider} />
         <View style={styles.detailItem}>
           <Text style={styles.detailLabel}>النهاية</Text>
-          <Text style={styles.detailValue}>{item.end_date || '-'}</Text>
+          <Text style={styles.detailValue}>{dateOnly(item.end_date)}</Text>
         </View>
       </View>
 
@@ -142,11 +157,15 @@ export default function ContractsScreen() {
   const scopedQuery = buildQuery({ property_id: propertyIdParam, unit_id: unitIdParam });
   const isScoped = Boolean(propertyIdParam || unitIdParam);
 
-  const { items, loading, refreshing, error, total, refresh, loadMore, search } =
+  const { items, loading, refreshing, error, refresh, loadMore, search } =
     useList<ContractItem>({ endpoint: `/contracts${scopedQuery}`, scopedEndpoint: `/my/contracts${scopedQuery}` });
 
   const [searchText, setSearchText] = useState('');
-  const [statusFilter, setStatusFilter] = useState<string | null>(null);
+  const [searchVisible, setSearchVisible] = useState(false);
+  const [statusMenuVisible, setStatusMenuVisible] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<StatusFilterValue>(null);
+
+  const currentStatusLabel = statusOptions.find((option) => option.key === statusFilter)?.label || 'الكل';
 
   const handleSearch = useCallback(
     (text: string) => {
@@ -155,6 +174,21 @@ export default function ContractsScreen() {
     },
     [search]
   );
+
+  function openCreateContract() {
+    const createQuery = buildQuery({ property_id: propertyIdParam, property_name: propertyNameParam, unit_id: unitIdParam, unit_name: unitNameParam });
+    router.push(`/create-contract${createQuery}` as any);
+  }
+
+  function toggleSearch() {
+    setSearchVisible((current) => !current);
+    setStatusMenuVisible(false);
+  }
+
+  function selectStatusFilter(value: StatusFilterValue) {
+    setStatusFilter(value);
+    setStatusMenuVisible(false);
+  }
 
   const scopedFilteredItems = items.filter((item) => {
     if (propertyIdParam) {
@@ -176,10 +210,18 @@ export default function ContractsScreen() {
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerRow}>
+          <TouchableOpacity
+            style={styles.addBtn}
+            onPress={openCreateContract}
+            activeOpacity={0.86}
+          >
+            <Text style={styles.addBtnText}>+</Text>
+          </TouchableOpacity>
+
           <View style={styles.headerTitleWrap}>
             {isScoped ? (
-              <TouchableOpacity onPress={() => smartBack()}>
-                <Text style={styles.backText}>→ رجوع</Text>
+              <TouchableOpacity onPress={() => smartBack()} style={styles.backButton}>
+                <Text style={styles.backText}>→</Text>
               </TouchableOpacity>
             ) : null}
             <View style={{ flex: 1 }}>
@@ -191,53 +233,59 @@ export default function ContractsScreen() {
               ) : null}
             </View>
           </View>
+
           <TouchableOpacity
-            style={styles.addBtn}
-            onPress={() => {
-              const createQuery = buildQuery({ property_id: propertyIdParam, property_name: propertyNameParam, unit_id: unitIdParam, unit_name: unitNameParam });
-              router.push(`/create-contract${createQuery}` as any);
-            }}
+            style={[styles.searchToggle, searchVisible ? styles.searchToggleActive : null]}
+            onPress={toggleSearch}
+            activeOpacity={0.86}
           >
-            <Text style={styles.addBtnText}>+ عقد جديد</Text>
+            <Text style={[styles.searchToggleText, searchVisible ? styles.searchToggleTextActive : null]}>⌕</Text>
           </TouchableOpacity>
-        </View>
 
-        <TextInput
-          style={styles.searchInput}
-          placeholder="بحث بالرقم أو اسم المستأجر..."
-          placeholderTextColor={colors.textTertiary}
-          value={searchText}
-          onChangeText={handleSearch}
-          textAlign="right"
-        />
-
-        {/* Status filter chips */}
-        <View style={styles.chipRow}>
-          {[
-            { key: null, label: 'الكل' },
-            { key: 'active', label: 'نشط' },
-            { key: 'ended', label: 'منتهي' },
-            { key: 'cancelled', label: 'ملغى' },
-          ].map((chip) => (
+          <View style={styles.statusDropdownWrap}>
             <TouchableOpacity
-              key={chip.key || 'all'}
-              style={[
-                styles.chip,
-                statusFilter === chip.key && styles.chipActive,
-              ]}
-              onPress={() => setStatusFilter(chip.key)}
+              style={styles.statusDropdownButton}
+              onPress={() => {
+                setStatusMenuVisible((current) => !current);
+                setSearchVisible(false);
+              }}
+              activeOpacity={0.86}
             >
-              <Text
-                style={[
-                  styles.chipText,
-                  statusFilter === chip.key && styles.chipTextActive,
-                ]}
-              >
-                {chip.label}
-              </Text>
+              <Text style={styles.statusDropdownText}>{currentStatusLabel}</Text>
+              <Text style={styles.statusDropdownArrow}>{statusMenuVisible ? '⌃' : '⌄'}</Text>
             </TouchableOpacity>
-          ))}
+
+            {statusMenuVisible ? (
+              <View style={styles.statusMenu}>
+                {statusOptions.map((option) => {
+                  const active = statusFilter === option.key;
+                  return (
+                    <TouchableOpacity
+                      key={option.key || 'all'}
+                      style={[styles.statusMenuItem, active ? styles.statusMenuItemActive : null]}
+                      onPress={() => selectStatusFilter(option.key)}
+                      activeOpacity={0.86}
+                    >
+                      <Text style={[styles.statusMenuText, active ? styles.statusMenuTextActive : null]}>{option.label}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            ) : null}
+          </View>
         </View>
+
+        {searchVisible ? (
+          <TextInput
+            style={styles.searchInput}
+            placeholder="بحث بالرقم أو اسم المستأجر..."
+            placeholderTextColor={colors.textTertiary}
+            value={searchText}
+            onChangeText={handleSearch}
+            textAlign="right"
+            autoFocus
+          />
+        ) : null}
       </View>
 
       {loading && items.length === 0 ? (
@@ -260,10 +308,7 @@ export default function ContractsScreen() {
               message="أنشئ أول عقد إيجار"
               actionLabel="عقد جديد"
               icon="📄"
-              onAction={() => {
-                const createQuery = buildQuery({ property_id: propertyIdParam, property_name: propertyNameParam, unit_id: unitIdParam, unit_name: unitNameParam });
-                router.push(`/create-contract${createQuery}` as any);
-              }}
+              onAction={openCreateContract}
             />
           }
           ItemSeparatorComponent={() => <View style={{ height: spacing.md }} />}
@@ -282,15 +327,25 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.md,
     borderBottomWidth: 1,
     borderBottomColor: colors.borderLight,
+    zIndex: 20,
   },
   headerRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexDirection: 'row-reverse',
     alignItems: 'center',
+    gap: spacing.sm,
     paddingVertical: spacing.md,
+    zIndex: 30,
   },
-  headerTitleWrap: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  backText: { ...typography.captionBold, color: colors.primary },
+  headerTitleWrap: { flex: 1, flexDirection: 'row-reverse', alignItems: 'center', gap: spacing.sm },
+  backButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: colors.surfaceSubtle,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  backText: { ...typography.bodyBold, color: colors.text },
   headerTitle: {
     ...typography.h2,
     color: colors.text,
@@ -298,13 +353,99 @@ const styles = StyleSheet.create({
   },
   scopeText: { ...typography.caption, color: colors.textSecondary, textAlign: 'right', marginTop: 2 },
   addBtn: {
+    width: 48,
+    height: 48,
+    borderRadius: 16,
     backgroundColor: colors.primary,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-    borderRadius: radii.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: colors.primary,
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 2,
   },
   addBtnText: {
+    color: colors.textInverse,
+    fontSize: 30,
+    lineHeight: 32,
+    fontWeight: '900',
+  },
+  searchToggle: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: colors.surfaceSubtle,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  searchToggleActive: {
+    backgroundColor: colors.primary,
+  },
+  searchToggleText: {
+    color: colors.text,
+    fontSize: 31,
+    lineHeight: 34,
+    fontWeight: '700',
+  },
+  searchToggleTextActive: {
+    color: colors.textInverse,
+  },
+  statusDropdownWrap: {
+    position: 'relative',
+    zIndex: 40,
+  },
+  statusDropdownButton: {
+    minWidth: 86,
+    height: 48,
+    borderRadius: 18,
+    backgroundColor: colors.surfaceSubtle,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+  },
+  statusDropdownText: {
     ...typography.captionBold,
+    color: colors.text,
+  },
+  statusDropdownArrow: {
+    color: colors.textSecondary,
+    fontSize: 14,
+    fontWeight: '900',
+  },
+  statusMenu: {
+    position: 'absolute',
+    top: 55,
+    left: 0,
+    width: 118,
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    padding: 6,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 9,
+  },
+  statusMenuItem: {
+    minHeight: 38,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  statusMenuItemActive: {
+    backgroundColor: colors.primary,
+  },
+  statusMenuText: {
+    ...typography.captionBold,
+    color: colors.textSecondary,
+  },
+  statusMenuTextActive: {
     color: colors.textInverse,
   },
   searchInput: {
@@ -314,27 +455,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     ...typography.body,
     color: colors.text,
-    marginBottom: spacing.md,
-  },
-  chipRow: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-  },
-  chip: {
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: radii.full,
-    backgroundColor: colors.surfaceSubtle,
-  },
-  chipActive: {
-    backgroundColor: colors.primary,
-  },
-  chipText: {
-    ...typography.small,
-    color: colors.textSecondary,
-  },
-  chipTextActive: {
-    color: colors.textInverse,
+    marginBottom: spacing.xs,
   },
 
   listContent: {
