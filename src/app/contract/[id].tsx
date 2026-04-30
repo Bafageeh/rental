@@ -1,7 +1,7 @@
 import { useLocalSearchParams } from "expo-router";
-import EntityDetailsScreen from "../../components/EntityDetailsScreen";
+import ContractDetailsScreen from "../../components/ContractDetailsScreen";
 
 export default function ContractDetailsRoute() {
   const params = useLocalSearchParams<{ id: string }>();
-  return <EntityDetailsScreen entity="contract" id={String(params.id || "")} />;
+  return <ContractDetailsScreen id={String(params.id || "")} />;
 }
