@@ -87,46 +87,11 @@ function AppTabs() {
         headerRightContainerStyle: { paddingRight: 12 },
       }}
     >
-      <Tabs.Screen
-        name="index"
-        options={{
-          title: "الرئيسية",
-          tabBarIcon: ({ color, size }) => <TabIcon name="home" color={color} size={size} />,
-          tabBarAccessibilityLabel: "الرئيسية",
-        }}
-      />
-      <Tabs.Screen
-        name="properties"
-        options={{
-          title: "العقارات",
-          tabBarIcon: ({ color, size }) => <TabIcon name="business" color={color} size={size} />,
-          tabBarAccessibilityLabel: "العقارات",
-        }}
-      />
-      <Tabs.Screen
-        name="payments"
-        options={{
-          title: "الدفعات",
-          tabBarIcon: ({ color, size }) => <TabIcon name="cash" color={color} size={size} lib="mci" />,
-          tabBarAccessibilityLabel: "الدفعات",
-        }}
-      />
-      <Tabs.Screen
-        name="statistics"
-        options={{
-          title: "التقارير",
-          tabBarIcon: ({ color, size }) => <TabIcon name="stats-chart" color={color} size={size} />,
-          tabBarAccessibilityLabel: "التقارير",
-        }}
-      />
-      <Tabs.Screen
-        name="more"
-        options={{
-          title: "المزيد",
-          tabBarIcon: ({ color, size }) => <TabIcon name="grid" color={color} size={size} />,
-          tabBarAccessibilityLabel: "المزيد",
-        }}
-      />
+      <Tabs.Screen name="index" options={{ title: "الرئيسية", tabBarIcon: ({ color, size }) => <TabIcon name="home" color={color} size={size} />, tabBarAccessibilityLabel: "الرئيسية" }} />
+      <Tabs.Screen name="properties" options={{ title: "العقارات", tabBarIcon: ({ color, size }) => <TabIcon name="business" color={color} size={size} />, tabBarAccessibilityLabel: "العقارات" }} />
+      <Tabs.Screen name="payments" options={{ title: "الدفعات", tabBarIcon: ({ color, size }) => <TabIcon name="cash" color={color} size={size} lib="mci" />, tabBarAccessibilityLabel: "الدفعات" }} />
+      <Tabs.Screen name="statistics" options={{ title: "التقارير", tabBarIcon: ({ color, size }) => <TabIcon name="stats-chart" color={color} size={size} />, tabBarAccessibilityLabel: "التقارير" }} />
+      <Tabs.Screen name="more" options={{ title: "المزيد", tabBarIcon: ({ color, size }) => <TabIcon name="grid" color={color} size={size} />, tabBarAccessibilityLabel: "المزيد" }} />
 
       <Tabs.Screen name="owners" options={{ href: null, title: "الملاك" }} />
       <Tabs.Screen name="settings" options={{ href: null, title: "الإعدادات" }} />
@@ -182,6 +147,7 @@ function AppTabs() {
       <Tabs.Screen name="unit/[id]" options={{ href: null, title: "تفاصيل الوحدة" }} />
       <Tabs.Screen name="tenant/[id]" options={{ href: null, title: "تفاصيل المستأجر" }} />
       <Tabs.Screen name="contract/[id]" options={{ href: null, title: "تفاصيل العقد" }} />
+      <Tabs.Screen name="payment/[id]" options={{ href: null, title: "الدفعات" }} />
     </Tabs>
   );
 }
