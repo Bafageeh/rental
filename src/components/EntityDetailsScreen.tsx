@@ -92,6 +92,24 @@ function normalizeEntity(entity: string) {
   return entity;
 }
 
+function relatedTabLabel(entity: string) {
+  const key = normalizeEntity(entity);
+  if (key === "contract") return "الدفعات";
+  if (key === "unit") return "العقود";
+  if (key === "tenant") return "العقود";
+  if (key === "property") return "الوحدات والعقود";
+  return "عقاراتي";
+}
+
+function relatedEmptyText(entity: string) {
+  const key = normalizeEntity(entity);
+  if (key === "contract") return "لا توجد دفعات مرتبطة بهذا العقد.";
+  if (key === "unit") return "لا توجد عقود مرتبطة بهذه الوحدة.";
+  if (key === "tenant") return "لا توجد عقود مرتبطة بهذا المستأجر.";
+  if (key === "property") return "لا توجد وحدات أو عقود مرتبطة بهذا العقار.";
+  return "لا توجد عقارات أو عناصر تابعة بهذا السجل.";
+}
+
 function resourceForEntity(entity: string) {
   const key = normalizeEntity(entity);
   if (key === "owner") return "owners";
@@ -180,10 +198,10 @@ function RelatedCard({ item }: { item: RelatedItem }) {
   );
 }
 
-function SegmentedTabs({ active, onChange }: { active: string; onChange: (tab: string) => void }) {
+function SegmentedTabs({ active, onChange, relatedLabel }: { active: string; onChange: (tab: string) => void; relatedLabel: string }) {
   const tabs = [
     ["details", "التفاصيل"],
-    ["related", "عقاراتي"],
+    ["related", relatedLabel],
   ];
 
   return (
@@ -209,6 +227,7 @@ export default function EntityDetailsScreen({ entity, id }: { entity: EntityKey;
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
+  const relatedLabel = relatedTabLabel(normalizedEntity);
 
   async function load(isRefresh = false) {
     try {
@@ -287,7 +306,7 @@ export default function EntityDetailsScreen({ entity, id }: { entity: EntityKey;
           <Text style={styles.entityLabel}>{data?.entity_title || entityTitle[normalizedEntity] || "تفاصيل"}</Text>
           <Text numberOfLines={2} style={styles.title}>{data?.title || "جاري التحميل..."}</Text>
           <View style={styles.headerStatsRow}>
-            <Text style={styles.statPill}>عقاراتي: {relatedCount}</Text>
+            <Text style={styles.statPill}>{relatedLabel}: {relatedCount}</Text>
             <Text style={styles.statPill}>رقم السجل: {valueOrDash(id)}</Text>
           </View>
         </View>
@@ -321,7 +340,7 @@ export default function EntityDetailsScreen({ entity, id }: { entity: EntityKey;
           </View>
         ) : null}
 
-        <SegmentedTabs active={activeTab} onChange={setActiveTab} />
+        <SegmentedTabs active={activeTab} onChange={setActiveTab} relatedLabel={relatedLabel} />
 
         {loading ? (
           <View style={styles.loadingBox}>
@@ -363,7 +382,7 @@ export default function EntityDetailsScreen({ entity, id }: { entity: EntityKey;
                 </View>
                 {section.items.length ? section.items.map((item) => <RelatedCard key={`${item.entity}-${item.id}`} item={item} />) : <EmptyState text="لا توجد عناصر في هذا القسم." />}
               </View>
-            )) : <EmptyState text="لا توجد عقارات أو عناصر تابعة بهذا السجل." />}
+            )) : <EmptyState text={relatedEmptyText(normalizedEntity)} />}
           </View>
         ) : null}
       </ScrollView>
@@ -585,5 +604,4 @@ const styles = StyleSheet.create({
     borderColor: "#EDECE9",
   },
   emptyText: { color: "#6b7280", textAlign: "center", fontWeight: "800" },
-
 });
