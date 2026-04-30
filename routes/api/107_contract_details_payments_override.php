@@ -17,6 +17,26 @@ if (!function_exists('mr_normalized_entity_key')) {
     }
 }
 
+if (!function_exists('mr_mark_contract_overdue_payments')) {
+    function mr_mark_contract_overdue_payments(int $contractId): void
+    {
+        if (!Schema::hasTable('payments') || !Schema::hasColumn('payments', 'contract_id') || !Schema::hasColumn('payments', 'due_date')) {
+            return;
+        }
+
+        $query = DB::table('payments')
+            ->where('contract_id', $contractId)
+            ->whereNotNull('due_date')
+            ->whereDate('due_date', '<', Carbon::today()->toDateString());
+
+        if (Schema::hasColumn('payments', 'status')) {
+            $query->where(function ($q) {
+                $q->whereNull('status')->orWhereNotIn('status', ['paid', 'مدفوعة']);
+            })->update(['status' => 'overdue']);
+        }
+    }
+}
+
 if (!function_exists('mr_repair_contract_payment_dates')) {
     function mr_repair_contract_payment_dates(int $contractId): void
     {
@@ -29,6 +49,7 @@ if (!function_exists('mr_repair_contract_payment_dates')) {
 
         $contract = DB::table('contracts')->where('id', $contractId)->first();
         if (!$contract || empty($contract->start_date) || empty($contract->end_date)) {
+            mr_mark_contract_overdue_payments($contractId);
             return;
         }
 
@@ -39,6 +60,7 @@ if (!function_exists('mr_repair_contract_payment_dates')) {
 
         $count = $payments->count();
         if ($count <= 1) {
+            mr_mark_contract_overdue_payments($contractId);
             return;
         }
 
@@ -48,34 +70,36 @@ if (!function_exists('mr_repair_contract_payment_dates')) {
             $firstDue = Carbon::parse($payments->first()->due_date)->startOfDay();
             $lastDue = Carbon::parse($payments->last()->due_date)->startOfDay();
         } catch (Throwable $e) {
+            mr_mark_contract_overdue_payments($contractId);
             return;
         }
 
         // لا نعيد الحساب إلا إذا كان واضحًا أن كل الدفعات بقيت في سنة البداية رغم أن العقد يمتد للسنة التالية.
         // مثال المشكلة: بداية العقد 2025 ونهايته 2026 وآخر دفعة ظاهرة 2025 بدل 2026.
         $looksWrong = $end->year > $start->year && $lastDue->year <= $start->year;
-        if (!$looksWrong) {
-            return;
-        }
+        if ($looksWrong) {
+            $cycle = strtolower((string) ($contract->payment_cycle ?? 'monthly'));
+            $stepMonths = match ($cycle) {
+                'quarterly' => 3,
+                'semi_annual', 'semiannual' => 6,
+                'annual', 'yearly' => 12,
+                default => 1,
+            };
 
-        $cycle = strtolower((string) ($contract->payment_cycle ?? 'monthly'));
-        $stepMonths = match ($cycle) {
-            'quarterly' => 3,
-            'semi_annual', 'semiannual' => 6,
-            'annual', 'yearly' => 12,
-            default => 1,
-        };
+            foreach ($payments->values() as $index => $payment) {
+                $due = $firstDue->copy()->addMonthsNoOverflow($index * $stepMonths);
+                $updates = ['due_date' => $due->toDateString()];
 
-        foreach ($payments->values() as $index => $payment) {
-            $due = $firstDue->copy()->addMonthsNoOverflow($index * $stepMonths);
-            $updates = ['due_date' => $due->toDateString()];
+                if (Schema::hasColumn('payments', 'notes')) {
+                    $updates['notes'] = 'نهاية مهلة السداد: ' . $due->copy()->addDays(15)->toDateString();
+                }
 
-            if (Schema::hasColumn('payments', 'notes')) {
-                $updates['notes'] = 'نهاية مهلة السداد: ' . $due->copy()->addDays(15)->toDateString();
+                DB::table('payments')->where('id', $payment->id)->update($updates);
             }
-
-            DB::table('payments')->where('id', $payment->id)->update($updates);
         }
+
+        // أي دفعة غير مسددة وتاريخها قبل اليوم تتحول تلقائيًا إلى متأخرة عند عرض العقد.
+        mr_mark_contract_overdue_payments($contractId);
     }
 }
 
