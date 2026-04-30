@@ -126,6 +126,24 @@ function makeRoute(entity: EntityKey, id: number, fallback?: string) {
   return `${routeByEntity[key] || `/${key}`}/${id}`;
 }
 
+function badgeStyleForText(badge?: string | null) {
+  const text = String(badge || "").trim().toLowerCase();
+
+  if (text.includes("متأخر") || text.includes("متاخر") || text.includes("overdue")) {
+    return [styles.badge, styles.badgeDanger];
+  }
+
+  if (text.includes("مستحق") || text.includes("due")) {
+    return [styles.badge, styles.badgeWarning];
+  }
+
+  if (text.includes("مدفوع") || text.includes("paid")) {
+    return [styles.badge, styles.badgeSuccess];
+  }
+
+  return styles.badge;
+}
+
 function isPrimaryField(key: string) {
   return [
     "name",
@@ -180,7 +198,7 @@ function RelatedCard({ item }: { item: RelatedItem }) {
       onPress={() => router.push(makeRoute(item.entity, item.id, item.route) as never)}
     >
       <View style={styles.relatedTopRow}>
-        {item.badge ? <Text style={styles.badge}>{item.badge}</Text> : <View />}
+        {item.badge ? <Text style={badgeStyleForText(item.badge)}>{item.badge}</Text> : <View />}
         <View style={styles.relatedTitleWrap}>
           <Text style={styles.relatedEntity}>{item.entity_title || entityTitle[String(item.entity)] || "سجل"}</Text>
           <Text numberOfLines={1} style={styles.relatedTitle}>{item.title}</Text>
@@ -584,6 +602,18 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
     fontSize: 11,
     fontWeight: "900",
+  },
+  badgeSuccess: {
+    backgroundColor: "#ecfdf5",
+    color: "#047857",
+  },
+  badgeWarning: {
+    backgroundColor: "#fffbeb",
+    color: "#b45309",
+  },
+  badgeDanger: {
+    backgroundColor: "#fee2e2",
+    color: "#dc2626",
   },
   metaRow: { flexDirection: "row-reverse", flexWrap: "wrap", gap: 6, marginTop: 8 },
   metaPill: {
