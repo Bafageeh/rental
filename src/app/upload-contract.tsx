@@ -72,7 +72,6 @@ function cycleLabel(value: any) {
   if (value === 'semi_annual') return 'نصف سنوي';
   if (value === 'annual') return 'سنوي';
 
-  // بعض ملفات PDF ترسل القيمة العربية مقلوبة بصريًا، مثل: "يعبر" بدل "ربعي".
   if (both.includes('quarter') || both.includes('ربعي') || both.includes('ربع سنوي') || both.includes('يعبر')) {
     return 'ربع سنوي';
   }
@@ -122,6 +121,8 @@ export default function UploadContractScreen() {
   const propertyName = decodeParam(firstParam(params.property_name as string | string[] | undefined));
   const unitId = firstParam(params.unit_id as string | string[] | undefined);
   const unitName = decodeParam(firstParam(params.unit_name as string | string[] | undefined));
+  const contractScope = firstParam((params.contract_scope || params.target_type) as string | string[] | undefined) === 'property' ? 'property' : 'unit';
+  const isPropertyContract = contractScope === 'property';
 
   const [selectedFile, setSelectedFile] = useState<DocumentPicker.DocumentPickerAsset | null>(null);
   const [loading, setLoading] = useState(false);
@@ -133,8 +134,8 @@ export default function UploadContractScreen() {
   const contextItems = useMemo(() => [
     { label: 'المالك', value: ownerName || (ownerId ? `مالك #${ownerId}` : 'يتم أخذه من العقد') },
     { label: 'العقار', value: propertyName || (propertyId ? `عقار #${propertyId}` : 'يتم أخذه من العقد') },
-    { label: 'الوحدة', value: unitName || (unitId ? `وحدة #${unitId}` : 'يتم أخذها من العقد') },
-  ], [ownerName, ownerId, propertyName, propertyId, unitName, unitId]);
+    { label: 'نطاق العقد', value: isPropertyContract ? 'العقار كامل' : (unitName || (unitId ? `وحدة #${unitId}` : 'يتم أخذها من العقد')) },
+  ], [ownerName, ownerId, propertyName, propertyId, unitName, unitId, isPropertyContract]);
 
   async function pickFile() {
     setError('');
@@ -158,6 +159,11 @@ export default function UploadContractScreen() {
       return;
     }
 
+    if (apply && isPropertyContract && !propertyId) {
+      setError('يجب تحديد العقار عند رفع عقد على العقار بالكامل.');
+      return;
+    }
+
     try {
       setLoading(true);
       setError('');
@@ -172,7 +178,9 @@ export default function UploadContractScreen() {
 
       if (ownerId) formData.append('owner_id', ownerId);
       if (propertyId) formData.append('property_id', propertyId);
-      if (unitId) formData.append('unit_id', unitId);
+      if (!isPropertyContract && unitId) formData.append('unit_id', unitId);
+      formData.append('contract_scope', contractScope);
+      formData.append('target_type', contractScope);
       if (apply) formData.append('apply', '1');
 
       const json = await apiPostFormData('/contract-files/extract', formData);
@@ -205,7 +213,7 @@ export default function UploadContractScreen() {
         <ScreenHero
           eyebrow="استيراد ذكي"
           title="رفع عقد إيجار ومراجعة البيانات"
-          subtitle="الآن العملية أوضح: اختر الملف، راجع البيانات المستخرجة، ثم اعتمد الحفظ عند التأكد."
+          subtitle="اختر الملف، راجع البيانات المستخرجة، ثم اعتمد الحفظ عند التأكد."
           icon="cloud-upload-outline"
           tone="primary"
         />
@@ -302,7 +310,7 @@ export default function UploadContractScreen() {
             </PreviewCard>
 
             <PreviewCard title="الوحدة والقيم المالية" icon="wallet-outline">
-              <InfoRow label="رقم الوحدة" value={display(unit.unit_number)} />
+              <InfoRow label="نطاق العقد" value={isPropertyContract ? 'العقار كامل' : display(unit.unit_number)} />
               <InfoRow label="نوع الوحدة" value={display(unit.type)} />
               <InfoRow label="قيمة الإيجار" value={money(financial.rent_amount)} />
               <InfoRow label="دفعة الإيجار الدورية" value={money(financial.regular_payment_amount)} />
