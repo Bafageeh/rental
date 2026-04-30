@@ -74,8 +74,6 @@ if (!function_exists('mr_repair_contract_payment_dates')) {
             return;
         }
 
-        // لا نعيد الحساب إلا إذا كان واضحًا أن كل الدفعات بقيت في سنة البداية رغم أن العقد يمتد للسنة التالية.
-        // مثال المشكلة: بداية العقد 2025 ونهايته 2026 وآخر دفعة ظاهرة 2025 بدل 2026.
         $looksWrong = $end->year > $start->year && $lastDue->year <= $start->year;
         if ($looksWrong) {
             $cycle = strtolower((string) ($contract->payment_cycle ?? 'monthly'));
@@ -98,8 +96,70 @@ if (!function_exists('mr_repair_contract_payment_dates')) {
             }
         }
 
-        // أي دفعة غير مسددة وتاريخها قبل اليوم تتحول تلقائيًا إلى متأخرة عند عرض العقد.
         mr_mark_contract_overdue_payments($contractId);
+    }
+}
+
+if (!function_exists('mr_payment_deadline_date')) {
+    function mr_payment_deadline_date($dueDate): ?string
+    {
+        if (empty($dueDate)) {
+            return null;
+        }
+
+        try {
+            return Carbon::parse($dueDate)->addDays(15)->toDateString();
+        } catch (Throwable $e) {
+            return null;
+        }
+    }
+}
+
+if (!function_exists('mr_enrich_payment_related_item')) {
+    function mr_enrich_payment_related_item(array $item): array
+    {
+        if (!Schema::hasTable('payments') || empty($item['id'])) {
+            return $item;
+        }
+
+        $payment = DB::table('payments')->where('id', (int) $item['id'])->first();
+        if (!$payment) {
+            return $item;
+        }
+
+        $amount = $payment->amount ?? null;
+        $dueDate = $payment->due_date ?? null;
+        $paidDate = $payment->paid_date ?? null;
+        $status = $payment->status ?? null;
+        $notes = $payment->notes ?? null;
+        $deadline = mr_payment_deadline_date($dueDate);
+
+        $item['entity'] = 'payment';
+        $item['entity_title'] = 'الدفعة';
+        $item['title'] = $dueDate ?: ($item['title'] ?? ('دفعة #' . $payment->id));
+        $item['subtitle'] = $notes ?: ($deadline ? ('نهاية مهلة السداد: ' . $deadline) : ($item['subtitle'] ?? null));
+        $item['badge'] = function_exists('mrr_translate_value') ? (mrr_translate_value('status', $status) ?: $status) : $status;
+        $item['amount'] = $amount;
+        $item['due_date'] = $dueDate;
+        $item['paid_date'] = $paidDate;
+        $item['deadline_date'] = $deadline;
+        $item['notes'] = $notes;
+        $item['status'] = $status;
+        $item['route'] = null;
+
+        $meta = [];
+        if ($amount !== null && $amount !== '') {
+            $meta[] = 'المبلغ: ' . number_format((float) $amount, 2) . ' ريال';
+        }
+        if ($deadline) {
+            $meta[] = 'نهاية المهلة: ' . $deadline;
+        }
+        if ($paidDate) {
+            $meta[] = 'تاريخ السداد: ' . $paidDate;
+        }
+        $item['meta'] = $meta;
+
+        return $item;
     }
 }
 
@@ -120,9 +180,11 @@ if (!function_exists('mr_sort_contract_payment_sections')) {
                 continue;
             }
 
+            $items = array_map('mr_enrich_payment_related_item', $items);
+
             usort($items, function ($a, $b) {
-                $aDate = (string) ($a['title'] ?? '');
-                $bDate = (string) ($b['title'] ?? '');
+                $aDate = (string) ($a['due_date'] ?? $a['title'] ?? '');
+                $bDate = (string) ($b['due_date'] ?? $b['title'] ?? '');
                 return strcmp($aDate, $bDate);
             });
 
