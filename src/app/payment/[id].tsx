@@ -15,7 +15,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import InlineEditDeleteActions from '../../components/InlineEditDeleteActions';
 import { StatusBadge } from '../../components/ui/shared';
 import { apiGetScoped, apiPost } from '../../lib/api';
-import { smartBack } from '../../lib/navigationHistory';
 import { colors, formatDate, money, radii, spacing, typography } from '../../constants/theme';
 
 type Payment = {
@@ -196,13 +195,6 @@ export default function PaymentDetailScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={colors.primary} colors={[colors.primary]} />}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.topBar}>
-          <TouchableOpacity onPress={() => smartBack()} style={styles.backButton} activeOpacity={0.8}>
-            <Text style={styles.backText}>→ رجوع</Text>
-          </TouchableOpacity>
-          <Text style={styles.pageTitle}>تفاصيل الدفعة</Text>
-        </View>
-
         <View style={styles.heroCard}>
           <View style={styles.heroTopRow}>
             <StatusBadge status={payment.status} size="sm" />
@@ -267,10 +259,6 @@ export default function PaymentDetailScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   container: { padding: spacing.lg, paddingBottom: 60 },
-  topBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.md },
-  backButton: { backgroundColor: colors.surface, borderRadius: radii.full, paddingHorizontal: 16, paddingVertical: 10, borderWidth: 1, borderColor: colors.borderLight },
-  backText: { ...typography.bodyBold, color: colors.text },
-  pageTitle: { ...typography.h2, color: colors.text, textAlign: 'right' },
   heroCard: { backgroundColor: '#111827', borderRadius: 26, padding: spacing.xl, marginBottom: spacing.md },
   heroTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.sm },
   heroLabel: { color: '#d1d5db', fontWeight: '900', textAlign: 'right' },
