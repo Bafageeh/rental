@@ -1,0 +1,45 @@
+name: Deploy mobile to server
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-mobile-main
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Pull latest mobile code on server
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy by SSH
+        env:
+          SERVER_HOST: ${{ secrets.PMSA_SERVER_HOST }}
+          SERVER_USER: ${{ secrets.PMSA_SERVER_USER }}
+          SERVER_SSH_KEY: ${{ secrets.PMSA_SERVER_SSH_KEY }}
+          SERVER_PORT: ${{ secrets.PMSA_SERVER_PORT }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${SERVER_HOST:-}" ] || [ -z "${SERVER_USER:-}" ] || [ -z "${SERVER_SSH_KEY:-}" ]; then
+            echo "Missing one or more required secrets: PMSA_SERVER_HOST, PMSA_SERVER_USER, PMSA_SERVER_SSH_KEY"
+            exit 1
+          fi
+
+          PORT="${SERVER_PORT:-22}"
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$SERVER_SSH_KEY" > ~/.ssh/pmsa_deploy_key
+          chmod 600 ~/.ssh/pmsa_deploy_key
+          ssh-keyscan -p "$PORT" -H "$SERVER_HOST" >> ~/.ssh/known_hosts
+
+          ssh -i ~/.ssh/pmsa_deploy_key -p "$PORT" "$SERVER_USER@$SERVER_HOST" <<'EOF'
+          set -e
+          cd /home/pmsa/apps/my-rentals-mobile
+          git fetch origin main
+          git reset --hard origin/main
+          EOF
