@@ -199,6 +199,9 @@ export default function ContractsScreen() {
     return true;
   });
 
+  const hasExistingScopedContract = isScoped && (loading || scopedFilteredItems.length > 0);
+  const showCreateButton = !hasExistingScopedContract;
+
   const filteredItems = statusFilter
     ? scopedFilteredItems.filter((i) => i.status === statusFilter)
     : scopedFilteredItems;
@@ -210,13 +213,15 @@ export default function ContractsScreen() {
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerRow}>
-          <TouchableOpacity
-            style={styles.addBtn}
-            onPress={openCreateContract}
-            activeOpacity={0.86}
-          >
-            <Text style={styles.addBtnText}>+</Text>
-          </TouchableOpacity>
+          {showCreateButton ? (
+            <TouchableOpacity
+              style={styles.addBtn}
+              onPress={openCreateContract}
+              activeOpacity={0.86}
+            >
+              <Text style={styles.addBtnText}>+</Text>
+            </TouchableOpacity>
+          ) : null}
 
           <View style={styles.headerTitleWrap}>
             {isScoped ? (
@@ -305,10 +310,10 @@ export default function ContractsScreen() {
           ListEmptyComponent={
             <EmptyState
               title="لا توجد عقود"
-              message="أنشئ أول عقد إيجار"
-              actionLabel="عقد جديد"
+              message={showCreateButton ? "أنشئ أول عقد إيجار" : "لا توجد عقود مطابقة للفلتر الحالي"}
+              actionLabel={showCreateButton ? "عقد جديد" : undefined}
               icon="📄"
-              onAction={openCreateContract}
+              onAction={showCreateButton ? openCreateContract : undefined}
             />
           }
           ItemSeparatorComponent={() => <View style={{ height: spacing.md }} />}
