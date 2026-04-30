@@ -202,6 +202,20 @@ export default function PropertyDetailScreen() {
     router.push(`${path}?property_id=${propertyId}&property_name=${encodedPropertyName}${separator}${extraQuery}` as any);
   }
 
+  function openAddUnit() {
+    const query = [
+      `property_id=${propertyId}`,
+      `property_name=${encodedPropertyName}`,
+      'unit_scope=property',
+      'create=1',
+    ];
+
+    if (data.owner?.id) query.push(`owner_id=${data.owner.id}`);
+    if (data.owner?.name) query.push(`owner_name=${encodeURIComponent(data.owner.name)}`);
+
+    router.push(`/units?${query.join('&')}` as any);
+  }
+
   function contractQuery(scope: ContractScope, unit?: PropertyUnit) {
     const parts = [
       `property_id=${propertyId}`,
@@ -324,6 +338,7 @@ export default function PropertyDetailScreen() {
           <Text style={styles.actionsTitle}>خدمات العقار</Text>
           <Text style={styles.servicesHint}>كل خدمة هنا خاصة بهذا العقار فقط.</Text>
           <View style={styles.servicesGrid}>
+            <TouchableOpacity style={[styles.serviceButton, styles.addUnitService]} onPress={openAddUnit}><Text style={styles.serviceIcon}>＋</Text><Text style={styles.serviceText}>إضافة وحدة</Text></TouchableOpacity>
             <TouchableOpacity style={styles.serviceButton} onPress={() => openPropertyService('/expenses')}><Text style={styles.serviceIcon}>📉</Text><Text style={styles.serviceText}>المصروفات</Text></TouchableOpacity>
             {hasAnyContracts ? <TouchableOpacity style={styles.serviceButton} onPress={() => openPropertyService('/contracts')}><Text style={styles.serviceIcon}>📑</Text><Text style={styles.serviceText}>العقود</Text></TouchableOpacity> : null}
             {shouldShowCreateContract ? <TouchableOpacity style={[styles.serviceButton, styles.createContractService]} onPress={chooseContractTarget}><Text style={styles.serviceIcon}>📝</Text><Text style={styles.serviceText}>إنشاء / رفع عقد</Text></TouchableOpacity> : null}
@@ -438,6 +453,7 @@ const styles = StyleSheet.create({
   servicesHint: { ...typography.small, color: colors.textSecondary, textAlign: 'right', marginBottom: spacing.md },
   servicesGrid: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: spacing.sm },
   serviceButton: { width: '48%', minHeight: 78, borderRadius: radii.lg, backgroundColor: colors.background, borderWidth: 1, borderColor: colors.borderLight, alignItems: 'center', justifyContent: 'center', padding: spacing.sm },
+  addUnitService: { borderColor: colors.primary, backgroundColor: colors.primary },
   createContractService: { borderColor: colors.primary, backgroundColor: colors.primaryLight },
   serviceIcon: { fontSize: 24, marginBottom: 4 },
   serviceText: { ...typography.captionBold, color: colors.text, textAlign: 'center' },
