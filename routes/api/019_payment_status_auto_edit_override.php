@@ -3,6 +3,7 @@
 use App\Models\Payment;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
 
@@ -36,9 +37,44 @@ if (!function_exists('mr_payment_apply_auto_status')) {
 
         $status = mr_payment_auto_status_value($payment);
         if ((string) $payment->status !== $status) {
+            DB::table('payments')->where('id', $payment->id)->update(['status' => $status]);
             $payment->status = $status;
-            $payment->save();
         }
+    }
+}
+
+if (!function_exists('mr_payment_normalize_edit_value')) {
+    function mr_payment_normalize_edit_value(string $field, mixed $value): mixed
+    {
+        if ($value === '') {
+            return null;
+        }
+
+        if (in_array($field, ['due_date', 'paid_date'], true)) {
+            if ($value === null) {
+                return null;
+            }
+
+            try {
+                return Carbon::parse((string) $value)->toDateString();
+            } catch (Throwable $e) {
+                throw new InvalidArgumentException('صيغة التاريخ غير صحيحة في حقل ' . $field . '. استخدم yyyy-mm-dd');
+            }
+        }
+
+        if ($field === 'amount') {
+            return $value === null ? null : (float) str_replace(',', '', (string) $value);
+        }
+
+        if ($field === 'contract_id') {
+            return $value === null ? null : (int) $value;
+        }
+
+        if (function_exists('my_rentals_ed_cast_value')) {
+            return my_rentals_ed_cast_value('payments', $field, $value);
+        }
+
+        return $value;
     }
 }
 
@@ -120,55 +156,63 @@ if (!function_exists('mr_payment_edit_list_response')) {
 if (!function_exists('mr_payment_edit_update_response')) {
     function mr_payment_edit_update_response(int $id, Request $request, ?\App\Models\User $user)
     {
-        if (!Schema::hasTable('payments')) {
-            return response()->json(['message' => 'جدول الدفعات غير موجود.'], 404);
-        }
+        try {
+            if (!Schema::hasTable('payments')) {
+                return response()->json(['message' => 'جدول الدفعات غير موجود.'], 404);
+            }
 
-        $config = mr_payment_edit_config();
-        $editable = array_values(array_filter($config['editable'], fn ($field) => Schema::hasColumn('payments', $field)));
-        $query = Payment::query();
+            $config = mr_payment_edit_config();
+            $editable = array_values(array_filter($config['editable'], fn ($field) => Schema::hasColumn('payments', $field)));
+            $query = Payment::query();
 
-        if (function_exists('my_rentals_ed_apply_scope') && function_exists('my_rentals_ed_is_admin')) {
-            $query = my_rentals_ed_apply_scope($query, 'payments', $config, $user);
-        }
+            if (function_exists('my_rentals_ed_apply_scope') && function_exists('my_rentals_ed_is_admin')) {
+                $query = my_rentals_ed_apply_scope($query, 'payments', $config, $user);
+            }
 
-        $payment = $query->where('id', $id)->first();
-        if (!$payment) {
-            return response()->json(['message' => 'السجل غير موجود أو خارج صلاحياتك.'], 404);
-        }
+            $payment = $query->where('id', $id)->first();
+            if (!$payment) {
+                return response()->json(['message' => 'السجل غير موجود أو خارج صلاحياتك.'], 404);
+            }
 
-        $payload = $request->input('fields', $request->all());
-        unset($payload['_auth_user'], $payload['status']);
+            $payload = $request->input('fields', $request->all());
+            unset($payload['_auth_user'], $payload['status']);
 
-        $updates = [];
-        foreach ($editable as $field) {
-            if (array_key_exists($field, $payload)) {
-                if (function_exists('my_rentals_ed_cast_value')) {
-                    $updates[$field] = my_rentals_ed_cast_value('payments', $field, $payload[$field]);
-                } else {
-                    $updates[$field] = $payload[$field] === '' ? null : $payload[$field];
+            $updates = [];
+            foreach ($editable as $field) {
+                if (array_key_exists($field, $payload)) {
+                    $updates[$field] = mr_payment_normalize_edit_value($field, $payload[$field]);
                 }
             }
+
+            if (!$updates) {
+                return response()->json(['message' => 'لا توجد حقول قابلة للتحديث.'], 422);
+            }
+
+            if (Schema::hasColumn('payments', 'updated_at')) {
+                $updates['updated_at'] = now();
+            }
+
+            $before = $payment->toArray();
+
+            // نستخدم Query Builder هنا بدل fill/save لتجنب أي أخطاء Mass Assignment أو casts قد تظهر عند الدفعات غير المسددة.
+            DB::table('payments')->where('id', $payment->id)->update($updates);
+            $fresh = Payment::find($payment->id);
+            mr_payment_apply_auto_status($fresh);
+            $fresh = Payment::find($payment->id);
+
+            if (function_exists('my_rentals_ed_save_activity')) {
+                my_rentals_ed_save_activity($user, 'update', 'payments', $id, $before, $fresh?->toArray() ?? []);
+            }
+
+            return [
+                'message' => 'تم التحديث بنجاح. تم تحديد حالة الدفعة آليًا.',
+                'item' => mr_payment_edit_payload($fresh, $editable),
+            ];
+        } catch (InvalidArgumentException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        } catch (Throwable $e) {
+            return response()->json(['message' => 'تعذر تحديث الدفعة. راجع القيم المدخلة ثم حاول مرة أخرى.'], 500);
         }
-
-        if (!$updates) {
-            return response()->json(['message' => 'لا توجد حقول قابلة للتحديث.'], 422);
-        }
-
-        $before = $payment->toArray();
-        $payment->fill($updates);
-        $payment->save();
-        mr_payment_apply_auto_status($payment);
-        $fresh = $payment->fresh();
-
-        if (function_exists('my_rentals_ed_save_activity')) {
-            my_rentals_ed_save_activity($user, 'update', 'payments', $id, $before, $fresh?->toArray() ?? []);
-        }
-
-        return [
-            'message' => 'تم التحديث بنجاح. تم تحديد حالة الدفعة آليًا.',
-            'item' => mr_payment_edit_payload($fresh, $editable),
-        ];
     }
 }
 
@@ -184,10 +228,12 @@ Route::get('/my/edit-delete-center/payments', function (Request $request) {
 
 Route::post('/edit-delete-center/payments/{id}/update', function (Request $request, $id) {
     $user = function_exists('my_rentals_ed_current_user') ? my_rentals_ed_current_user($request) : $request->user();
-    return response()->json(mr_payment_edit_update_response((int) $id, $request, $user));
+    $response = mr_payment_edit_update_response((int) $id, $request, $user);
+    return $response instanceof \Illuminate\Http\JsonResponse ? $response : response()->json($response);
 });
 
 Route::post('/my/edit-delete-center/payments/{id}/update', function (Request $request, $id) {
     $user = function_exists('my_rentals_ed_current_user') ? my_rentals_ed_current_user($request) : $request->user();
-    return response()->json(mr_payment_edit_update_response((int) $id, $request, $user));
+    $response = mr_payment_edit_update_response((int) $id, $request, $user);
+    return $response instanceof \Illuminate\Http\JsonResponse ? $response : response()->json($response);
 });
