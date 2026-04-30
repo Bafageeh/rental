@@ -270,6 +270,28 @@ export const booleanFields = [
   "cleanliness_ok",
 ];
 
+const dateOnlyFields = [
+  "due_date",
+  "paid_date",
+  "received_date",
+  "expense_date",
+  "start_date",
+  "end_date",
+  "sealing_date",
+  "brokerage_fee_due_date",
+  "request_date",
+  "scheduled_date",
+  "completed_date",
+  "inspection_date",
+];
+
+export function toDateOnly(value: unknown) {
+  if (value === null || value === undefined || value === "") return "";
+  const text = String(value).trim();
+  const match = text.match(/^(\d{4}-\d{2}-\d{2})/);
+  return match ? match[1] : text;
+}
+
 export function labelFor(field: string) {
   return fieldLabels[field] || arabizeKey(field);
 }
@@ -316,6 +338,10 @@ export function translateValue(field: string, value: unknown, lookups: Lookups =
   if (value === null || value === undefined || value === "") return "غير محدد";
 
   if (typeof value === "boolean") return value ? "نعم" : "لا";
+
+  if (dateOnlyFields.includes(field)) {
+    return toDateOnly(value);
+  }
 
   if (booleanFields.includes(field)) {
     const stringValue = String(value);
