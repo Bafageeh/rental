@@ -70,7 +70,7 @@ export default function ProfileScreen() {
             icon="🔐"
             title="تغيير الرقم السري"
             subtitle="تحديث الرقم السري للحساب الحالي"
-            onPress={() => router.push("/profile-change-password" as any)}
+            onPress={() => router.push("/profile-security" as any)}
           />
 
           <ProfileButton
