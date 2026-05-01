@@ -48,7 +48,7 @@ export default function ProfilePropertiesScreen() {
       if (isRefresh) setRefreshing(true);
       else setLoading(true);
 
-      const result = await apiGet("/my/properties");
+      const result = await apiGet("/profile/properties");
       const list = Array.isArray(result?.data) ? result.data : Array.isArray(result) ? result : [];
       setProperties(list as PropertyItem[]);
     } catch (e) {
@@ -69,21 +69,21 @@ export default function ProfilePropertiesScreen() {
         <View style={styles.heroCard}>
           <Text style={styles.heroIcon}>🏢</Text>
           <Text style={styles.heroTitle}>عقاراتي</Text>
-          <Text style={styles.heroSubtitle}>اضغط على أي عقار للدخول إلى تفاصيله.</Text>
+          <Text style={styles.heroSubtitle}>تعرض هذه الشاشة عقارات صاحب الحساب فقط.</Text>
           <Text style={styles.countBadge}>{properties.length.toLocaleString("ar-SA")} عقار</Text>
         </View>
 
         {loading ? (
           <View style={styles.loadingBox}>
             <ActivityIndicator />
-            <Text style={styles.loadingText}>جاري تحميل العقارات...</Text>
+            <Text style={styles.loadingText}>جاري تحميل عقارات صاحب الحساب...</Text>
           </View>
         ) : null}
 
         {!loading && properties.length === 0 ? (
           <View style={styles.emptyBox}>
             <Text style={styles.emptyTitle}>لا توجد عقارات</Text>
-            <Text style={styles.emptyText}>لا توجد عقارات مرتبطة بهذا الحساب حاليًا.</Text>
+            <Text style={styles.emptyText}>لا توجد عقارات مرتبطة بصاحب هذا الحساب حاليًا.</Text>
           </View>
         ) : null}
 
