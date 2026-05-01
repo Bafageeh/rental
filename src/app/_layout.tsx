@@ -131,6 +131,7 @@ function AppTabs() {
       <Tabs.Screen name="unit-marketing" options={{ href: null, title: "تسويق الوحدات" }} />
       <Tabs.Screen name="utility-bills" options={{ href: null, title: "الفواتير" }} />
       <Tabs.Screen name="login" options={{ href: null, title: "تسجيل الدخول", headerLeft: () => null, headerRight: () => null }} />
+      <Tabs.Screen name="profile" options={{ href: null, title: "بروفايل" }} />
       <Tabs.Screen name="my-account" options={{ href: null, title: "حسابي" }} />
       <Tabs.Screen name="system-settings" options={{ href: null, title: "إعدادات النظام" }} />
       <Tabs.Screen name="search" options={{ href: null, title: "البحث" }} />
