@@ -13,7 +13,16 @@ type PropertyItem = {
   district?: string | null;
   property_type?: string | null;
   units_count?: number;
-  owner?: { id?: number; name?: string | null } | null;
+  owner_id?: number | string | null;
+  owner?: { id?: number | string | null; name?: string | null } | null;
+};
+
+type AccountPayload = {
+  id?: number;
+  name?: string | null;
+  email?: string | null;
+  owner_id?: number | string | null;
+  owner?: { id?: number | string | null; name?: string | null } | null;
 };
 
 const propertyTypeLabels: Record<string, string> = {
@@ -37,9 +46,19 @@ function valueOrDash(value: unknown) {
   return String(value);
 }
 
+function directOwnerId(account: AccountPayload | null, fallback: AccountPayload | null) {
+  return String(account?.owner_id || account?.owner?.id || fallback?.owner_id || fallback?.owner?.id || "");
+}
+
+function onlyDirectOwnerProperties(list: PropertyItem[], ownerId: string) {
+  if (!ownerId) return [];
+  return list.filter((property) => String(property.owner_id || property.owner?.id || "") === ownerId);
+}
+
 export default function ProfilePropertiesScreen() {
   const auth = useAuth();
   const [properties, setProperties] = useState<PropertyItem[]>([]);
+  const [accountOwnerId, setAccountOwnerId] = useState("");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -48,8 +67,21 @@ export default function ProfilePropertiesScreen() {
       if (isRefresh) setRefreshing(true);
       else setLoading(true);
 
-      const result = await apiGet("/profile/properties");
-      const list = Array.isArray(result?.data) ? result.data : Array.isArray(result) ? result : [];
+      const meResult = await apiGet("/auth/me").catch(() => null);
+      const me = (meResult?.data ?? meResult?.user ?? meResult ?? null) as AccountPayload | null;
+      const ownerId = directOwnerId(me, auth.user as AccountPayload | null);
+      setAccountOwnerId(ownerId);
+
+      const profileResult = await apiGet("/profile/properties").catch(() => []);
+      let list = Array.isArray(profileResult?.data) ? profileResult.data : Array.isArray(profileResult) ? profileResult : [];
+      list = onlyDirectOwnerProperties(list as PropertyItem[], ownerId);
+
+      if (list.length === 0 && ownerId) {
+        const fallbackResult = await apiGet("/my/properties").catch(() => []);
+        const fallbackList = Array.isArray(fallbackResult?.data) ? fallbackResult.data : Array.isArray(fallbackResult) ? fallbackResult : [];
+        list = onlyDirectOwnerProperties(fallbackList as PropertyItem[], ownerId);
+      }
+
       setProperties(list as PropertyItem[]);
     } catch (e) {
       Alert.alert("تعذر التحميل", e instanceof Error ? e.message : "حدث خطأ غير متوقع");
@@ -69,7 +101,7 @@ export default function ProfilePropertiesScreen() {
         <View style={styles.heroCard}>
           <Text style={styles.heroIcon}>🏢</Text>
           <Text style={styles.heroTitle}>عقاراتي</Text>
-          <Text style={styles.heroSubtitle}>تعرض هذه الشاشة عقارات صاحب الحساب فقط.</Text>
+          <Text style={styles.heroSubtitle}>تعرض هذه الشاشة العقارات المرتبطة مباشرة بمالك الحساب فقط.</Text>
           <Text style={styles.countBadge}>{properties.length.toLocaleString("ar-SA")} عقار</Text>
         </View>
 
@@ -83,7 +115,7 @@ export default function ProfilePropertiesScreen() {
         {!loading && properties.length === 0 ? (
           <View style={styles.emptyBox}>
             <Text style={styles.emptyTitle}>لا توجد عقارات</Text>
-            <Text style={styles.emptyText}>لا توجد عقارات مرتبطة بصاحب هذا الحساب حاليًا.</Text>
+            <Text style={styles.emptyText}>{accountOwnerId ? "لا توجد عقارات مرتبطة مباشرة بمالك هذا الحساب." : "هذا الحساب غير مربوط بمالك مباشر owner_id."}</Text>
           </View>
         ) : null}
 
