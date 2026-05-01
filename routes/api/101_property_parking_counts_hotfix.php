@@ -65,11 +65,19 @@ Route::get('/my/properties', function (Request $request) {
         ? mrdu_is_admin_user($user)
         : (function_exists('my_rentals_is_admin_user') ? my_rentals_is_admin_user($user) : true);
 
+    $wantsAll = $request->boolean('all')
+        || $request->boolean('admin_all')
+        || $request->query('scope') === 'all';
+
     if (!$isAdmin) {
         if (empty($user->owner_id)) {
             return collect();
         }
 
+        $query->where('owner_id', $user->owner_id);
+    } elseif (!$wantsAll && !$request->filled('owner_id') && !$request->filled('property_id') && !empty($user->owner_id)) {
+        // مهم لشاشة بروفايل/عقاراتي القديمة التي كانت تستدعي /my/properties بدون بارامترات:
+        // اعرض فقط العقارات المباشرة بمالك الحساب الحالي، ولا تعرض عقارات أملاكي الخاصة أو ملاك آخرين.
         $query->where('owner_id', $user->owner_id);
     }
 
