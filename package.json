@@ -10,6 +10,7 @@
     "web": "expo start --web",
     "web:dev": "BROWSER=none EXPO_NO_TELEMETRY=1 REACT_NATIVE_PACKAGER_HOSTNAME=my.pm.sa expo start --web --host lan --port 8082",
     "web:build": "EXPO_NO_TELEMETRY=1 expo export --platform web",
+    "web:deploy:rental": "bash scripts/deploy-web-rental.sh",
     "web:clear": "rm -rf .expo dist node_modules/.cache && mkdir -p /home/pmsa/apps/.cache /home/pmsa/apps/.tmp",
     "mobile:dev": "BROWSER=none EXPO_NO_TELEMETRY=1 REACT_NATIVE_PACKAGER_HOSTNAME=my.pm.sa expo start --clear --go --host lan --port 8081",
     "lint": "expo lint",
