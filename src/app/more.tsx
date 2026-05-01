@@ -86,6 +86,7 @@ const sections: MenuSection[] = [
     title: 'المستندات والنظام',
     subtitle: 'ملفات، إعدادات، حسابات، وأدوات إدارية.',
     items: [
+      { icon: 'person-circle-outline', label: 'بروفايل', path: '/profile', description: 'تغيير الرقم السري وعرض عقاراتي.', keywords: 'profile حسابي بروفايل عقاراتي كلمة المرور الرقم السري' },
       { icon: 'folder-open-outline', label: 'المستندات', path: '/documents', description: 'صكوك، عقود، ومرفقات العقارات.' },
       { icon: 'images-outline', label: 'الملفات والوسائط', path: '/files', description: 'صور وفيديوهات وملفات مرتبطة بالسجلات.' },
       { icon: 'download-outline', label: 'التصدير', path: '/export-center', description: 'تصدير التقارير والبيانات.', adminOnly: true },
@@ -181,6 +182,7 @@ export default function MoreScreen() {
         <View style={styles.quickRow}>
           <MiniAction icon="cloud-upload-outline" label="رفع عقد" onPress={() => open('/upload-contract')} />
           <MiniAction icon="add-circle-outline" label="عقد جديد" onPress={() => open('/create-contract')} />
+          <MiniAction icon="person-circle-outline" label="بروفايل" onPress={() => open('/profile')} />
           <MiniAction icon="search-outline" label="بحث" onPress={() => open('/search')} />
         </View>
 
