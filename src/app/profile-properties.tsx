@@ -12,17 +12,21 @@ type PropertyItem = {
   city?: string | null;
   district?: string | null;
   property_type?: string | null;
+  management_type?: string | null;
+  deed_owner_name?: string | null;
   units_count?: number;
   owner_id?: number | string | null;
-  owner?: { id?: number | string | null; name?: string | null } | null;
+  owner?: { id?: number | string | null; name?: string | null; type?: string | null } | null;
 };
 
 type AccountPayload = {
   id?: number;
   name?: string | null;
   email?: string | null;
+  role?: string | null;
+  is_admin?: boolean;
   owner_id?: number | string | null;
-  owner?: { id?: number | string | null; name?: string | null } | null;
+  owner?: { id?: number | string | null; name?: string | null; type?: string | null } | null;
 };
 
 const propertyTypeLabels: Record<string, string> = {
@@ -59,6 +63,37 @@ function responseList(payload: any) {
   return Array.isArray(payload?.data) ? payload.data : Array.isArray(payload) ? payload : [];
 }
 
+function normalizedText(value?: string | null) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[أإآ]/g, "ا")
+    .replace(/ى/g, "ي");
+}
+
+function isAdminAccount(account: AccountPayload | null, fallback: AccountPayload | null) {
+  const role = normalizedText(account?.role || fallback?.role || "");
+  return Boolean(account?.is_admin || fallback?.is_admin || ["admin", "manager", "super_admin", "administrator"].includes(role));
+}
+
+function isAhmedOwnedProperty(property: PropertyItem) {
+  const ownerName = normalizedText(property.owner?.name);
+  const deedOwnerName = normalizedText(property.deed_owner_name);
+  const propertyName = normalizedText(property.name);
+  const ownerType = normalizedText(property.owner?.type);
+  const managementType = normalizedText(property.management_type);
+  const haystack = `${ownerName} ${deedOwnerName} ${propertyName}`;
+
+  return (
+    ownerType === "self" ||
+    managementType === "owned" ||
+    haystack.includes("احمد") ||
+    haystack.includes("ahmed") ||
+    haystack.includes("املاكي") ||
+    haystack.includes("املاك")
+  );
+}
+
 export default function ProfilePropertiesScreen() {
   const auth = useAuth();
   const [properties, setProperties] = useState<PropertyItem[]>([]);
@@ -73,7 +108,9 @@ export default function ProfilePropertiesScreen() {
 
       const meResult = await apiGet("/auth/me").catch(() => null);
       const me = (meResult?.data ?? meResult?.user ?? meResult ?? null) as AccountPayload | null;
-      const ownerId = directOwnerId(me, auth.user as AccountPayload | null);
+      const fallbackUser = auth.user as AccountPayload | null;
+      const ownerId = directOwnerId(me, fallbackUser);
+      const adminAccount = isAdminAccount(me, fallbackUser);
       setAccountOwnerId(ownerId);
 
       const profileResult = await apiGet("/profile/properties").catch(() => []);
@@ -82,6 +119,11 @@ export default function ProfilePropertiesScreen() {
       if (list.length === 0 && ownerId) {
         const fallbackResult = await apiGet("/my/properties").catch(() => []);
         list = onlyDirectOwnerProperties(responseList(fallbackResult) as PropertyItem[], ownerId);
+      }
+
+      if (list.length === 0 && adminAccount) {
+        const allPropertiesResult = await apiGet("/properties").catch(() => []);
+        list = (responseList(allPropertiesResult) as PropertyItem[]).filter(isAhmedOwnedProperty);
       }
 
       setProperties(list);
@@ -103,7 +145,7 @@ export default function ProfilePropertiesScreen() {
         <View style={styles.heroCard}>
           <Text style={styles.heroIcon}>🏢</Text>
           <Text style={styles.heroTitle}>عقاراتي</Text>
-          <Text style={styles.heroSubtitle}>تعرض هذه الشاشة العقارات المرتبطة مباشرة بمالك الحساب فقط.</Text>
+          <Text style={styles.heroSubtitle}>تعرض هذه الشاشة العقارات الخاصة بأحمد أو المرتبطة مباشرة بمالك الحساب فقط.</Text>
           <Text style={styles.countBadge}>{properties.length.toLocaleString("ar-SA")} عقار</Text>
         </View>
 
@@ -117,7 +159,7 @@ export default function ProfilePropertiesScreen() {
         {!loading && properties.length === 0 ? (
           <View style={styles.emptyBox}>
             <Text style={styles.emptyTitle}>لا توجد عقارات</Text>
-            <Text style={styles.emptyText}>{accountOwnerId ? "لا توجد عقارات مرتبطة مباشرة بمالك هذا الحساب." : "هذا الحساب غير مربوط بمالك مباشر owner_id."}</Text>
+            <Text style={styles.emptyText}>{accountOwnerId ? "لا توجد عقارات مرتبطة مباشرة بمالك هذا الحساب." : "لم يتم العثور على عقارات خاصة باسم أحمد."}</Text>
           </View>
         ) : null}
 
