@@ -12,8 +12,10 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { apiGet, apiPost } from "../lib/api";
+
 import InlineEditDeleteActions from "../components/InlineEditDeleteActions";
+import { useAuth } from "../context/AuthContext";
+import { apiGet, apiPost } from "../lib/api";
 
 type Owner = {
   id: number;
@@ -32,6 +34,7 @@ function valueOrDash(value?: string | null) {
 }
 
 export default function OwnersScreen() {
+  const { loading: authLoading, loggedIn, isAdmin } = useAuth();
   const [items, setItems] = useState<Owner[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -44,7 +47,11 @@ export default function OwnersScreen() {
   const [email, setEmail] = useState("");
   const [nationalId, setNationalId] = useState("");
 
+  const canAccess = loggedIn && isAdmin;
+
   async function load() {
+    if (!canAccess) return;
+
     try {
       setLoading(true);
       setError("");
@@ -67,6 +74,7 @@ export default function OwnersScreen() {
   }
 
   async function saveOwner() {
+    if (!canAccess) return;
     if (!name.trim()) {
       Alert.alert("تنبيه", "اكتب اسم المالك");
       return;
@@ -74,7 +82,6 @@ export default function OwnersScreen() {
 
     try {
       setSaving(true);
-
       await apiPost("/owners", {
         name: name.trim(),
         phone: phone.trim() || null,
@@ -89,7 +96,7 @@ export default function OwnersScreen() {
       setShowForm(false);
 
       Alert.alert("تم", "تم إضافة المالك بنجاح");
-      load();
+      await load();
     } catch (e) {
       Alert.alert("خطأ", e instanceof Error ? e.message : "تعذر حفظ المالك");
     } finally {
@@ -102,8 +109,37 @@ export default function OwnersScreen() {
   }
 
   useEffect(() => {
-    load();
-  }, []);
+    if (authLoading) return;
+    if (!canAccess) {
+      setLoading(false);
+      router.replace("/more" as any);
+      return;
+    }
+
+    void load();
+  }, [authLoading, canAccess]);
+
+  if (authLoading || loading) {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <View style={styles.centerBox}>
+          <ActivityIndicator />
+          <Text style={styles.boxText}>جاري تحميل الملاك...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (!canAccess) {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <View style={styles.centerBox}>
+          <Text style={styles.errorTitle}>غير مصرح</Text>
+          <Text style={styles.boxText}>تبويب الملاك متاح لحساب المدير فقط.</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -125,65 +161,21 @@ export default function OwnersScreen() {
 
           <View style={styles.headerTextBlock}>
             <Text style={styles.title}>الملاك</Text>
-            <Text style={styles.subtitle}>اضغط على بطاقة المالك لعرض تفاصيل الأملاك</Text>
+            <Text style={styles.subtitle}>اضغط على بطاقة المالك لعرض تفاصيل الأملاك والتحكم بعقاراته</Text>
           </View>
         </View>
 
         {showForm ? (
           <View style={styles.formCard}>
             <Text style={styles.formTitle}>بيانات المالك</Text>
+            <TextInput style={styles.input} placeholder="اسم المالك" value={name} onChangeText={setName} textAlign="right" />
+            <TextInput style={styles.input} placeholder="رقم الجوال" value={phone} onChangeText={setPhone} keyboardType="phone-pad" textAlign="right" />
+            <TextInput style={styles.input} placeholder="البريد الإلكتروني" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" textAlign="right" />
+            <TextInput style={styles.input} placeholder="رقم الهوية / السجل" value={nationalId} onChangeText={setNationalId} keyboardType="number-pad" textAlign="right" />
 
-            <TextInput
-              style={styles.input}
-              placeholder="اسم المالك"
-              value={name}
-              onChangeText={setName}
-              textAlign="right"
-            />
-
-            <TextInput
-              style={styles.input}
-              placeholder="رقم الجوال"
-              value={phone}
-              onChangeText={setPhone}
-              keyboardType="phone-pad"
-              textAlign="right"
-            />
-
-            <TextInput
-              style={styles.input}
-              placeholder="البريد الإلكتروني"
-              value={email}
-              onChangeText={setEmail}
-              keyboardType="email-address"
-              autoCapitalize="none"
-              textAlign="right"
-            />
-
-            <TextInput
-              style={styles.input}
-              placeholder="رقم الهوية / السجل"
-              value={nationalId}
-              onChangeText={setNationalId}
-              keyboardType="number-pad"
-              textAlign="right"
-            />
-
-            <TouchableOpacity
-              style={styles.saveButton}
-              onPress={saveOwner}
-              disabled={saving}
-              activeOpacity={0.85}
-            >
+            <TouchableOpacity style={styles.saveButton} onPress={saveOwner} disabled={saving} activeOpacity={0.85}>
               <Text style={styles.saveButtonText}>{saving ? "جاري الحفظ..." : "حفظ المالك"}</Text>
             </TouchableOpacity>
-          </View>
-        ) : null}
-
-        {loading ? (
-          <View style={styles.box}>
-            <ActivityIndicator />
-            <Text style={styles.boxText}>جاري تحميل الملاك...</Text>
           </View>
         ) : null}
 
@@ -197,7 +189,7 @@ export default function OwnersScreen() {
           </View>
         ) : null}
 
-        {!loading && !error && items.length === 0 ? (
+        {!error && items.length === 0 ? (
           <View style={styles.box}>
             <Text style={styles.emptyText}>لا يوجد ملاك حاليًا</Text>
           </View>
@@ -213,16 +205,7 @@ export default function OwnersScreen() {
             accessibilityLabel={`تفاصيل أملاك ${owner.name || "المالك"}`}
           >
             <View style={styles.cardTopRow}>
-              <InlineEditDeleteActions
-                resource="owners"
-                id={owner.id}
-                onChanged={load}
-                hideDetails
-                hideDelete
-                compact
-                iconOnly
-              />
-
+              <InlineEditDeleteActions resource="owners" id={owner.id} onChanged={load} hideDetails hideDelete compact iconOnly />
               <Text style={styles.badge}>مالك</Text>
             </View>
 
@@ -268,180 +251,37 @@ export default function OwnersScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: "#F7F6F4" },
   container: { padding: 12, paddingBottom: 40 },
-  headerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 12,
-    marginBottom: 14,
-  },
+  centerBox: { flex: 1, alignItems: "center", justifyContent: "center", padding: 20 },
+  headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 14 },
   headerTextBlock: { flex: 1, alignItems: "flex-end" },
-  title: {
-    fontSize: 30,
-    fontWeight: "900",
-    color: "#111827",
-    textAlign: "right",
-  },
-  subtitle: {
-    marginTop: 6,
-    fontSize: 14,
-    color: "#7A766F",
-    textAlign: "right",
-    fontWeight: "700",
-  },
-  addIconButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#111827",
-    shadowColor: "#000",
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 2,
-  },
+  title: { fontSize: 30, fontWeight: "900", color: "#111827", textAlign: "right" },
+  subtitle: { marginTop: 6, fontSize: 14, color: "#7A766F", textAlign: "right", fontWeight: "700" },
+  addIconButton: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center", backgroundColor: "#111827", shadowColor: "#000", shadowOpacity: 0.08, shadowRadius: 8, elevation: 2 },
   closeIconButton: { backgroundColor: "#7f1d1d" },
   addIconText: { color: "#ffffff", fontSize: 30, lineHeight: 34, fontWeight: "900" },
-  formCard: {
-    backgroundColor: "#ffffff",
-    borderRadius: 18,
-    padding: 12,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: "#EDECE9",
-  },
-  formTitle: {
-    fontSize: 16,
-    fontWeight: "900",
-    color: "#111827",
-    textAlign: "right",
-    marginBottom: 10,
-  },
-  input: {
-    backgroundColor: "#F7F6F4",
-    borderWidth: 1,
-    borderColor: "#DDDBD6",
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 10,
-    color: "#111827",
-  },
-  saveButton: {
-    backgroundColor: "#16a34a",
-    padding: 13,
-    borderRadius: 12,
-    alignItems: "center",
-  },
+  formCard: { backgroundColor: "#ffffff", borderRadius: 18, padding: 12, marginBottom: 10, borderWidth: 1, borderColor: "#EDECE9" },
+  formTitle: { fontSize: 16, fontWeight: "900", color: "#111827", textAlign: "right", marginBottom: 10 },
+  input: { backgroundColor: "#F7F6F4", borderWidth: 1, borderColor: "#DDDBD6", borderRadius: 12, padding: 12, marginBottom: 10, color: "#111827" },
+  saveButton: { backgroundColor: "#16a34a", padding: 13, borderRadius: 12, alignItems: "center" },
   saveButtonText: { color: "#fff", fontWeight: "900" },
-  box: {
-    backgroundColor: "#fff",
-    padding: 14,
-    borderRadius: 18,
-    alignItems: "center",
-    marginBottom: 8,
-  },
-  boxText: { marginTop: 8, color: "#5E5B55", fontWeight: "700" },
+  box: { backgroundColor: "#fff", padding: 14, borderRadius: 18, alignItems: "center", marginBottom: 8 },
+  boxText: { marginTop: 8, color: "#5E5B55", fontWeight: "700", textAlign: "center" },
   emptyText: { color: "#7A766F", fontWeight: "800" },
-  errorBox: {
-    backgroundColor: "#fee2e2",
-    padding: 12,
-    borderRadius: 18,
-    marginBottom: 9,
-  },
-  errorTitle: {
-    color: "#991b1b",
-    fontSize: 16,
-    fontWeight: "900",
-    textAlign: "right",
-  },
-  errorText: {
-    color: "#7f1d1d",
-    marginTop: 8,
-    textAlign: "right",
-  },
-  button: {
-    marginTop: 14,
-    backgroundColor: "#111827",
-    padding: 12,
-    borderRadius: 12,
-    alignItems: "center",
-  },
+  errorBox: { backgroundColor: "#fee2e2", padding: 12, borderRadius: 18, marginBottom: 9 },
+  errorTitle: { color: "#991b1b", fontSize: 16, fontWeight: "900", textAlign: "right" },
+  errorText: { color: "#7f1d1d", marginTop: 8, textAlign: "right" },
+  button: { marginTop: 14, backgroundColor: "#111827", padding: 12, borderRadius: 12, alignItems: "center" },
   buttonText: { color: "#fff", fontWeight: "900" },
-  card: {
-    backgroundColor: "#fff",
-    borderRadius: 22,
-    padding: 12,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: "#EDECE9",
-    shadowColor: "#000",
-    shadowOpacity: 0.04,
-    shadowRadius: 10,
-    elevation: 1,
-  },
-  cardTopRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 8,
-  },
-  badge: {
-    backgroundColor: "#e0f2fe",
-    color: "#075985",
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 999,
-    overflow: "hidden",
-    fontWeight: "900",
-    fontSize: 12,
-  },
-  cardTitle: {
-    fontSize: 18,
-    fontWeight: "900",
-    color: "#111827",
-    textAlign: "right",
-    marginBottom: 10,
-  },
-  metricsRow: {
-    flexDirection: "row-reverse",
-    gap: 7,
-    marginBottom: 10,
-  },
-  metricPill: {
-    flex: 1,
-    backgroundColor: "#F7F6F4",
-    borderWidth: 1,
-    borderColor: "#EDECE9",
-    borderRadius: 16,
-    paddingVertical: 9,
-    alignItems: "center",
-  },
+  card: { backgroundColor: "#fff", borderRadius: 22, padding: 12, marginBottom: 10, borderWidth: 1, borderColor: "#EDECE9", shadowColor: "#000", shadowOpacity: 0.04, shadowRadius: 10, elevation: 1 },
+  cardTopRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 },
+  badge: { backgroundColor: "#e0f2fe", color: "#075985", paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, overflow: "hidden", fontWeight: "900", fontSize: 12 },
+  cardTitle: { fontSize: 18, fontWeight: "900", color: "#111827", textAlign: "right", marginBottom: 10 },
+  metricsRow: { flexDirection: "row-reverse", gap: 7, marginBottom: 10 },
+  metricPill: { flex: 1, backgroundColor: "#F7F6F4", borderWidth: 1, borderColor: "#EDECE9", borderRadius: 16, paddingVertical: 9, alignItems: "center" },
   metricValue: { color: "#111827", fontWeight: "900", fontSize: 18 },
   metricLabel: { color: "#6b7280", fontWeight: "800", fontSize: 12, marginTop: 2 },
-  infoBox: {
-    backgroundColor: "#FAFAF9",
-    borderRadius: 16,
-    padding: 10,
-    gap: 4,
-  },
-  detail: {
-    color: "#5E5B55",
-    textAlign: "right",
-    fontWeight: "700",
-    lineHeight: 21,
-  },
-  uploadContractButton: {
-    marginTop: 10,
-    backgroundColor: "#ecfdf5",
-    borderWidth: 1,
-    borderColor: "#99f6e4",
-    padding: 10,
-    borderRadius: 14,
-    alignItems: "center",
-  },
-  uploadContractButtonText: {
-    color: "#065f46",
-    fontWeight: "900",
-  },
+  infoBox: { backgroundColor: "#FAFAF9", borderRadius: 16, padding: 10, gap: 4 },
+  detail: { color: "#5E5B55", textAlign: "right", fontWeight: "700", lineHeight: 21 },
+  uploadContractButton: { marginTop: 10, backgroundColor: "#ecfdf5", borderWidth: 1, borderColor: "#99f6e4", padding: 10, borderRadius: 14, alignItems: "center" },
+  uploadContractButtonText: { color: "#065f46", fontWeight: "900" },
 });
