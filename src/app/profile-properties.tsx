@@ -51,8 +51,12 @@ function directOwnerId(account: AccountPayload | null, fallback: AccountPayload 
 }
 
 function onlyDirectOwnerProperties(list: PropertyItem[], ownerId: string) {
-  if (!ownerId) return [];
+  if (!ownerId) return list;
   return list.filter((property) => String(property.owner_id || property.owner?.id || "") === ownerId);
+}
+
+function responseList(payload: any) {
+  return Array.isArray(payload?.data) ? payload.data : Array.isArray(payload) ? payload : [];
 }
 
 export default function ProfilePropertiesScreen() {
@@ -73,16 +77,14 @@ export default function ProfilePropertiesScreen() {
       setAccountOwnerId(ownerId);
 
       const profileResult = await apiGet("/profile/properties").catch(() => []);
-      let list = Array.isArray(profileResult?.data) ? profileResult.data : Array.isArray(profileResult) ? profileResult : [];
-      list = onlyDirectOwnerProperties(list as PropertyItem[], ownerId);
+      let list = responseList(profileResult) as PropertyItem[];
 
       if (list.length === 0 && ownerId) {
         const fallbackResult = await apiGet("/my/properties").catch(() => []);
-        const fallbackList = Array.isArray(fallbackResult?.data) ? fallbackResult.data : Array.isArray(fallbackResult) ? fallbackResult : [];
-        list = onlyDirectOwnerProperties(fallbackList as PropertyItem[], ownerId);
+        list = onlyDirectOwnerProperties(responseList(fallbackResult) as PropertyItem[], ownerId);
       }
 
-      setProperties(list as PropertyItem[]);
+      setProperties(list);
     } catch (e) {
       Alert.alert("تعذر التحميل", e instanceof Error ? e.message : "حدث خطأ غير متوقع");
     } finally {
