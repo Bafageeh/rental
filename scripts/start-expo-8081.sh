@@ -15,17 +15,30 @@ mkdir -p "$CACHE_DIR" "$TMP_DIR"
 touch "$LOG_FILE"
 : > "$LOG_FILE"
 
-stop_port() {
+stop_known_pid() {
+  if [ -f "$PID_FILE" ]; then
+    OLD_PID="$(cat "$PID_FILE" 2>/dev/null || true)"
+    if [ -n "${OLD_PID:-}" ] && kill -0 "$OLD_PID" 2>/dev/null; then
+      kill "$OLD_PID" 2>/dev/null || true
+      sleep 1
+      kill -9 "$OLD_PID" 2>/dev/null || true
+    fi
+  fi
+}
+
+stop_port_if_allowed() {
   if command -v lsof >/dev/null 2>&1; then
-    lsof -ti:"$PORT" | xargs -r kill -9 || true
+    PIDS="$(lsof -tiTCP:"$PORT" -sTCP:LISTEN 2>/dev/null || true)"
+    if [ -n "$PIDS" ]; then
+      echo "$PIDS" | while read -r PID; do
+        [ -z "$PID" ] && continue
+        [ "$PID" = "$$" ] && continue
+        kill "$PID" 2>/dev/null || true
+        sleep 1
+        kill -9 "$PID" 2>/dev/null || true
+      done
+    fi
   fi
-  if command -v fuser >/dev/null 2>&1; then
-    fuser -k "$PORT/tcp" || true
-  fi
-  pkill -f "expo.*--port $PORT" || true
-  pkill -f "expo.*$PORT" || true
-  pkill -f "metro.*$PORT" || true
-  pkill -f "node.*$PORT" || true
 }
 
 is_port_listening() {
@@ -38,8 +51,15 @@ is_port_listening() {
   return 1
 }
 
-stop_port
+stop_known_pid
+stop_port_if_allowed
 sleep 2
+
+if is_port_listening; then
+  echo "Port $PORT is still busy by a process this user cannot stop. Run as root: lsof -ti:8081 | xargs -r kill -9"
+  exit 1
+fi
+
 rm -rf .expo "$CACHE_DIR"/metro-* "$CACHE_DIR"/haste-map-* || true
 
 # Fully detached background run: does not reserve or block the SSH shell.
