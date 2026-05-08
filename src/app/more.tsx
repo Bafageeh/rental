@@ -17,26 +17,26 @@ import {
 export default function MoreScreen() {
   const { loggedIn } = useAuth();
 
-  function openProfile() {
+  function requireLogin(path: string, title: string) {
     if (!loggedIn) {
-      Alert.alert('تسجيل الدخول مطلوب', 'سجّل دخولك للوصول إلى البروفايل', [
+      Alert.alert('تسجيل الدخول مطلوب', `سجّل دخولك للوصول إلى ${title}`, [
         { text: 'إلغاء', style: 'cancel' },
         { text: 'دخول', onPress: () => router.push('/login' as any) },
       ]);
       return;
     }
 
-    router.push('/profile' as any);
+    router.push(path as any);
   }
 
   return (
     <SafeAreaView style={styles.safe} edges={['bottom']}>
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
         <ScreenHero
-          eyebrow="الحساب"
-          title="بروفايل الحساب"
-          subtitle="كل الروابط والأزرار الخاصة بالحساب الحالي داخل شاشة بروفايل واحدة."
-          icon="person-circle-outline"
+          eyebrow="الحساب والخدمات"
+          title="المزيد"
+          subtitle="البروفايل والتقارير والخدمات الإضافية في مكان واحد."
+          icon="grid-outline"
           tone="primary"
         />
 
@@ -45,7 +45,16 @@ export default function MoreScreen() {
             icon="person-circle-outline"
             title="بروفايل"
             subtitle="تغيير الرقم السري، عقاراتي، وروابط الحساب حسب الصلاحية."
-            onPress={openProfile}
+            onPress={() => requireLogin('/profile', 'البروفايل')}
+          />
+        </View>
+
+        <View style={styles.card}>
+          <ActionTile
+            icon="stats-chart-outline"
+            title="التقارير"
+            subtitle="التقرير الشهري، كشف الإيجار، وتقارير أداء المحفظة العقارية."
+            onPress={() => requireLogin('/statistics', 'التقارير')}
           />
         </View>
 
