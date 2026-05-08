@@ -55,6 +55,35 @@ Route::get('/profile/properties', function (Request $request) {
         });
 
         $ownerIds = $ownerIds->merge($owners->pluck('id'));
+
+        $role = method_exists($user, 'effectiveRole') ? $user->effectiveRole() : (string) ($user->role ?? '');
+        $isAdmin = in_array($role, ['admin', 'manager', 'super_admin'], true);
+
+        if ($isAdmin && $ownerIds->isEmpty()) {
+            $selfOwners = DB::table('owners')->where(function ($ownerQuery) {
+                $hasCondition = false;
+
+                if (Schema::hasColumn('owners', 'type')) {
+                    $ownerQuery->orWhere('type', 'self');
+                    $hasCondition = true;
+                }
+
+                if (Schema::hasColumn('owners', 'name')) {
+                    $ownerQuery
+                        ->orWhere('name', 'like', '%احمد%')
+                        ->orWhere('name', 'like', '%أحمد%')
+                        ->orWhere('name', 'like', '%املاكي%')
+                        ->orWhere('name', 'like', '%أملاكي%');
+                    $hasCondition = true;
+                }
+
+                if (!$hasCondition) {
+                    $ownerQuery->whereRaw('1 = 0');
+                }
+            });
+
+            $ownerIds = $ownerIds->merge($selfOwners->pluck('id'));
+        }
     }
 
     $ownerIds = $ownerIds
