@@ -52,25 +52,9 @@ jobs:
 
           node -e "require.resolve('expo-router/entry'); require.resolve('@babel/runtime/helpers/slicedToArray'); console.log('mobile dependencies ok')"
 
-          pkill -f "expo start" || true
-          pkill -f "metro" || true
-          pkill -f "node.*8081" || true
-          if command -v fuser >/dev/null 2>&1; then fuser -k 8081/tcp || true; fi
-
-          rm -rf .expo /home/pmsa/apps/.cache/metro-* /home/pmsa/apps/.cache/haste-map-* || true
-
-          nohup env \
-            BROWSER=none \
-            EXPO_NO_TELEMETRY=1 \
-            EXPO_PUBLIC_API_BASE_URL=https://my.pm.sa/api \
-            REACT_NATIVE_PACKAGER_HOSTNAME=my.pm.sa \
-            XDG_CACHE_HOME=/home/pmsa/apps/.cache \
-            TMPDIR=/home/pmsa/apps/.tmp \
-            TMP=/home/pmsa/apps/.tmp \
-            TEMP=/home/pmsa/apps/.tmp \
-            npx expo start --clear --go --host lan --port 8081 \
-            </dev/null > /home/pmsa/apps/my-rentals-mobile/expo.log 2>&1 &
+          chmod +x scripts/start-expo-8081.sh
+          bash scripts/start-expo-8081.sh
 
           sleep 8
-          tail -n 120 /home/pmsa/apps/my-rentals-mobile/expo.log || true
+          tail -n 120 /home/pmsa/apps/my-rentals-expo.log || true
           REMOTE
