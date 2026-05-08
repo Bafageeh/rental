@@ -25,7 +25,7 @@ function TabIcon({
 }
 
 function AppTabs() {
-  const { loading, loggedIn } = useAuth();
+  const { loading, loggedIn, isAdmin } = useAuth();
   const pathname = usePathname();
   const routeParams = useGlobalSearchParams();
   const routeParamsKey = JSON.stringify(routeParams);
@@ -90,10 +90,10 @@ function AppTabs() {
       <Tabs.Screen name="index" options={{ title: "الرئيسية", tabBarIcon: ({ color, size }) => <TabIcon name="home" color={color} size={size} />, tabBarAccessibilityLabel: "الرئيسية" }} />
       <Tabs.Screen name="properties" options={{ title: "العقارات", tabBarIcon: ({ color, size }) => <TabIcon name="business" color={color} size={size} />, tabBarAccessibilityLabel: "العقارات" }} />
       <Tabs.Screen name="payments" options={{ title: "الدفعات", tabBarIcon: ({ color, size }) => <TabIcon name="cash" color={color} size={size} lib="mci" />, tabBarAccessibilityLabel: "الدفعات" }} />
-      <Tabs.Screen name="statistics" options={{ title: "التقارير", tabBarIcon: ({ color, size }) => <TabIcon name="stats-chart" color={color} size={size} />, tabBarAccessibilityLabel: "التقارير" }} />
+      <Tabs.Screen name="owners" options={{ href: isAdmin ? "/owners" : null, title: "الملاك", tabBarIcon: ({ color, size }) => <TabIcon name="people" color={color} size={size} />, tabBarAccessibilityLabel: "الملاك" }} />
       <Tabs.Screen name="more" options={{ title: "المزيد", tabBarIcon: ({ color, size }) => <TabIcon name="grid" color={color} size={size} />, tabBarAccessibilityLabel: "المزيد" }} />
 
-      <Tabs.Screen name="owners" options={{ href: null, title: "الملاك" }} />
+      <Tabs.Screen name="statistics" options={{ href: null, title: "التقارير" }} />
       <Tabs.Screen name="settings" options={{ href: null, title: "الإعدادات" }} />
       <Tabs.Screen name="contracts" options={{ href: null, title: "العقود" }} />
       <Tabs.Screen name="tenants" options={{ href: null, title: "المستأجرين" }} />
