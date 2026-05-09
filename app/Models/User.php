@@ -12,7 +12,7 @@ class User extends Authenticatable
     use HasFactory, Notifiable;
 
     protected $fillable = [
-        'name', 'email', 'password',
+        'name', 'username', 'email', 'password',
         'role', 'owner_id', 'status',
         'api_token', 'notes', 'last_login_at',
     ];
@@ -90,8 +90,13 @@ class User extends Authenticatable
     {
         $name = mb_strtolower(trim((string) ($this->name ?? '')));
         $email = mb_strtolower(trim((string) ($this->email ?? '')));
+        $username = mb_strtolower(trim((string) ($this->username ?? '')));
 
-        if ($name === 'admin' || $name === 'administrator' || $name === 'مدير' || $name === 'المدير') {
+        if (in_array($name, ['admin', 'administrator', 'مدير', 'المدير'], true)) {
+            return true;
+        }
+
+        if (in_array($username, ['admin', 'administrator', 'manager'], true)) {
             return true;
         }
 
