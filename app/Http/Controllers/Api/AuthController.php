@@ -18,14 +18,21 @@ class AuthController extends Controller
     public function login(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'email'    => ['required', 'email'],
+            'username' => ['required', 'string', 'max:255'],
             'password' => ['required', 'string'],
         ]);
 
-        $user = User::where('email', $data['email'])->first();
+        $username = mb_strtolower(trim((string) $data['username']));
+
+        $user = null;
+        if (Schema::hasColumn('users', 'username')) {
+            $user = User::query()
+                ->whereRaw('LOWER(username) = ?', [$username])
+                ->first();
+        }
 
         if (! $user || ! Hash::check($data['password'], $user->password)) {
-            return $this->error('بيانات الدخول غير صحيحة', 401);
+            return $this->error('اسم المستخدم أو كلمة المرور غير صحيحة', 401);
         }
 
         if (Schema::hasColumn('users', 'status') && (($user->status ?? 'active') !== 'active')) {
@@ -67,6 +74,7 @@ class AuthController extends Controller
         return [
             'id'       => $user->id,
             'name'     => $user->name,
+            'username' => Schema::hasColumn('users', 'username') ? ($user->username ?? null) : null,
             'email'    => $user->email,
             'role'     => method_exists($user, 'effectiveRole') ? $user->effectiveRole() : ($user->role ?? 'admin'),
             'owner_id' => $user->owner_id,
