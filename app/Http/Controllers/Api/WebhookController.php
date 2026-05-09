@@ -3,12 +3,14 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Contract;
 use App\Models\Tenant;
 use App\Models\WebhookEvent;
 use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
@@ -58,6 +60,11 @@ class WebhookController extends Controller
         } else {
             foreach ($events as $event) {
                 $tenant = $this->findTenantByPhone($event['source'] ?? null);
+                $replyText = null;
+
+                if (($event['event_type'] ?? null) === 'message' && ($event['direction'] ?? null) === 'incoming') {
+                    $replyText = $this->buildInquiryReply($tenant, $event);
+                }
 
                 WebhookEvent::updateOrCreate(
                     [
@@ -71,10 +78,16 @@ class WebhookController extends Controller
                         'source' => $event['source'] ?? null,
                         'destination' => $event['destination'] ?? null,
                         'status' => $event['status'] ?? null,
-                        'payload' => $event['payload'] ?? $payload,
+                        'payload' => array_merge($event['payload'] ?? $payload, [
+                            'inquiry_reply' => $replyText,
+                        ]),
                         'processed_at' => now(),
                     ]
                 );
+
+                if ($replyText && config('services.whatsapp.auto_reply_enabled', true)) {
+                    $this->sendWhatsAppText((string) ($event['source'] ?? ''), $replyText);
+                }
             }
         }
 
@@ -180,6 +193,265 @@ class WebhookController extends Controller
         }
 
         return $events;
+    }
+
+    private function buildInquiryReply(?Tenant $tenant, array $event): ?string
+    {
+        $incomingText = $this->extractIncomingText($event);
+
+        if (!$incomingText) {
+            return null;
+        }
+
+        if (!$tenant) {
+            return "مرحبًا، لم أجد عقدًا مرتبطًا برقم جوالك.\nللاستفسار يرجى التواصل مع إدارة العقار.";
+        }
+
+        $contracts = Contract::with([
+                'tenant',
+                'unit.property.owner',
+                'payments' => fn ($q) => $q->orderBy('due_date'),
+            ])
+            ->where('tenant_id', $tenant->id)
+            ->orderByRaw("CASE WHEN status IN ('active', 'نشط') THEN 0 ELSE 1 END")
+            ->orderByDesc('id')
+            ->get();
+
+        if ($contracts->isEmpty()) {
+            return "مرحبًا {$tenant->name}، رقمك مسجل لدينا لكن لا يوجد عقد مرتبط به حاليًا.";
+        }
+
+        $contracts = $this->filterContractsByQuestion($contracts, $incomingText);
+        $intent = $this->detectInquiryIntent($incomingText);
+
+        if ($contracts->count() > 1 && !$this->questionLooksGeneral($incomingText)) {
+            $lines = [
+                "مرحبًا {$tenant->name}، لديك أكثر من عقد. اذكر رقم العقد أو اسم العقار لأجيبك بدقة.",
+                "العقود المرتبطة برقمك:",
+            ];
+
+            foreach ($contracts->take(5) as $contract) {
+                $lines[] = '- ' . $this->contractTitle($contract);
+            }
+
+            return implode("\n", $lines);
+        }
+
+        if ($intent === 'payments') {
+            return $this->paymentInquiryReply($tenant, $contracts);
+        }
+
+        if ($intent === 'contract') {
+            return $this->contractInquiryReply($tenant, $contracts);
+        }
+
+        if ($intent === 'property') {
+            return $this->propertyInquiryReply($tenant, $contracts);
+        }
+
+        return $this->generalInquiryReply($tenant, $contracts);
+    }
+
+    private function extractIncomingText(array $event): string
+    {
+        $message = Arr::get($event, 'payload.message', []);
+        $type = Arr::get($message, 'type');
+
+        return trim((string) match ($type) {
+            'text' => Arr::get($message, 'text.body'),
+            'button' => Arr::get($message, 'button.text'),
+            'interactive' => Arr::get($message, 'interactive.button_reply.title')
+                ?: Arr::get($message, 'interactive.list_reply.title'),
+            default => '',
+        });
+    }
+
+    private function detectInquiryIntent(string $text): string
+    {
+        $normalized = mb_strtolower($text);
+
+        if (Str::contains($normalized, ['دفع', 'دفعة', 'دفعات', 'قسط', 'اقساط', 'أقساط', 'متأخر', 'متاخر', 'سداد', 'مستحق', 'المبلغ', 'كم علي'])) {
+            return 'payments';
+        }
+
+        if (Str::contains($normalized, ['عقد', 'العقد', 'بداية', 'نهاية', 'ينتهي', 'انتهاء', 'مدة', 'رقم العقد', 'ايجار', 'إيجار'])) {
+            return 'contract';
+        }
+
+        if (Str::contains($normalized, ['عقار', 'الشقة', 'شقة', 'وحدة', 'الدور', 'موقع', 'عنوان', 'عمارة', 'فيلا'])) {
+            return 'property';
+        }
+
+        return 'general';
+    }
+
+    private function filterContractsByQuestion($contracts, string $text)
+    {
+        $digits = $this->normalizePhone($text);
+        $matches = $contracts->filter(function (Contract $contract) use ($text, $digits) {
+            $haystack = collect([
+                $contract->contract_number,
+                $contract->government_contract_number,
+                $contract->ejar_record_number,
+                $contract->unit?->unit_number,
+                $contract->unit?->property?->name,
+            ])->filter()->implode(' ');
+
+            if ($digits !== '') {
+                foreach ([$contract->contract_number, $contract->government_contract_number, $contract->ejar_record_number, $contract->unit?->unit_number] as $value) {
+                    if ($value && Str::contains($this->normalizePhone((string) $value), $digits)) {
+                        return true;
+                    }
+                }
+            }
+
+            return $haystack !== '' && Str::contains(mb_strtolower($text), mb_strtolower($haystack));
+        });
+
+        return $matches->isNotEmpty() ? $matches->values() : $contracts;
+    }
+
+    private function questionLooksGeneral(string $text): bool
+    {
+        return Str::contains(mb_strtolower($text), ['كل', 'جميع', 'ملخص', 'عقودي', 'عقود']);
+    }
+
+    private function paymentInquiryReply(Tenant $tenant, $contracts): string
+    {
+        $lines = ["مرحبًا {$tenant->name}، هذه معلومات الدفعات لعقودك المرتبطة برقم جوالك:"];
+
+        foreach ($contracts->take(5) as $contract) {
+            $payments = $contract->payments;
+            $unpaid = $payments->filter(fn ($p) => !in_array($p->status, ['paid', 'مدفوع', 'مسدد'], true));
+            $overdue = $unpaid->filter(function ($p) {
+                return $p->due_date && now()->startOfDay()->gt(\Carbon\Carbon::parse($p->due_date)->startOfDay());
+            });
+            $next = $unpaid->sortBy('due_date')->first();
+
+            $lines[] = '';
+            $lines[] = $this->contractTitle($contract);
+            $lines[] = 'إجمالي غير المسدد: ' . $this->money($unpaid->sum('amount'));
+            $lines[] = 'المتأخر: ' . $this->money($overdue->sum('amount'));
+
+            if ($next) {
+                $lines[] = 'أقرب دفعة: ' . $this->money($next->amount) . ' بتاريخ ' . ($next->due_date ?: '-');
+            } else {
+                $lines[] = 'لا توجد دفعات غير مسددة مسجلة.';
+            }
+        }
+
+        return implode("\n", $lines);
+    }
+
+    private function contractInquiryReply(Tenant $tenant, $contracts): string
+    {
+        $lines = ["مرحبًا {$tenant->name}، هذه معلومات العقد المرتبط برقم جوالك:"];
+
+        foreach ($contracts->take(5) as $contract) {
+            $lines[] = '';
+            $lines[] = $this->contractTitle($contract);
+            $lines[] = 'الحالة: ' . ($contract->status ?: '-');
+            $lines[] = 'بداية العقد: ' . ($contract->start_date ?: '-');
+            $lines[] = 'نهاية العقد: ' . ($contract->end_date ?: '-');
+            $lines[] = 'قيمة الإيجار: ' . $this->money($contract->rent_amount);
+            $lines[] = 'إجمالي قيمة العقد: ' . $this->money($contract->total_contract_value ?: $contract->rent_amount);
+        }
+
+        return implode("\n", $lines);
+    }
+
+    private function propertyInquiryReply(Tenant $tenant, $contracts): string
+    {
+        $lines = ["مرحبًا {$tenant->name}، هذه معلومات العقار/الوحدة لعقدك:"];
+
+        foreach ($contracts->take(5) as $contract) {
+            $unit = $contract->unit;
+            $property = $unit?->property;
+
+            $lines[] = '';
+            $lines[] = $this->contractTitle($contract);
+            $lines[] = 'العقار: ' . ($property?->name ?: '-');
+            $lines[] = 'الوحدة: ' . ($unit?->unit_number ?: '-');
+            $lines[] = 'الدور: ' . ($unit?->floor ?? '-');
+            $lines[] = 'المدينة/الحي: ' . trim(($property?->city ?: '') . ' ' . ($property?->district ?: '')) ?: '-';
+            $lines[] = 'العنوان: ' . ($property?->address ?: $unit?->address ?: '-');
+        }
+
+        return implode("\n", $lines);
+    }
+
+    private function generalInquiryReply(Tenant $tenant, $contracts): string
+    {
+        $lines = ["مرحبًا {$tenant->name}، أستطيع خدمتك في معلومات عقدك فقط حسب رقم جوالك."];
+        $lines[] = 'يمكنك السؤال مثل: كم المبلغ المستحق؟ متى تنتهي الدفعة؟ متى ينتهي العقد؟ ما بيانات الوحدة؟';
+        $lines[] = '';
+        $lines[] = 'ملخص عقودك:';
+
+        foreach ($contracts->take(5) as $contract) {
+            $unpaidTotal = $contract->payments
+                ->filter(fn ($p) => !in_array($p->status, ['paid', 'مدفوع', 'مسدد'], true))
+                ->sum('amount');
+            $lines[] = '- ' . $this->contractTitle($contract) . ' | غير المسدد: ' . $this->money($unpaidTotal);
+        }
+
+        return implode("\n", $lines);
+    }
+
+    private function contractTitle(Contract $contract): string
+    {
+        $number = $contract->government_contract_number ?: $contract->contract_number ?: ('#' . $contract->id);
+        $property = $contract->unit?->property?->name;
+        $unit = $contract->unit?->unit_number;
+
+        return 'العقد ' . $number
+            . ($property ? ' - ' . $property : '')
+            . ($unit ? ' - وحدة ' . $unit : '');
+    }
+
+    private function money($amount): string
+    {
+        return number_format((float) $amount, 2) . ' ريال';
+    }
+
+    private function sendWhatsAppText(string $to, string $message): void
+    {
+        $token = (string) config('services.whatsapp.access_token');
+        $phoneNumberId = (string) config('services.whatsapp.phone_number_id');
+        $version = (string) config('services.whatsapp.graph_version', 'v20.0');
+        $to = $this->normalizePhone($to);
+
+        if ($token === '' || $phoneNumberId === '' || $to === '') {
+            Log::info('WhatsApp inquiry reply prepared but not sent because outbound config is missing', [
+                'to' => $to,
+                'message' => $message,
+            ]);
+            return;
+        }
+
+        try {
+            $response = Http::withToken($token)->post("https://graph.facebook.com/{$version}/{$phoneNumberId}/messages", [
+                'messaging_product' => 'whatsapp',
+                'to' => $to,
+                'type' => 'text',
+                'text' => [
+                    'preview_url' => false,
+                    'body' => $message,
+                ],
+            ]);
+
+            if (!$response->successful()) {
+                Log::warning('WhatsApp inquiry reply failed', [
+                    'to' => $to,
+                    'status' => $response->status(),
+                    'body' => $response->body(),
+                ]);
+            }
+        } catch (\Throwable $e) {
+            Log::error('WhatsApp inquiry reply exception', [
+                'to' => $to,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     private function findTenantByPhone(?string $phone): ?Tenant
