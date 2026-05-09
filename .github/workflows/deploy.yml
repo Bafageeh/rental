@@ -18,10 +18,10 @@ jobs:
     steps:
       - name: Validate deployment secrets
         run: |
-          test -n "${{ secrets.DEPLOY_HOST }}" || (echo "Missing DEPLOY_HOST" && exit 1)
-          test -n "${{ secrets.DEPLOY_USER }}" || (echo "Missing DEPLOY_USER" && exit 1)
-          test -n "${{ secrets.DEPLOY_PORT }}" || (echo "Missing DEPLOY_PORT" && exit 1)
-          test -n "${{ secrets.DEPLOY_SSH_KEY }}" || (echo "Missing DEPLOY_SSH_KEY" && exit 1)
+          test -n "${{ secrets.DEPLOY_HOST }}" || exit 1
+          test -n "${{ secrets.DEPLOY_USER }}" || exit 1
+          test -n "${{ secrets.DEPLOY_PORT }}" || exit 1
+          test -n "${{ secrets.DEPLOY_SSH_KEY }}" || exit 1
 
       - name: Deploy over SSH
         shell: bash
@@ -33,28 +33,16 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
 
-          ssh -i ~/.ssh/deploy_key \
-            -p "${{ secrets.DEPLOY_PORT }}" \
-            -o IdentitiesOnly=yes \
-            -o StrictHostKeyChecking=yes \
-            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" 'bash -s' <<'REMOTE'
+          ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" 'bash -s' <<'REMOTE'
           set -e
-          cd /home/pmsa/apps/my-rentals-mobile
-
+          cd /home/pmsa/apps/rental/my-rentals-mobile
           git fetch origin main
           git reset --hard origin/main
-
           mkdir -p /home/pmsa/apps/.cache /home/pmsa/apps/.tmp
-
-          # لا نحذف node_modules هنا حتى لا تتكرر مشكلة فقدان حزم Expo.
-          # npm install يضيف أي dependency جديدة ويحافظ على بيئة التشغيل المستقرة.
           npm install --no-audit --no-fund
-
           node -e "require.resolve('expo-router/entry'); require.resolve('@babel/runtime/helpers/slicedToArray'); console.log('mobile dependencies ok')"
-
           chmod +x scripts/start-expo-8081.sh
           bash scripts/start-expo-8081.sh
-
           sleep 8
           tail -n 120 /home/pmsa/apps/my-rentals-expo.log || true
           REMOTE
