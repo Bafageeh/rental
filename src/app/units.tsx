@@ -19,6 +19,7 @@ import { apiGetScoped, apiPostAny } from "../lib/api";
 type OptionRecord = {
   id: number;
   label: string;
+  title?: string | null;
   owner_id?: number | string | null;
   property_id?: number | string | null;
   unit_scope?: string | null;
@@ -26,12 +27,25 @@ type OptionRecord = {
   status?: string | null;
   floor?: string | number | null;
   type?: string | null;
+  property_type?: string | null;
   [key: string]: unknown;
+};
+
+type UnitGroup = {
+  propertyKey: string;
+  propertyLabel: string;
+  propertyTypeLabel: string;
+  isDirectOwnerGroup: boolean;
+  floors: {
+    floorKey: string;
+    floorLabel: string;
+    units: OptionRecord[];
+  }[];
 };
 
 const unitScopeOptions: DropdownOption[] = [
   { id: "owner", label: "وحدة خاصة بالمالك" },
-  { id: "property", label: "وحدة تحت عقار / عمارة" },
+  { id: "property", label: "وحدة تحت عقار / عمارة / فيلا" },
 ];
 
 const unitTypeOptions: DropdownOption[] = [
@@ -65,6 +79,48 @@ function errorMessage(e: unknown) {
 function firstParam(value: string | string[] | undefined): string {
   if (Array.isArray(value)) return value[0] || "";
   return value || "";
+}
+
+function normalizeText(value: unknown) {
+  return String(value ?? "").trim();
+}
+
+function propertyTypeLabel(type: unknown) {
+  const normalized = normalizeText(type).toLowerCase();
+
+  if (["building", "apartment_building", "عمارة", "بناية"].includes(normalized)) return "عمارة";
+  if (["villa", "فيلا"].includes(normalized)) return "فيلا";
+  if (["apartment", "flat", "شقة"].includes(normalized)) return "شقة مستقلة";
+  if (["land", "أرض", "ارض"].includes(normalized)) return "أرض";
+  if (!normalized) return "عقار";
+
+  return String(type);
+}
+
+function floorSortValue(value: unknown) {
+  const text = normalizeText(value);
+  if (!text) return 999999;
+
+  if (["ground", "g", "أرضي", "ارضي", "الدور الأرضي", "الدور الارضي"].includes(text.toLowerCase())) return 0;
+  if (["basement", "b", "قبو", "بدروم"].includes(text.toLowerCase())) return -1;
+
+  const numeric = Number(text.replace(/[^0-9.-]/g, ""));
+  return Number.isFinite(numeric) ? numeric : 999998;
+}
+
+function floorDisplayLabel(value: unknown) {
+  const text = normalizeText(value);
+  if (!text) return "بدون دور محدد";
+
+  if (["ground", "g"].includes(text.toLowerCase())) return "الدور الأرضي";
+  if (["basement", "b"].includes(text.toLowerCase())) return "القبو";
+  if (text.includes("دور") || text.includes("الدور")) return text;
+
+  return `الدور ${text}`;
+}
+
+function unitSortText(unit: OptionRecord) {
+  return normalizeText(unit.title || unit.label || unit.id).toLowerCase();
 }
 
 export default function UnitsScreen() {
@@ -148,10 +204,22 @@ export default function UnitsScreen() {
   }, [owners, ownerIdParam, scopedOwnerName]);
 
   const propertyOptions = useMemo(() => {
-    const options = properties.map((property) => ({ id: property.id, label: property.label, owner_id: property.owner_id }));
+    const options = properties.map((property) => ({
+      id: property.id,
+      label: property.label,
+      title: property.title,
+      owner_id: property.owner_id,
+      property_type: property.property_type,
+    }));
 
     if (propertyIdParam && !options.some((property) => String(property.id) === String(propertyIdParam))) {
-      options.unshift({ id: Number(propertyIdParam), label: scopedPropertyName || `عقار #${propertyIdParam}`, owner_id: ownerIdParam || null });
+      options.unshift({
+        id: Number(propertyIdParam),
+        label: scopedPropertyName || `عقار #${propertyIdParam}`,
+        title: scopedPropertyName || `عقار #${propertyIdParam}`,
+        owner_id: ownerIdParam || null,
+        property_type: null,
+      });
     }
 
     return options;
@@ -162,7 +230,7 @@ export default function UnitsScreen() {
 
     return propertyOptions
       .filter((property) => String(property.owner_id || "") === String(form.owner_id) || String(property.id) === String(propertyIdParam))
-      .map((property) => ({ id: property.id, label: property.label }));
+      .map((property) => ({ id: property.id, label: `${propertyTypeLabel(property.property_type)} - ${property.label}` }));
   }, [propertyOptions, form.owner_id, propertyIdParam]);
 
   function setField(key: keyof typeof form, value: string) {
@@ -202,7 +270,12 @@ export default function UnitsScreen() {
     }
 
     if (form.unit_scope === "property" && !form.property_id) {
-      Alert.alert("تنبيه", "اختر العقار/العمارة التابعة لهذا المالك");
+      Alert.alert("تنبيه", "اختر العقار/العمارة/الفيلا التابعة لهذا المالك");
+      return;
+    }
+
+    if (form.unit_scope === "property" && !form.floor.trim()) {
+      Alert.alert("تنبيه", "رقم الدور مطلوب لتصنيف الوحدة تحت العقار");
       return;
     }
 
@@ -219,7 +292,7 @@ export default function UnitsScreen() {
         property_id: form.unit_scope === "owner" ? "" : form.property_id,
       });
 
-      Alert.alert("تم", form.unit_scope === "owner" ? "تم إنشاء وحدة خاصة بالمالك" : "تم إنشاء وحدة تحت العقار");
+      Alert.alert("تم", form.unit_scope === "owner" ? "تم إنشاء وحدة خاصة بالمالك" : "تم إنشاء وحدة تحت العقار والدور المحدد");
       resetForm();
       setShowCreate(false);
       await loadData();
@@ -236,18 +309,73 @@ export default function UnitsScreen() {
     return property?.owner_id;
   }
 
+  function propertyForUnit(unit: OptionRecord) {
+    return propertyOptions.find((item) => String(item.id) === String(unit.property_id));
+  }
+
   const visibleUnits = useMemo(() => {
     if (propertyIdParam) return units.filter((unit) => String(unit.property_id || "") === String(propertyIdParam));
     if (!ownerIdParam) return units;
     return units.filter((unit) => String(ownerIdForUnit(unit) || "") === String(ownerIdParam));
   }, [units, propertyOptions, ownerIdParam, propertyIdParam]);
 
+  const groupedUnits = useMemo<UnitGroup[]>(() => {
+    const propertyMap = new Map<string, UnitGroup>();
+
+    visibleUnits.forEach((unit) => {
+      const property = propertyForUnit(unit);
+      const isPropertyUnit = Boolean(unit.property_id);
+      const propertyKey = isPropertyUnit ? `property-${unit.property_id}` : `owner-direct-${ownerIdForUnit(unit) || "none"}`;
+      const propertyLabel = isPropertyUnit
+        ? (property?.title || property?.label || `عقار #${unit.property_id}`)
+        : "وحدات مستقلة خاصة بالمالك";
+      const typeLabel = isPropertyUnit ? propertyTypeLabel(property?.property_type) : "وحدة مستقلة";
+
+      if (!propertyMap.has(propertyKey)) {
+        propertyMap.set(propertyKey, {
+          propertyKey,
+          propertyLabel,
+          propertyTypeLabel: typeLabel,
+          isDirectOwnerGroup: !isPropertyUnit,
+          floors: [],
+        });
+      }
+
+      const group = propertyMap.get(propertyKey)!;
+      const floorKey = normalizeText(unit.floor) || "__no_floor__";
+      let floorGroup = group.floors.find((item) => item.floorKey === floorKey);
+
+      if (!floorGroup) {
+        floorGroup = {
+          floorKey,
+          floorLabel: isPropertyUnit ? floorDisplayLabel(unit.floor) : "وحدات غير مرتبطة بدور داخل عقار",
+          units: [],
+        };
+        group.floors.push(floorGroup);
+      }
+
+      floorGroup.units.push(unit);
+    });
+
+    return Array.from(propertyMap.values())
+      .sort((a, b) => a.propertyLabel.localeCompare(b.propertyLabel, "ar"))
+      .map((group) => ({
+        ...group,
+        floors: group.floors
+          .sort((a, b) => floorSortValue(a.floorKey) - floorSortValue(b.floorKey))
+          .map((floor) => ({
+            ...floor,
+            units: floor.units.sort((a, b) => unitSortText(a).localeCompare(unitSortText(b), "ar")),
+          })),
+      }));
+  }, [visibleUnits, propertyOptions]);
+
   const screenTitle = propertyIdParam ? "وحدات العقار" : ownerIdParam ? "وحدات المالك" : "الوحدات";
   const screenSubtitle = propertyIdParam
-    ? `إضافة أو عرض وحدات العقار: ${scopedPropertyName || `#${propertyIdParam}`}`
+    ? `تصنيف وحدات العقار حسب الدور: ${scopedPropertyName || `#${propertyIdParam}`}`
     : ownerIdParam
-      ? `إضافة أو عرض وحدات المالك: ${scopedOwnerName || `#${ownerIdParam}`}`
-      : "إضافة الوحدة تكون إما خاصة بالمالك أو تحت عقار/عمارة";
+      ? `عرض وحدات المالك مصنفة حسب العقار ثم الدور: ${scopedOwnerName || `#${ownerIdParam}`}`
+      : "تصنيف الوحدات يكون حسب العقار أولًا ثم رقم الدور ثم الوحدات";
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -290,7 +418,7 @@ export default function UnitsScreen() {
             {form.unit_scope === "property" ? (
               <>
                 <DropdownSelect
-                  label="العقار / العمارة"
+                  label="العقار / العمارة / الفيلا"
                   value={form.property_id}
                   options={filteredPropertyOptions}
                   placeholder={form.owner_id ? "اختر العقار" : "اختر المالك أولًا"}
@@ -307,7 +435,7 @@ export default function UnitsScreen() {
               </>
             ) : (
               <View style={styles.infoBox}>
-                <Text style={styles.infoText}>هذه الوحدة ستسجل كوحدة مستقلة خاصة بالمالك، وليست تحت عقار/عمارة.</Text>
+                <Text style={styles.infoText}>هذه الوحدة ستسجل كوحدة مستقلة خاصة بالمالك، وليست تحت عقار/عمارة/فيلا.</Text>
               </View>
             )}
 
@@ -316,7 +444,14 @@ export default function UnitsScreen() {
             <DropdownSelect label="نوع الوحدة" value={form.type} options={unitTypeOptions} onChange={(value) => setField("type", value)} />
             <DropdownSelect label="الحالة" value={form.status} options={statusOptions} onChange={(value) => setField("status", value)} />
 
-            <TextInput style={styles.input} value={form.floor} onChangeText={(value) => setField("floor", value)} placeholder="الدور" keyboardType="numeric" textAlign="right" />
+            <TextInput
+              style={styles.input}
+              value={form.floor}
+              onChangeText={(value) => setField("floor", value)}
+              placeholder={form.unit_scope === "property" ? "رقم الدور - مطلوب للتصنيف" : "الدور"}
+              keyboardType="numeric"
+              textAlign="right"
+            />
             <TextInput style={styles.input} value={form.rent_amount} onChangeText={(value) => setField("rent_amount", value)} placeholder="قيمة الإيجار" keyboardType="numeric" textAlign="right" />
             <TextInput style={styles.input} value={form.rooms_count} onChangeText={(value) => setField("rooms_count", value)} placeholder="عدد الغرف" keyboardType="numeric" textAlign="right" />
             <TextInput style={styles.input} value={form.bathrooms_count} onChangeText={(value) => setField("bathrooms_count", value)} placeholder="عدد دورات المياه" keyboardType="numeric" textAlign="right" />
@@ -341,23 +476,45 @@ export default function UnitsScreen() {
           </View>
         ) : null}
 
-        {visibleUnits.map((unit) => {
-          const scope = unit.unit_scope === "property" || unit.property_id ? "تحت عقار" : "خاصة بالمالك";
-          const ownerId = ownerIdForUnit(unit);
-
-          return (
-            <View key={`unit-${unit.id}`} style={styles.card}>
-              <View style={styles.cardTop}>
-                <Text style={styles.badge}>{scope}</Text>
-                <Text style={styles.cardTitle}>{unit.label}</Text>
+        {!loading && groupedUnits.map((propertyGroup) => (
+          <View key={propertyGroup.propertyKey} style={styles.propertyGroupCard}>
+            <View style={styles.propertyGroupHeader}>
+              <Text style={styles.propertyTypeBadge}>{propertyGroup.propertyTypeLabel}</Text>
+              <View style={styles.propertyHeaderTextWrap}>
+                <Text style={styles.propertyGroupTitle}>{propertyGroup.propertyLabel}</Text>
+                <Text style={styles.propertyGroupSubtitle}>تصنيف الوحدات حسب الدور</Text>
               </View>
-              <Text style={styles.cardLine}>المالك: {optionName(owners, ownerId)}</Text>
-              <Text style={styles.cardLine}>العقار: {unit.property_id ? optionName(propertyOptions, unit.property_id) : "لا يوجد - وحدة مستقلة"}</Text>
-              <Text style={styles.cardLine}>الإيجار / الحالة: {valueText(unit.rent_amount)} / {valueText(unit.status)}</Text>
-              <InlineEditDeleteActions resource="units" id={unit.id} onChanged={loadData} />
             </View>
-          );
-        })}
+
+            {propertyGroup.floors.map((floorGroup) => (
+              <View key={`${propertyGroup.propertyKey}-${floorGroup.floorKey}`} style={styles.floorGroupCard}>
+                <View style={styles.floorHeader}>
+                  <Text style={styles.floorCount}>{floorGroup.units.length} وحدة</Text>
+                  <Text style={styles.floorTitle}>{floorGroup.floorLabel}</Text>
+                </View>
+
+                {floorGroup.units.map((unit) => {
+                  const scope = unit.unit_scope === "property" || unit.property_id ? "تحت عقار" : "خاصة بالمالك";
+                  const ownerId = ownerIdForUnit(unit);
+
+                  return (
+                    <View key={`unit-${unit.id}`} style={styles.card}>
+                      <View style={styles.cardTop}>
+                        <Text style={styles.badge}>{scope}</Text>
+                        <Text style={styles.cardTitle}>{unit.title || unit.label}</Text>
+                      </View>
+                      <Text style={styles.cardLine}>المالك: {optionName(owners, ownerId)}</Text>
+                      <Text style={styles.cardLine}>العقار: {unit.property_id ? optionName(propertyOptions, unit.property_id) : "لا يوجد - وحدة مستقلة"}</Text>
+                      <Text style={styles.cardLine}>الدور: {floorDisplayLabel(unit.floor)}</Text>
+                      <Text style={styles.cardLine}>الإيجار / الحالة: {valueText(unit.rent_amount)} / {valueText(unit.status)}</Text>
+                      <InlineEditDeleteActions resource="units" id={unit.id} onChanged={loadData} />
+                    </View>
+                  );
+                })}
+              </View>
+            ))}
+          </View>
+        ))}
       </ScrollView>
     </SafeAreaView>
   );
@@ -387,6 +544,16 @@ const styles = StyleSheet.create({
   loadingText: { color: "#7A766F", marginTop: 8 },
   emptyBox: { backgroundColor: "#fff", borderRadius: 16, padding: 18, alignItems: "center", borderWidth: 1, borderColor: "#EDECE9" },
   emptyText: { color: "#7A766F", fontWeight: "700" },
+  propertyGroupCard: { backgroundColor: "#FFFFFF", borderRadius: 18, padding: 10, marginBottom: 12, borderWidth: 1, borderColor: "#EDECE9" },
+  propertyGroupHeader: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 10 },
+  propertyHeaderTextWrap: { flex: 1 },
+  propertyGroupTitle: { color: "#111827", fontSize: 16, fontWeight: "900", textAlign: "right" },
+  propertyGroupSubtitle: { color: "#7A766F", fontSize: 12, fontWeight: "700", textAlign: "right", marginTop: 2 },
+  propertyTypeBadge: { backgroundColor: "#111827", color: "#FFFFFF", fontWeight: "900", overflow: "hidden", borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5, fontSize: 11 },
+  floorGroupCard: { backgroundColor: "#F7F6F4", borderRadius: 16, padding: 8, marginBottom: 8, borderWidth: 1, borderColor: "#E5E2DC" },
+  floorHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 6 },
+  floorTitle: { color: "#0F9B6F", fontSize: 15, fontWeight: "900", textAlign: "right" },
+  floorCount: { backgroundColor: "#EDFAF6", color: "#065F44", fontSize: 11, fontWeight: "900", overflow: "hidden", borderRadius: 999, paddingHorizontal: 8, paddingVertical: 3 },
   card: { backgroundColor: "#fff", borderRadius: 16, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: "#EDECE9", shadowColor: "#000", shadowOpacity: 0.04, shadowRadius: 8, elevation: 1 },
   cardTop: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 5 },
   cardTitle: { flex: 1, color: "#1A1917", fontSize: 16, fontWeight: "900", textAlign: "right" },
