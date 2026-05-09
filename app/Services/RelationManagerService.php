@@ -140,6 +140,13 @@ class RelationManagerService
         mr_set_if_column($data, 'units', 'rent_amount', $request->input('rent_amount'), true);
         mr_set_if_column($data, 'units', 'rooms_count', $request->input('rooms_count'), true);
         mr_set_if_column($data, 'units', 'bathrooms_count', $request->input('bathrooms_count'), true);
+        mr_set_if_column($data, 'units', 'has_kitchen', $request->input('has_kitchen'), true);
+        mr_set_if_column($data, 'units', 'kitchen_type', $request->input('kitchen_type'), true);
+        mr_set_if_column($data, 'units', 'is_kitchen_installed', $request->input('is_kitchen_installed'), true);
+        mr_set_if_column($data, 'units', 'has_living_room', $request->input('has_living_room'), true);
+        mr_set_if_column($data, 'units', 'is_rooftop', $request->input('is_rooftop'), true);
+        mr_set_if_column($data, 'units', 'is_subdivided', $request->input('is_subdivided'), true);
+        mr_set_if_column($data, 'units', 'orientation', $request->input('orientation'), true);
         mr_set_if_column($data, 'units', 'notes', $request->input('notes'), true);
         mr_touch_columns($data, 'units', true);
 
