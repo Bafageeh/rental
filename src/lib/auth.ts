@@ -1,6 +1,7 @@
 type AuthUser = {
   id?: number;
   name?: string | null;
+  username?: string | null;
   email?: string | null;
   role?: string | null;
   owner_id?: number | null;
@@ -16,8 +17,11 @@ type AuthSession = {
 type AuthSessionListener = () => void;
 
 const STORAGE_KEY = "my_rentals_auth_session_v1";
+const BIOMETRIC_ENABLED_KEY = "my_rentals_biometric_enabled_v1";
+const BIOMETRIC_UNLOCK_KEY = "my_rentals_biometric_unlock_v1";
 
 let memorySession: AuthSession | null = null;
+let sessionUnlocked = false;
 let secureStoreModule: any | null | undefined = undefined;
 let asyncStorageModule: any | null | undefined = undefined;
 const listeners = new Set<AuthSessionListener>();
@@ -86,6 +90,36 @@ function normalizeSession(value: unknown): AuthSession | null {
   };
 }
 
+async function writeAsyncStorageValue(key: string, value: string | null) {
+  try {
+    const AsyncStorage = await getAsyncStorage();
+
+    if (!AsyncStorage) return;
+
+    if (value === null) {
+      await AsyncStorage.removeItem?.(key);
+    } else {
+      await AsyncStorage.setItem?.(key, value);
+    }
+  } catch {
+    // تخزين احتياطي فقط.
+  }
+}
+
+async function readAsyncStorageValue(key: string): Promise<string | null> {
+  try {
+    const AsyncStorage = await getAsyncStorage();
+
+    if (AsyncStorage?.getItem) {
+      return await AsyncStorage.getItem(key);
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
 async function writePersistentSession(session: AuthSession | null) {
   const serialized = session ? JSON.stringify(session) : null;
 
@@ -150,6 +184,86 @@ async function readPersistentSession(): Promise<AuthSession | null> {
   return null;
 }
 
+export async function enableBiometricLogin() {
+  try {
+    const SecureStore = await getSecureStore();
+
+    if (!SecureStore?.setItemAsync) {
+      await writeAsyncStorageValue(BIOMETRIC_ENABLED_KEY, "0");
+      return false;
+    }
+
+    await SecureStore.setItemAsync(BIOMETRIC_UNLOCK_KEY, "enabled", {
+      requireAuthentication: true,
+      authenticationPrompt: "الدخول إلى إيجاراتي",
+    });
+
+    await writeAsyncStorageValue(BIOMETRIC_ENABLED_KEY, "1");
+    sessionUnlocked = true;
+    return true;
+  } catch {
+    await writeAsyncStorageValue(BIOMETRIC_ENABLED_KEY, "0");
+    return false;
+  }
+}
+
+export async function isBiometricLoginEnabled(): Promise<boolean> {
+  const value = await readAsyncStorageValue(BIOMETRIC_ENABLED_KEY);
+  return value === "1";
+}
+
+export function isAuthSessionUnlocked() {
+  return sessionUnlocked;
+}
+
+export async function shouldRequireBiometricUnlock(): Promise<boolean> {
+  if (sessionUnlocked) return false;
+
+  const session = await getAuthSession();
+  if (!session?.token) return false;
+
+  return isBiometricLoginEnabled();
+}
+
+export async function unlockSavedSessionWithBiometrics(): Promise<boolean> {
+  try {
+    const SecureStore = await getSecureStore();
+
+    if (!SecureStore?.getItemAsync) {
+      sessionUnlocked = true;
+      notifyAuthSessionChanged();
+      return true;
+    }
+
+    const value = await SecureStore.getItemAsync(BIOMETRIC_UNLOCK_KEY, {
+      requireAuthentication: true,
+      authenticationPrompt: "الدخول إلى إيجاراتي",
+    });
+
+    if (value === "enabled") {
+      sessionUnlocked = true;
+      notifyAuthSessionChanged();
+      return true;
+    }
+  } catch {
+    return false;
+  }
+
+  return false;
+}
+
+async function clearBiometricLogin() {
+  sessionUnlocked = false;
+  await writeAsyncStorageValue(BIOMETRIC_ENABLED_KEY, null);
+
+  try {
+    const SecureStore = await getSecureStore();
+    await SecureStore?.deleteItemAsync?.(BIOMETRIC_UNLOCK_KEY);
+  } catch {
+    // تجاهل.
+  }
+}
+
 export async function saveAuthSession(
   sessionOrToken: AuthSession | string,
   user?: AuthUser
@@ -163,6 +277,7 @@ export async function saveAuthSession(
     memorySession = normalizeSession(sessionOrToken);
   }
 
+  sessionUnlocked = true;
   await writePersistentSession(memorySession);
   notifyAuthSessionChanged();
 }
@@ -195,6 +310,7 @@ export async function getAuthUser(): Promise<AuthUser | null> {
 export async function clearAuthSession() {
   memorySession = null;
   await writePersistentSession(null);
+  await clearBiometricLogin();
   notifyAuthSessionChanged();
 }
 
