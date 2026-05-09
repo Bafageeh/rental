@@ -23,6 +23,8 @@ Route::get('/health', function () {
 
 Route::post('/auth/login', [AuthController::class, 'login']);
 
+Route::get('/wa/webhook', [WebhookController::class, 'verifyWhatsApp']);
+Route::post('/wa/webhook', [WebhookController::class, 'receiveWhatsApp']);
 Route::get('/webhooks/whatsapp', [WebhookController::class, 'verifyWhatsApp']);
 Route::post('/webhooks/whatsapp', [WebhookController::class, 'receiveWhatsApp']);
 
