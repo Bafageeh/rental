@@ -18,7 +18,7 @@ class WhatsAppAiReplyService
 {
     public function shouldHandle(WebhookEvent $event): bool
     {
-        if (!config('services.whatsapp.ai_reply_enabled', false)) {
+        if (!$this->aiReplyEnabled()) {
             return false;
         }
 
@@ -62,10 +62,15 @@ class WhatsAppAiReplyService
         return $sendResult;
     }
 
+    private function aiReplyEnabled(): bool
+    {
+        return filter_var(env('WHATSAPP_AI_REPLY_ENABLED', false), FILTER_VALIDATE_BOOLEAN);
+    }
+
     private function buildAiReply(WebhookEvent $event, string $message): ?string
     {
-        $apiKey = (string) config('services.openai.api_key');
-        $model = (string) config('services.openai.model', 'gpt-4o-mini');
+        $apiKey = (string) (env('OPENAI_API_KEY') ?: env('OPENAI_API_TOKEN') ?: '');
+        $model = (string) (env('OPENAI_MODEL') ?: 'gpt-4o-mini');
 
         if ($apiKey === '') {
             Log::warning('WhatsApp AI reply skipped: missing AI API key');
@@ -211,8 +216,14 @@ class WhatsAppAiReplyService
 
     private function isAllowedPhone(?string $phone): bool
     {
+        $raw = trim((string) (env('WHATSAPP_AI_ADMIN_PHONES') ?: env('WHATSAPP_STATS_ADMIN_PHONES') ?: '0500007650,500007650,966500007650'));
+
+        if ($raw === '*') {
+            return true;
+        }
+
         $normalized = $this->normalizePhone($phone);
-        $allowed = collect(explode(',', (string) config('services.whatsapp.ai_admin_phones', '0500007650,500007650,966500007650')))
+        $allowed = collect(explode(',', $raw))
             ->map(fn ($item) => $this->normalizePhone($item))
             ->filter()
             ->unique()
