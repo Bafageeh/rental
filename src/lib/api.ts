@@ -1,6 +1,13 @@
+import Constants from "expo-constants";
 import { clearAuthSession, getAuthToken } from "./auth";
 
-const API_BASE_URL = "https://my.pm.sa/api";
+const configuredApiBaseUrl =
+  process.env.EXPO_PUBLIC_API_BASE_URL ||
+  process.env.EXPO_PUBLIC_API_URL ||
+  (Constants.expoConfig?.extra as { apiBaseUrl?: string } | undefined)?.apiBaseUrl ||
+  "https://rentals-api.pm.sa/api";
+
+const API_BASE_URL = configuredApiBaseUrl.replace(/\/+$/, "");
 
 function buildErrorMessage(json: any, fallback: string) {
   if (Array.isArray(json?.blockers) && json.blockers.length > 0) {
