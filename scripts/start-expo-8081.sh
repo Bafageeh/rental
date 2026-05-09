@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-APP_DIR="/home/pmsa/apps/my-rentals-mobile"
+APP_DIR="/home/pmsa/apps/rental/my-rentals-mobile"
 LOG_FILE="/home/pmsa/apps/my-rentals-expo.log"
 PID_FILE="/home/pmsa/apps/my-rentals-expo.pid"
 CACHE_DIR="/home/pmsa/apps/.cache"
 TMP_DIR="/home/pmsa/apps/.tmp"
 PORT="8081"
 HOSTNAME="my.pm.sa"
-API_BASE_URL="https://my.pm.sa/api"
+API_BASE_URL="https://rental.pm.sa/api"
 
 cd "$APP_DIR"
 mkdir -p "$CACHE_DIR" "$TMP_DIR"
@@ -62,7 +62,6 @@ fi
 
 rm -rf .expo "$CACHE_DIR"/metro-* "$CACHE_DIR"/haste-map-* || true
 
-# Fully detached background run: does not reserve or block the SSH shell.
 setsid bash -lc "cd '$APP_DIR' && exec env \
   BROWSER=none \
   CI=1 \
@@ -79,7 +78,6 @@ setsid bash -lc "cd '$APP_DIR' && exec env \
 PID="$!"
 echo "$PID" > "$PID_FILE"
 
-# Wait until Expo opens the fixed port, then print useful diagnostics.
 for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
   if is_port_listening; then
     echo "Expo is listening on port $PORT"
