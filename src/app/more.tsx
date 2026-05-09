@@ -15,7 +15,7 @@ import {
 } from '../components/ui/phase3';
 
 export default function MoreScreen() {
-  const { loggedIn } = useAuth();
+  const { loggedIn, isAdmin } = useAuth();
 
   function requireLogin(path: string, title: string) {
     if (!loggedIn) {
@@ -23,6 +23,23 @@ export default function MoreScreen() {
         { text: 'إلغاء', style: 'cancel' },
         { text: 'دخول', onPress: () => router.push('/login' as any) },
       ]);
+      return;
+    }
+
+    router.push(path as any);
+  }
+
+  function requireAdmin(path: string, title: string) {
+    if (!loggedIn) {
+      Alert.alert('تسجيل الدخول مطلوب', `سجّل دخولك للوصول إلى ${title}`, [
+        { text: 'إلغاء', style: 'cancel' },
+        { text: 'دخول', onPress: () => router.push('/login' as any) },
+      ]);
+      return;
+    }
+
+    if (!isAdmin) {
+      Alert.alert('غير مصرح', 'هذه الشاشة مخصصة للإدارة فقط.');
       return;
     }
 
@@ -48,6 +65,18 @@ export default function MoreScreen() {
             onPress={() => requireLogin('/profile', 'البروفايل')}
           />
         </View>
+
+        {isAdmin ? (
+          <View style={styles.card}>
+            <ActionTile
+              icon="chatbubbles-outline"
+              title="مركز الاستفسارات"
+              subtitle="مشاهدة رسائل واتساب الواردة والردود الآلية المرتبطة بعقود المستأجرين."
+              onPress={() => requireAdmin('/inquiry-center', 'مركز الاستفسارات')}
+              adminOnly
+            />
+          </View>
+        ) : null}
 
         <View style={styles.card}>
           <ActionTile
