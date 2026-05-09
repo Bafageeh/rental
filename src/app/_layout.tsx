@@ -25,7 +25,7 @@ function TabIcon({
 }
 
 function AppTabs() {
-  const { loading, loggedIn, isAdmin } = useAuth();
+  const { loading, loggedIn, locked, isAdmin } = useAuth();
   const pathname = usePathname();
   const routeParams = useGlobalSearchParams();
   const routeParamsKey = JSON.stringify(routeParams);
@@ -34,20 +34,20 @@ function AppTabs() {
   useEffect(() => {
     if (loading) return;
 
-    if (!loggedIn && !isLoginRoute) {
+    if ((!loggedIn || locked) && !isLoginRoute) {
       router.replace("/login" as any);
       return;
     }
 
-    if (loggedIn && isLoginRoute) {
+    if (loggedIn && !locked && isLoginRoute) {
       router.replace("/" as any);
     }
-  }, [isLoginRoute, loading, loggedIn]);
+  }, [isLoginRoute, loading, loggedIn, locked]);
 
   useEffect(() => {
-    if (loading || !loggedIn || isLoginRoute) return;
+    if (loading || !loggedIn || locked || isLoginRoute) return;
     trackNavigationRoute(pathname, routeParams as Record<string, unknown>);
-  }, [isLoginRoute, loading, loggedIn, pathname, routeParamsKey]);
+  }, [isLoginRoute, loading, loggedIn, locked, pathname, routeParamsKey]);
 
   return (
     <Tabs
@@ -57,7 +57,7 @@ function AppTabs() {
         tabBarInactiveTintColor: colors.textTertiary,
         tabBarLabelStyle: { fontSize: 11, fontWeight: "800", paddingBottom: 2 },
         tabBarStyle: {
-          display: loggedIn ? "flex" : "none",
+          display: loggedIn && !locked ? "flex" : "none",
           height: 62,
           paddingTop: 5,
           paddingBottom: 7,
