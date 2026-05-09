@@ -1,11 +1,13 @@
 import Constants from "expo-constants";
 import { clearAuthSession, getAuthToken } from "./auth";
 
+const DEFAULT_API_BASE_URL = "https://rental.pm.sa/api";
+
 const configuredApiBaseUrl =
   process.env.EXPO_PUBLIC_API_BASE_URL ||
   process.env.EXPO_PUBLIC_API_URL ||
   (Constants.expoConfig?.extra as { apiBaseUrl?: string } | undefined)?.apiBaseUrl ||
-  "https://rentals-api.pm.sa/api";
+  DEFAULT_API_BASE_URL;
 
 const API_BASE_URL = configuredApiBaseUrl.replace(/\/+$/, "");
 
@@ -78,41 +80,59 @@ function parseResponse(response: Response) {
   });
 }
 
-export function apiGet(path: string) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 10000);
+function normalizeFetchError(error: unknown) {
+  if (error instanceof Error && error.name === "AbortError") {
+    return new Error("انتهت مهلة الاتصال بالخادم");
+  }
 
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  const lowerMessage = message.toLowerCase();
+
+  if (
+    error instanceof TypeError ||
+    lowerMessage.includes("network request failed") ||
+    lowerMessage.includes("failed to fetch")
+  ) {
+    return new Error(`تعذر الاتصال بالخادم. عنوان API الحالي: ${API_BASE_URL}`);
+  }
+
+  return error instanceof Error ? error : new Error("تعذر الاتصال بالخادم");
+}
+
+function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  return fetch(url, {
+    ...options,
+    signal: controller.signal,
+  })
+    .catch((error) => {
+      throw normalizeFetchError(error);
+    })
+    .finally(() => {
+      clearTimeout(timer);
+    });
+}
+
+export function apiGet(path: string) {
   return buildHeaders(false)
     .then((headers) =>
-      fetch(`${API_BASE_URL}${path}`, {
-        headers,
-        signal: controller.signal,
-      }),
+      fetchWithTimeout(
+        `${API_BASE_URL}${path}`,
+        {
+          headers,
+        },
+        10000,
+      ),
     )
-    .then((response) => parseResponse(response))
-    .catch((error) => {
-      if (error instanceof Error && error.name === "AbortError") {
-        throw new Error("انتهت مهلة الاتصال بالخادم");
-      }
-
-      throw error;
-    })
-    .then(
-      (result) => {
-        clearTimeout(timer);
-        return result;
-      },
-      (error) => {
-        clearTimeout(timer);
-        throw error;
-      },
-    );
+    .then((response) => parseResponse(response));
 }
 
 export function apiPost(path: string, body: Record<string, unknown> = {}) {
   return buildHeaders(true)
     .then((headers) =>
-      fetch(`${API_BASE_URL}${path}`, {
+      fetchWithTimeout(`${API_BASE_URL}${path}`, {
         method: "POST",
         headers,
         body: JSON.stringify(body),
@@ -128,7 +148,7 @@ export function apiGetScoped(_normalPath: string, scopedPath: string) {
 export function apiPostFormData(path: string, formData: FormData) {
   return buildHeaders(false)
     .then((headers) =>
-      fetch(`${API_BASE_URL}${path}`, {
+      fetchWithTimeout(`${API_BASE_URL}${path}`, {
         method: "POST",
         headers,
         body: formData,
