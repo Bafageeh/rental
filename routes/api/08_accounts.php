@@ -17,12 +17,42 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 
 /*
 |--------------------------------------------------------------------------
 | Owner Accounts
 |--------------------------------------------------------------------------
 */
+
+if (! function_exists('myRentalsAccountUsernameFromEmail')) {
+    function myRentalsAccountUsernameFromEmail(string $email): string
+    {
+        $base = strtolower(trim((string) Str::before($email, '@')));
+        $base = preg_replace('/[^a-z0-9._-]+/', '', $base) ?: 'user';
+
+        return substr($base, 0, 50);
+    }
+}
+
+if (! function_exists('myRentalsUniqueUsername')) {
+    function myRentalsUniqueUsername(string $base, ?int $ignoreUserId = null): string
+    {
+        $base = trim($base) !== '' ? $base : 'user';
+        $username = $base;
+        $counter = 1;
+
+        while (\App\Models\User::query()
+            ->when($ignoreUserId, fn ($query) => $query->where('id', '!=', $ignoreUserId))
+            ->whereRaw('LOWER(username) = ?', [mb_strtolower($username)])
+            ->exists()) {
+            $counter++;
+            $username = substr($base, 0, 45) . $counter;
+        }
+
+        return $username;
+    }
+}
 
 Route::get('/owner-accounts', function () {
     $owners = Owner::orderBy('name')->get(['id', 'name', 'type']);
@@ -36,6 +66,7 @@ Route::get('/owner-accounts', function () {
             return [
                 'id' => $user->id,
                 'name' => $user->name,
+                'username' => Schema::hasColumn('users', 'username') ? ($user->username ?? null) : null,
                 'email' => $user->email,
                 'role' => function_exists('myRentalsEffectiveRole') ? myRentalsEffectiveRole($user) : ($user->role ?? 'admin'),
                 'owner_id' => $user->owner_id ?? null,
@@ -52,17 +83,32 @@ Route::get('/owner-accounts', function () {
 });
 
 Route::post('/owner-accounts', function (Request $request) {
-    $data = $request->validate([
+    $rules = [
         'owner_id' => ['required', 'integer', 'exists:owners,id'],
         'name' => ['required', 'string', 'max:255'],
         'email' => ['required', 'email', 'max:255', 'unique:users,email'],
         'password' => ['required', 'string', 'min:6'],
         'notes' => ['nullable', 'string'],
-    ]);
+    ];
+
+    if (Schema::hasColumn('users', 'username')) {
+        $rules['username'] = ['nullable', 'string', 'max:255', 'unique:users,username'];
+    }
+
+    $data = $request->validate($rules);
 
     $user = new \App\Models\User();
     $user->name = $data['name'];
     $user->email = $data['email'];
+
+    if (Schema::hasColumn('users', 'username')) {
+        $baseUsername = trim((string) ($data['username'] ?? ''));
+        if ($baseUsername === '') {
+            $baseUsername = myRentalsAccountUsernameFromEmail($data['email']);
+        }
+        $user->username = myRentalsUniqueUsername($baseUsername);
+    }
+
     $user->password = \Illuminate\Support\Facades\Hash::make($data['password']);
 
     if (\Illuminate\Support\Facades\Schema::hasColumn('users', 'role')) {
@@ -89,6 +135,7 @@ Route::post('/owner-accounts', function (Request $request) {
         'user' => [
             'id' => $user->id,
             'name' => $user->name,
+            'username' => Schema::hasColumn('users', 'username') ? ($user->username ?? null) : null,
             'email' => $user->email,
             'role' => $user->role ?? 'owner',
             'owner_id' => $user->owner_id ?? null,
@@ -111,6 +158,7 @@ Route::post('/owner-accounts/{user}/toggle-status', function (\App\Models\User $
         'user' => [
             'id' => $user->id,
             'name' => $user->name,
+            'username' => Schema::hasColumn('users', 'username') ? ($user->username ?? null) : null,
             'email' => $user->email,
             'role' => $user->role ?? 'owner',
             'owner_id' => $user->owner_id ?? null,
