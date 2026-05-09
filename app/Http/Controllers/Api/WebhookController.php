@@ -43,6 +43,11 @@ class WebhookController extends Controller
         }
 
         $payload = $request->all();
+        Log::info('WhatsApp webhook received', [
+            'has_entry' => !empty($payload['entry']),
+            'object' => $payload['object'] ?? null,
+        ]);
+
         $events = $this->extractWhatsAppEvents($payload);
 
         if (empty($events)) {
@@ -61,9 +66,14 @@ class WebhookController extends Controller
             foreach ($events as $event) {
                 $tenant = $this->findTenantByPhone($event['source'] ?? null);
                 $replyText = null;
+                $sendResult = null;
 
                 if (($event['event_type'] ?? null) === 'message' && ($event['direction'] ?? null) === 'incoming') {
                     $replyText = $this->buildInquiryReply($tenant, $event);
+                }
+
+                if ($replyText && config('services.whatsapp.auto_reply_enabled', true)) {
+                    $sendResult = $this->sendWhatsAppText((string) ($event['source'] ?? ''), $replyText);
                 }
 
                 WebhookEvent::updateOrCreate(
@@ -80,14 +90,12 @@ class WebhookController extends Controller
                         'status' => $event['status'] ?? null,
                         'payload' => array_merge($event['payload'] ?? $payload, [
                             'inquiry_reply' => $replyText,
+                            'inquiry_reply_send_result' => $sendResult,
+                            'tenant_matched' => (bool) $tenant,
                         ]),
                         'processed_at' => now(),
                     ]
                 );
-
-                if ($replyText && config('services.whatsapp.auto_reply_enabled', true)) {
-                    $this->sendWhatsAppText((string) ($event['source'] ?? ''), $replyText);
-                }
             }
         }
 
@@ -413,19 +421,49 @@ class WebhookController extends Controller
         return number_format((float) $amount, 2) . ' ريال';
     }
 
-    private function sendWhatsAppText(string $to, string $message): void
+    private function sendWhatsAppText(string $to, string $message): array
     {
-        $token = (string) config('services.whatsapp.access_token');
-        $phoneNumberId = (string) config('services.whatsapp.phone_number_id');
-        $version = (string) config('services.whatsapp.graph_version', 'v20.0');
+        $token = $this->firstConfiguredValue([
+            'services.whatsapp.access_token',
+        ], [
+            'WHATSAPP_ACCESS_TOKEN',
+            'WHATSAPP_TOKEN',
+            'META_WHATSAPP_ACCESS_TOKEN',
+            'META_ACCESS_TOKEN',
+        ]);
+
+        $phoneNumberId = $this->firstConfiguredValue([
+            'services.whatsapp.phone_number_id',
+        ], [
+            'WHATSAPP_PHONE_NUMBER_ID',
+            'META_WHATSAPP_PHONE_NUMBER_ID',
+            'META_PHONE_NUMBER_ID',
+        ]);
+
+        $version = $this->firstConfiguredValue([
+            'services.whatsapp.graph_version',
+        ], [
+            'WHATSAPP_GRAPH_VERSION',
+            'META_GRAPH_VERSION',
+        ], 'v20.0');
+
         $to = $this->normalizePhone($to);
 
         if ($token === '' || $phoneNumberId === '' || $to === '') {
-            Log::info('WhatsApp inquiry reply prepared but not sent because outbound config is missing', [
+            $result = [
+                'ok' => false,
+                'reason' => 'missing_config',
+                'has_token' => $token !== '',
+                'has_phone_number_id' => $phoneNumberId !== '',
                 'to' => $to,
+            ];
+
+            Log::warning('WhatsApp inquiry reply not sent because outbound config is missing', [
+                'result' => $result,
                 'message' => $message,
             ]);
-            return;
+
+            return $result;
         }
 
         try {
@@ -439,19 +477,58 @@ class WebhookController extends Controller
                 ],
             ]);
 
-            if (!$response->successful()) {
+            $body = $response->json();
+            $result = [
+                'ok' => $response->successful(),
+                'status' => $response->status(),
+                'to' => $to,
+                'provider_message_id' => Arr::get($body, 'messages.0.id'),
+                'error' => Arr::get($body, 'error.message'),
+                'error_code' => Arr::get($body, 'error.code'),
+                'error_type' => Arr::get($body, 'error.type'),
+            ];
+
+            if ($response->successful()) {
+                Log::info('WhatsApp inquiry reply sent', $result);
+            } else {
                 Log::warning('WhatsApp inquiry reply failed', [
-                    'to' => $to,
-                    'status' => $response->status(),
+                    'result' => $result,
                     'body' => $response->body(),
                 ]);
             }
+
+            return $result;
         } catch (\Throwable $e) {
-            Log::error('WhatsApp inquiry reply exception', [
+            $result = [
+                'ok' => false,
+                'reason' => 'exception',
                 'to' => $to,
                 'error' => $e->getMessage(),
-            ]);
+            ];
+
+            Log::error('WhatsApp inquiry reply exception', $result);
+
+            return $result;
         }
+    }
+
+    private function firstConfiguredValue(array $configKeys, array $envKeys = [], string $default = ''): string
+    {
+        foreach ($configKeys as $key) {
+            $value = config($key);
+            if ($value !== null && (string) $value !== '') {
+                return (string) $value;
+            }
+        }
+
+        foreach ($envKeys as $key) {
+            $value = env($key);
+            if ($value !== null && (string) $value !== '') {
+                return (string) $value;
+            }
+        }
+
+        return $default;
     }
 
     private function findTenantByPhone(?string $phone): ?Tenant
