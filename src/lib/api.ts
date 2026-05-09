@@ -2,6 +2,20 @@ import Constants from "expo-constants";
 import { clearAuthSession, getAuthToken } from "./auth";
 
 const DEFAULT_API_BASE_URL = "https://rental.pm.sa/api";
+const LEGACY_OR_BROKEN_API_BASE_URLS = new Set([
+  "https://rentals-api.pm.sa/api",
+  "http://rentals-api.pm.sa/api",
+]);
+
+function normalizeApiBaseUrl(value?: string | null) {
+  const normalized = (value || DEFAULT_API_BASE_URL).replace(/\/+$/, "");
+
+  if (LEGACY_OR_BROKEN_API_BASE_URLS.has(normalized)) {
+    return DEFAULT_API_BASE_URL;
+  }
+
+  return normalized;
+}
 
 const configuredApiBaseUrl =
   process.env.EXPO_PUBLIC_API_BASE_URL ||
@@ -9,7 +23,7 @@ const configuredApiBaseUrl =
   (Constants.expoConfig?.extra as { apiBaseUrl?: string } | undefined)?.apiBaseUrl ||
   DEFAULT_API_BASE_URL;
 
-const API_BASE_URL = configuredApiBaseUrl.replace(/\/+$/, "");
+const API_BASE_URL = normalizeApiBaseUrl(configuredApiBaseUrl);
 
 function buildErrorMessage(json: any, fallback: string) {
   if (Array.isArray(json?.blockers) && json.blockers.length > 0) {
