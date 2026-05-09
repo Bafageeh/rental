@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\ContractFileController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\OwnerDashboardController;
+use App\Http\Controllers\Api\WebhookController;
 use App\Models\Contract;
 use App\Models\Owner;
 use App\Models\Payment;
@@ -21,6 +22,9 @@ Route::get('/health', function () {
 });
 
 Route::post('/auth/login', [AuthController::class, 'login']);
+
+Route::get('/webhooks/whatsapp', [WebhookController::class, 'verifyWhatsApp']);
+Route::post('/webhooks/whatsapp', [WebhookController::class, 'receiveWhatsApp']);
 
 /*
 |--------------------------------------------------------------------------
@@ -43,6 +47,8 @@ Route::middleware(['auth.api', 'api.scope'])->group(function () {
 
 // PHASE2_ROUTE_MODULES: api.php was split into routes/api/*.php for maintainability.
 Route::middleware(['auth.api', 'api.scope'])->group(function () {
+    Route::get('/webhook-events', [WebhookController::class, 'index']);
+
     foreach ([
         __DIR__ . '/api/00_core.php',
         __DIR__ . '/api/01_owners.php',
