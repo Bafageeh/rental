@@ -1,9 +1,17 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
-import { getAuthUser, isLoggedIn, clearAuthSession, subscribeAuthSession } from '../lib/auth';
+import {
+  getAuthUser,
+  isLoggedIn,
+  clearAuthSession,
+  subscribeAuthSession,
+  shouldRequireBiometricUnlock,
+  isAuthSessionUnlocked,
+} from '../lib/auth';
 
 export type AuthUser = {
   id?: number;
   name?: string | null;
+  username?: string | null;
   email?: string | null;
   role?: string | null;
   owner_id?: number | null;
@@ -13,6 +21,7 @@ export type AuthUser = {
 type AuthState = {
   user: AuthUser | null;
   loggedIn: boolean;
+  locked: boolean;
   isAdmin: boolean;
   isOwner: boolean;
   loading: boolean;
@@ -21,19 +30,33 @@ type AuthState = {
 };
 
 const AuthContext = createContext<AuthState>({
-  user: null, loggedIn: false, isAdmin: false, isOwner: false, loading: true,
+  user: null, loggedIn: false, locked: false, isAdmin: false, isOwner: false, loading: true,
   refresh: async () => {}, logout: async () => {},
 });
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loggedIn, setLoggedIn] = useState(false);
+  const [locked, setLocked] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
     const logged = await isLoggedIn();
 
     if (!logged) {
+      setUser(null);
+      setLoggedIn(false);
+      setLocked(false);
+      setLoading(false);
+      return;
+    }
+
+    const requiresUnlock = await shouldRequireBiometricUnlock();
+    const sessionLocked = requiresUnlock && !isAuthSessionUnlocked();
+
+    setLocked(sessionLocked);
+
+    if (sessionLocked) {
       setUser(null);
       setLoggedIn(false);
       setLoading(false);
@@ -50,6 +73,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await clearAuthSession();
     setUser(null);
     setLoggedIn(false);
+    setLocked(false);
     setLoading(false);
   }, []);
 
@@ -79,7 +103,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const isOwner = effectiveRole === 'owner';
 
   return (
-    <AuthContext.Provider value={{ user, loggedIn, isAdmin, isOwner, loading, refresh, logout }}>
+    <AuthContext.Provider value={{ user, loggedIn, locked, isAdmin, isOwner, loading, refresh, logout }}>
       {children}
     </AuthContext.Provider>
   );
