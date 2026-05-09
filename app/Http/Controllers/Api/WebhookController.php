@@ -4,7 +4,11 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Contract;
+use App\Models\Owner;
+use App\Models\Payment;
+use App\Models\Property;
 use App\Models\Tenant;
+use App\Models\Unit;
 use App\Models\WebhookEvent;
 use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
@@ -64,16 +68,24 @@ class WebhookController extends Controller
             ]);
         } else {
             foreach ($events as $event) {
-                $tenant = $this->findTenantByPhone($event['source'] ?? null);
+                $sourcePhone = (string) ($event['source'] ?? '');
+                $tenant = null;
                 $replyText = null;
                 $sendResult = null;
 
                 if (($event['event_type'] ?? null) === 'message' && ($event['direction'] ?? null) === 'incoming') {
-                    $replyText = $this->buildInquiryReply($tenant, $event);
+                    if ($this->isStatsRequester($sourcePhone)) {
+                        $replyText = $this->buildAdminStatsReply($event);
+                    }
+
+                    if (!$replyText) {
+                        $tenant = $this->findTenantByPhone($sourcePhone);
+                        $replyText = $this->buildInquiryReply($tenant, $event);
+                    }
                 }
 
                 if ($replyText && config('services.whatsapp.auto_reply_enabled', true)) {
-                    $sendResult = $this->sendWhatsAppText((string) ($event['source'] ?? ''), $replyText);
+                    $sendResult = $this->sendWhatsAppText($sourcePhone, $replyText);
                 }
 
                 WebhookEvent::updateOrCreate(
@@ -92,6 +104,7 @@ class WebhookController extends Controller
                             'inquiry_reply' => $replyText,
                             'inquiry_reply_send_result' => $sendResult,
                             'tenant_matched' => (bool) $tenant,
+                            'stats_requester' => $this->isStatsRequester($sourcePhone),
                         ]),
                         'processed_at' => now(),
                     ]
@@ -258,6 +271,209 @@ class WebhookController extends Controller
         }
 
         return $this->generalInquiryReply($tenant, $contracts);
+    }
+
+    private function isStatsRequester(?string $phone): bool
+    {
+        $normalized = $this->normalizePhone($phone);
+        $allowed = collect(explode(',', (string) env('WHATSAPP_STATS_ADMIN_PHONES', '0500007650,500007650,966500007650')))
+            ->map(fn ($item) => $this->normalizePhone($item))
+            ->filter()
+            ->unique()
+            ->values();
+
+        return $allowed->contains($normalized)
+            || ($normalized !== '' && $allowed->contains(ltrim($normalized, '0')))
+            || (Str::startsWith($normalized, '966') && $allowed->contains('0' . substr($normalized, 3)))
+            || (Str::startsWith($normalized, '5') && $allowed->contains('966' . $normalized));
+    }
+
+    private function buildAdminStatsReply(array $event): ?string
+    {
+        $text = $this->extractIncomingText($event);
+
+        if (!$text || !$this->looksLikeStatsQuestion($text)) {
+            return null;
+        }
+
+        $owner = $this->findOwnerMentionedInText($text);
+        $normalized = $this->normalizeArabicText($text);
+
+        if (!$owner && Str::contains($normalized, ['مالك', 'الملاك', 'للمالك', 'لأحد الملاك', 'لاحد الملاك', 'احد الملاك'])) {
+            return $this->ownersStatsDirectoryReply();
+        }
+
+        if ($owner) {
+            return $this->ownerStatsReply($owner);
+        }
+
+        return $this->globalStatsReply();
+    }
+
+    private function looksLikeStatsQuestion(string $text): bool
+    {
+        $normalized = $this->normalizeArabicText($text);
+
+        return Str::contains($normalized, [
+            'احصاء', 'احصائي', 'احصائيات', 'عدد', 'كم', 'مجموع', 'اجمالي', 'ملخص',
+            'الملاك', 'مالك', 'مستاجر', 'مستأجر', 'العقارات', 'العقار', 'الوحدات', 'الوحدة',
+            'العقود', 'العقد', 'الدفعات', 'المتأخر', 'المتاخر', 'المسدد', 'غير المسدد',
+            'الشاغر', 'الشاغرة', 'المؤجر', 'الموجر', 'الاشغال', 'الإشغال',
+        ]);
+    }
+
+    private function findOwnerMentionedInText(string $text): ?Owner
+    {
+        $normalizedText = $this->normalizeArabicText($text);
+
+        return Owner::query()
+            ->select(['id', 'name', 'phone'])
+            ->get()
+            ->sortByDesc(fn (Owner $owner) => mb_strlen((string) $owner->name))
+            ->first(function (Owner $owner) use ($normalizedText) {
+                $ownerName = $this->normalizeArabicText((string) $owner->name);
+
+                if ($ownerName !== '' && Str::contains($normalizedText, $ownerName)) {
+                    return true;
+                }
+
+                $tokens = collect(preg_split('/\s+/u', $ownerName) ?: [])
+                    ->filter(fn ($token) => mb_strlen($token) >= 3)
+                    ->values();
+
+                return $tokens->count() >= 2 && $tokens->every(fn ($token) => Str::contains($normalizedText, $token));
+            });
+    }
+
+    private function ownersStatsDirectoryReply(): string
+    {
+        $owners = Owner::query()
+            ->select(['id', 'name'])
+            ->orderBy('name')
+            ->get();
+
+        if ($owners->isEmpty()) {
+            return 'لا يوجد ملاك مسجلون حتى الآن.';
+        }
+
+        $lines = ['اذكر اسم المالك في سؤالك للحصول على إحصائيته. مثال: كم عدد المستأجرين للمالك أحمد؟', '', 'الملاك المتاحون:'];
+
+        foreach ($owners->take(15) as $owner) {
+            $tenantCount = Contract::query()
+                ->whereHas('unit.property', fn ($q) => $q->where('owner_id', $owner->id))
+                ->distinct('tenant_id')
+                ->count('tenant_id');
+            $lines[] = '- ' . $owner->name . ' | المستأجرين: ' . $tenantCount;
+        }
+
+        if ($owners->count() > 15) {
+            $lines[] = '... ويوجد المزيد.';
+        }
+
+        return implode("\n", $lines);
+    }
+
+    private function ownerStatsReply(Owner $owner): string
+    {
+        $activeStatuses = ['active', 'نشط'];
+        $paidStatuses = ['paid', 'مدفوع', 'مسدد'];
+
+        $propertyIds = Property::query()->where('owner_id', $owner->id)->pluck('id');
+
+        $unitsQuery = Unit::query()->where(function ($q) use ($owner, $propertyIds) {
+            $q->whereIn('property_id', $propertyIds)
+                ->orWhere('owner_id', $owner->id);
+        });
+
+        $contractsQuery = Contract::query()->whereHas('unit', function ($q) use ($owner, $propertyIds) {
+            $q->whereIn('property_id', $propertyIds)
+                ->orWhere('owner_id', $owner->id);
+        });
+
+        $paymentQuery = Payment::query()->whereHas('contract.unit', function ($q) use ($owner, $propertyIds) {
+            $q->whereIn('property_id', $propertyIds)
+                ->orWhere('owner_id', $owner->id);
+        });
+
+        $allTenants = (clone $contractsQuery)->distinct('tenant_id')->count('tenant_id');
+        $activeTenants = (clone $contractsQuery)->whereIn('status', $activeStatuses)->distinct('tenant_id')->count('tenant_id');
+        $activeContracts = (clone $contractsQuery)->whereIn('status', $activeStatuses)->count();
+        $allContracts = (clone $contractsQuery)->count();
+        $unitsCount = (clone $unitsQuery)->count();
+        $occupiedUnits = (clone $contractsQuery)->whereIn('status', $activeStatuses)->distinct('unit_id')->count('unit_id');
+        $vacantUnits = max($unitsCount - $occupiedUnits, 0);
+        $unpaidAmount = (clone $paymentQuery)->whereNotIn('status', $paidStatuses)->sum('amount');
+        $overdueAmount = (clone $paymentQuery)
+            ->whereNotIn('status', $paidStatuses)
+            ->whereDate('due_date', '<', now()->toDateString())
+            ->sum('amount');
+        $paidAmount = (clone $paymentQuery)->whereIn('status', $paidStatuses)->sum('amount');
+
+        return implode("\n", [
+            'إحصائية المالك: ' . $owner->name,
+            'العقارات: ' . $propertyIds->count(),
+            'الوحدات: ' . $unitsCount,
+            'الوحدات المؤجرة: ' . $occupiedUnits,
+            'الوحدات الشاغرة: ' . $vacantUnits,
+            'عدد المستأجرين النشطين: ' . $activeTenants,
+            'إجمالي المستأجرين المرتبطين بعقود: ' . $allTenants,
+            'العقود النشطة: ' . $activeContracts,
+            'إجمالي العقود: ' . $allContracts,
+            'المبالغ غير المسددة: ' . $this->money($unpaidAmount),
+            'المبالغ المتأخرة: ' . $this->money($overdueAmount),
+            'المبالغ المسددة: ' . $this->money($paidAmount),
+        ]);
+    }
+
+    private function globalStatsReply(): string
+    {
+        $activeStatuses = ['active', 'نشط'];
+        $paidStatuses = ['paid', 'مدفوع', 'مسدد'];
+
+        $propertiesCount = Property::query()->count();
+        $ownersCount = Owner::query()->count();
+        $unitsCount = Unit::query()->count();
+        $tenantsCount = Tenant::query()->count();
+        $activeContracts = Contract::query()->whereIn('status', $activeStatuses)->count();
+        $allContracts = Contract::query()->count();
+        $occupiedUnits = Contract::query()->whereIn('status', $activeStatuses)->distinct('unit_id')->count('unit_id');
+        $vacantUnits = max($unitsCount - $occupiedUnits, 0);
+        $unpaidAmount = Payment::query()->whereNotIn('status', $paidStatuses)->sum('amount');
+        $overdueAmount = Payment::query()
+            ->whereNotIn('status', $paidStatuses)
+            ->whereDate('due_date', '<', now()->toDateString())
+            ->sum('amount');
+        $paidAmount = Payment::query()->whereIn('status', $paidStatuses)->sum('amount');
+
+        return implode("\n", [
+            'ملخص إحصائي عام:',
+            'الملاك: ' . $ownersCount,
+            'العقارات: ' . $propertiesCount,
+            'الوحدات: ' . $unitsCount,
+            'الوحدات المؤجرة: ' . $occupiedUnits,
+            'الوحدات الشاغرة: ' . $vacantUnits,
+            'المستأجرين: ' . $tenantsCount,
+            'العقود النشطة: ' . $activeContracts,
+            'إجمالي العقود: ' . $allContracts,
+            'المبالغ غير المسددة: ' . $this->money($unpaidAmount),
+            'المبالغ المتأخرة: ' . $this->money($overdueAmount),
+            'المبالغ المسددة: ' . $this->money($paidAmount),
+            '',
+            'لإحصائية مالك محدد اكتب مثلًا: كم عدد المستأجرين للمالك أحمد؟',
+        ]);
+    }
+
+    private function normalizeArabicText(string $text): string
+    {
+        $text = mb_strtolower($text);
+        $text = str_replace(['أ', 'إ', 'آ'], 'ا', $text);
+        $text = str_replace(['ة'], 'ه', $text);
+        $text = str_replace(['ى'], 'ي', $text);
+        $text = str_replace('ـ', '', $text);
+        $text = preg_replace('/[^\p{Arabic}\p{N}\s]+/u', ' ', $text) ?: $text;
+        $text = preg_replace('/\s+/u', ' ', $text) ?: $text;
+
+        return trim($text);
     }
 
     private function extractIncomingText(array $event): string
