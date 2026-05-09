@@ -85,6 +85,15 @@ function normalizeText(value: unknown) {
   return String(value ?? "").trim();
 }
 
+function numericOnly(value: unknown) {
+  return String(value ?? "").replace(/[^0-9]/g, "");
+}
+
+function floorNumber(value: unknown) {
+  const parsed = Number.parseInt(numericOnly(value) || "0", 10);
+  return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
+}
+
 function propertyTypeLabel(type: unknown) {
   const normalized = normalizeText(type).toLowerCase();
 
@@ -101,20 +110,13 @@ function floorSortValue(value: unknown) {
   const text = normalizeText(value);
   if (!text) return 999999;
 
-  if (["ground", "g", "أرضي", "ارضي", "الدور الأرضي", "الدور الارضي"].includes(text.toLowerCase())) return 0;
-  if (["basement", "b", "قبو", "بدروم"].includes(text.toLowerCase())) return -1;
-
-  const numeric = Number(text.replace(/[^0-9.-]/g, ""));
+  const numeric = Number(numericOnly(text));
   return Number.isFinite(numeric) ? numeric : 999998;
 }
 
 function floorDisplayLabel(value: unknown) {
-  const text = normalizeText(value);
+  const text = numericOnly(value);
   if (!text) return "بدون دور محدد";
-
-  if (["ground", "g"].includes(text.toLowerCase())) return "الدور الأرضي";
-  if (["basement", "b"].includes(text.toLowerCase())) return "القبو";
-  if (text.includes("دور") || text.includes("الدور")) return text;
 
   return `الدور ${text}`;
 }
@@ -243,8 +245,19 @@ export default function UnitsScreen() {
         return { ...previous, unit_scope: value, property_id: value === "owner" ? "" : previous.property_id || propertyIdParam };
       }
 
+      if (key === "floor") {
+        return { ...previous, floor: numericOnly(value) };
+      }
+
       return { ...previous, [key]: value };
     });
+  }
+
+  function changeFloor(delta: number) {
+    setForm((previous) => ({
+      ...previous,
+      floor: String(Math.max(0, floorNumber(previous.floor) + delta)),
+    }));
   }
 
   function resetForm() {
@@ -289,6 +302,7 @@ export default function UnitsScreen() {
 
       await apiPostAny(["/relation-manager/create-unit", "/my/relation-manager/create-unit"], {
         ...form,
+        floor: numericOnly(form.floor),
         property_id: form.unit_scope === "owner" ? "" : form.property_id,
       });
 
@@ -342,7 +356,7 @@ export default function UnitsScreen() {
       }
 
       const group = propertyMap.get(propertyKey)!;
-      const floorKey = normalizeText(unit.floor) || "__no_floor__";
+      const floorKey = numericOnly(unit.floor) || "__no_floor__";
       let floorGroup = group.floors.find((item) => item.floorKey === floorKey);
 
       if (!floorGroup) {
@@ -444,14 +458,39 @@ export default function UnitsScreen() {
             <DropdownSelect label="نوع الوحدة" value={form.type} options={unitTypeOptions} onChange={(value) => setField("type", value)} />
             <DropdownSelect label="الحالة" value={form.status} options={statusOptions} onChange={(value) => setField("status", value)} />
 
-            <TextInput
-              style={styles.input}
-              value={form.floor}
-              onChangeText={(value) => setField("floor", value)}
-              placeholder={form.unit_scope === "property" ? "رقم الدور - مطلوب للتصنيف" : "الدور"}
-              keyboardType="numeric"
-              textAlign="right"
-            />
+            <View style={styles.stepperField}>
+              <Text style={styles.stepperLabel}>{form.unit_scope === "property" ? "رقم الدور - مطلوب للتصنيف" : "الدور"}</Text>
+              <View style={styles.stepperRow}>
+                <TouchableOpacity
+                  style={styles.stepperButton}
+                  onPress={() => changeFloor(-1)}
+                  activeOpacity={0.8}
+                  accessibilityRole="button"
+                  accessibilityLabel="إنقاص رقم الدور"
+                >
+                  <Text style={styles.stepperButtonText}>−</Text>
+                </TouchableOpacity>
+                <TextInput
+                  style={styles.stepperInput}
+                  value={form.floor}
+                  onChangeText={(value) => setField("floor", value)}
+                  placeholder="0"
+                  keyboardType="number-pad"
+                  inputMode="numeric"
+                  textAlign="center"
+                  maxLength={3}
+                />
+                <TouchableOpacity
+                  style={styles.stepperButton}
+                  onPress={() => changeFloor(1)}
+                  activeOpacity={0.8}
+                  accessibilityRole="button"
+                  accessibilityLabel="زيادة رقم الدور"
+                >
+                  <Text style={styles.stepperButtonText}>+</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
             <TextInput style={styles.input} value={form.rent_amount} onChangeText={(value) => setField("rent_amount", value)} placeholder="قيمة الإيجار" keyboardType="numeric" textAlign="right" />
             <TextInput style={styles.input} value={form.rooms_count} onChangeText={(value) => setField("rooms_count", value)} placeholder="عدد الغرف" keyboardType="numeric" textAlign="right" />
             <TextInput style={styles.input} value={form.bathrooms_count} onChangeText={(value) => setField("bathrooms_count", value)} placeholder="عدد دورات المياه" keyboardType="numeric" textAlign="right" />
@@ -533,6 +572,12 @@ const styles = StyleSheet.create({
   formCard: { backgroundColor: "#fff", borderRadius: 16, padding: 14, marginBottom: 10, borderWidth: 1, borderColor: "#EDECE9" },
   formTitle: { color: "#1A1917", fontWeight: "900", fontSize: 16, textAlign: "right", marginBottom: 10 },
   input: { backgroundColor: "#F7F6F4", borderWidth: 1, borderColor: "#DDDBD6", borderRadius: 12, padding: 11, color: "#1A1917", marginBottom: 10 },
+  stepperField: { marginBottom: 10 },
+  stepperLabel: { color: "#5E5B55", fontWeight: "900", textAlign: "right", marginBottom: 6 },
+  stepperRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  stepperButton: { width: 46, height: 46, borderRadius: 14, alignItems: "center", justifyContent: "center", backgroundColor: "#111827" },
+  stepperButtonText: { color: "#FFFFFF", fontSize: 24, fontWeight: "900", lineHeight: 28 },
+  stepperInput: { flex: 1, height: 46, backgroundColor: "#F7F6F4", borderWidth: 1, borderColor: "#DDDBD6", borderRadius: 12, paddingHorizontal: 11, color: "#1A1917", fontSize: 18, fontWeight: "900" },
   multiline: { minHeight: 76, textAlignVertical: "top" },
   warningBox: { backgroundColor: "#FFF8EB", borderRadius: 12, padding: 10, marginBottom: 10, borderWidth: 1, borderColor: "#F5C549" },
   warningText: { color: "#825906", fontWeight: "700", textAlign: "right", lineHeight: 22 },
