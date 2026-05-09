@@ -20,24 +20,24 @@ import { colors, spacing, radii, shadows, typography } from '../constants/theme'
 
 export default function LoginScreen() {
   const { refresh } = useAuth();
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const [emailError, setEmailError] = useState('');
+  const [usernameError, setUsernameError] = useState('');
   const [passwordError, setPasswordError] = useState('');
 
   function validate(): boolean {
     let valid = true;
-    setEmailError('');
+    setUsernameError('');
     setPasswordError('');
 
-    const trimmedEmail = email.trim();
-    if (!trimmedEmail) {
-      setEmailError('البريد الإلكتروني مطلوب');
+    const trimmedUsername = username.trim();
+    if (!trimmedUsername) {
+      setUsernameError('اسم المستخدم مطلوب');
       valid = false;
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
-      setEmailError('صيغة البريد الإلكتروني غير صحيحة');
+    } else if (trimmedUsername.includes('@')) {
+      setUsernameError('استخدم اسم المستخدم فقط وليس البريد الإلكتروني');
       valid = false;
     }
 
@@ -58,7 +58,7 @@ export default function LoginScreen() {
     try {
       setLoading(true);
       const result = await apiPost('/auth/login', {
-        email: email.trim(),
+        username: username.trim(),
         password,
       });
       const token = result?.data?.token ?? result?.token;
@@ -76,7 +76,7 @@ export default function LoginScreen() {
 
       router.replace('/' as any);
     } catch (e) {
-      Alert.alert('خطأ في الدخول', e instanceof Error ? e.message : 'بيانات غير صحيحة');
+      Alert.alert('خطأ في الدخول', e instanceof Error ? e.message : 'اسم المستخدم أو كلمة المرور غير صحيحة');
     } finally {
       setLoading(false);
     }
@@ -106,25 +106,25 @@ export default function LoginScreen() {
           <View style={styles.card}>
             <Text style={styles.formTitle}>تسجيل الدخول</Text>
 
-            <Text style={styles.label}>البريد الإلكتروني</Text>
+            <Text style={styles.label}>اسم المستخدم</Text>
             <TextInput
-              style={[styles.input, emailError && styles.inputError]}
-              value={email}
+              style={[styles.input, usernameError && styles.inputError]}
+              value={username}
               onChangeText={(t) => {
-                setEmail(t);
-                if (emailError) setEmailError('');
+                setUsername(t);
+                if (usernameError) setUsernameError('');
               }}
-              placeholder="example@email.com"
+              placeholder="مثال: admin"
               placeholderTextColor={colors.textTertiary}
-              keyboardType="email-address"
+              keyboardType="default"
               autoCapitalize="none"
               autoCorrect={false}
-              autoComplete="email"
+              autoComplete="username"
               textAlign="right"
               editable={!loading}
-              accessibilityLabel="البريد الإلكتروني"
+              accessibilityLabel="اسم المستخدم"
             />
-            {emailError ? <Text style={styles.errorText}>{emailError}</Text> : null}
+            {usernameError ? <Text style={styles.errorText}>{usernameError}</Text> : null}
 
             <Text style={styles.label}>كلمة المرور</Text>
             <View style={styles.passwordRow}>
