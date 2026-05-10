@@ -14,6 +14,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { apiPostFormData } from '../lib/api';
+import { smartBack } from '../lib/navigationHistory';
 import { colors, radii, shadows, spacing, typography, money as formatMoney } from '../constants/theme';
 import { MetaPill, Notice, ScreenHero, Stepper } from '../components/ui/phase3';
 
@@ -137,6 +138,10 @@ export default function UploadContractScreen() {
     { label: 'نطاق العقد', value: isPropertyContract ? 'العقار كامل' : (unitName || (unitId ? `وحدة #${unitId}` : 'يتم أخذها من العقد')) },
   ], [ownerName, ownerId, propertyName, propertyId, unitName, unitId, isPropertyContract]);
 
+  function returnToPreviousScreen() {
+    smartBack('/contracts');
+  }
+
   async function pickFile() {
     setError('');
     setMessage('');
@@ -191,7 +196,11 @@ export default function UploadContractScreen() {
       setMessage(json.message || 'تم رفع العقد واستخراج البيانات');
 
       if (apply) {
-        Alert.alert('تم', json.message || 'تم استخراج العقد وحفظ بياناته');
+        Alert.alert(
+          'تم',
+          json.message || 'تم استخراج العقد وحفظ بياناته',
+          [{ text: 'موافق', onPress: returnToPreviousScreen }],
+        );
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'حدث خطأ غير معروف');
