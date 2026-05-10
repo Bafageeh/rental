@@ -135,10 +135,14 @@ class GovernmentContractImporter
 
     private function resolveProperty(Owner $owner, array $ownership, array $propertyData, ?Property $forcedProperty, ?Unit $forcedUnit): ?Property
     {
-        if ($forcedUnit && $forcedUnit->property) {
-            $property = $forcedUnit->property;
-            $this->updatePropertyFromPdf($property, $owner, $ownership, $propertyData);
-            return $property;
+        if ($forcedUnit) {
+            // إذا تم رفع العقد من وحدة محددة، لا ننشئ عقارًا جديدًا من بيانات PDF.
+            // لو كانت الوحدة مباشرة للمالك تبقى مباشرة، ولو كانت تحت عقار تبقى تحت عقارها الحالي فقط.
+            if ($forcedUnit->property) {
+                return $forcedUnit->property;
+            }
+
+            return null;
         }
 
         if ($forcedProperty) {
