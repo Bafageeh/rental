@@ -7,7 +7,7 @@ TMP_DIR="/home/pmsa/apps/.tmp"
 PORT="8083"
 HOSTNAME="my.pm.sa"
 API_BASE_URL="https://rental.pm.sa/api"
-DEPLOY_STAMP="2026-05-10-unit-services-clear-cards-v5"
+DEPLOY_STAMP="2026-05-10-unit-services-clear-cards-detached-v6"
 
 choose_app_dir() {
   for candidate in \
@@ -86,15 +86,34 @@ PY
 rm -rf .expo .expo-shared .metro-cache node_modules/.cache || true
 rm -rf "$CACHE_DIR"/expo "$CACHE_DIR"/metro "$CACHE_DIR"/react-native "$CACHE_DIR"/metro-* "$CACHE_DIR"/haste-map-* || true
 
-BROWSER=none \
-CI=1 \
-EXPO_NO_TELEMETRY=1 \
-EXPO_PUBLIC_API_BASE_URL="$API_BASE_URL" \
-EXPO_PUBLIC_API_URL="$API_BASE_URL" \
-EXPO_PUBLIC_DEPLOY_STAMP="$DEPLOY_STAMP" \
-REACT_NATIVE_PACKAGER_HOSTNAME="$HOSTNAME" \
-XDG_CACHE_HOME="$CACHE_DIR" \
-TMPDIR="$TMP_DIR" \
-TMP="$TMP_DIR" \
-TEMP="$TMP_DIR" \
-npx expo start --clear --go --host lan --port "$PORT"
+if command -v lsof >/dev/null 2>&1; then
+  old_pids="$(lsof -tiTCP:"$PORT" -sTCP:LISTEN 2>/dev/null || true)"
+  if [ -n "$old_pids" ]; then
+    echo "$old_pids" | xargs -r kill -9 2>/dev/null || true
+  fi
+fi
+pkill -f "expo start.*--port $PORT|node.*$PORT" 2>/dev/null || true
+sleep 2
+
+setsid bash -lc "cd '$APP_DIR' && exec env BROWSER=none EXPO_NO_TELEMETRY=1 EXPO_PUBLIC_API_BASE_URL='$API_BASE_URL' EXPO_PUBLIC_API_URL='$API_BASE_URL' EXPO_PUBLIC_DEPLOY_STAMP='$DEPLOY_STAMP' REACT_NATIVE_PACKAGER_HOSTNAME='$HOSTNAME' XDG_CACHE_HOME='$CACHE_DIR' TMPDIR='$TMP_DIR' TMP='$TMP_DIR' TEMP='$TMP_DIR' npx expo start --clear --go --host lan --port '$PORT'" </dev/null >> "$LOG_FILE" 2>&1 &
+EXPO_PID="$!"
+echo "$EXPO_PID" > /home/pmsa/apps/my-rentals-expo.pid
+echo "STARTED_PID=$EXPO_PID" >> "$LOG_FILE"
+
+for i in $(seq 1 30); do
+  if command -v lsof >/dev/null 2>&1 && lsof -iTCP:"$PORT" -sTCP:LISTEN >/dev/null 2>&1; then
+    echo "Expo is listening on port $PORT" >> "$LOG_FILE"
+    tail -n 120 "$LOG_FILE" || true
+    exit 0
+  fi
+  if ! kill -0 "$EXPO_PID" 2>/dev/null; then
+    echo "Expo process exited early" >> "$LOG_FILE"
+    tail -n 160 "$LOG_FILE" || true
+    exit 1
+  fi
+  sleep 2
+done
+
+echo "Expo started in background but port check timed out" >> "$LOG_FILE"
+tail -n 160 "$LOG_FILE" || true
+exit 0
