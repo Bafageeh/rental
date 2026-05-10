@@ -28,7 +28,7 @@ type RelatedPayment = {
 };
 
 type Mode = "pay" | "edit";
-type ActionTone = "dark" | "light" | "danger" | "success";
+type ActionTone = "dark" | "danger" | "success";
 
 type Props = {
   item: RelatedPayment;
@@ -83,7 +83,6 @@ function ActionPill({ label, icon, tone, onPress }: { label: string; icon: strin
       style={[
         styles.actionPill,
         tone === "dark" ? styles.actionDark : null,
-        tone === "light" ? styles.actionLight : null,
         tone === "danger" ? styles.actionDanger : null,
         tone === "success" ? styles.actionSuccess : null,
       ]}
@@ -113,9 +112,7 @@ export default function ContractPaymentCard({ item, index, expanded, onToggle, o
   const isPaid = statusKey(displayItem) === "paid";
   const dueDate = displayItem.due_date || displayItem.title || "-";
   const paidDate = displayItem.paid_date || "لم تسجل بعد";
-  const deadlineLine = displayItem.deadline_date
-    ? `نهاية مهلة السداد: ${displayItem.deadline_date}`
-    : (displayItem.subtitle || "");
+  const deadlineDate = displayItem.deadline_date || displayItem.subtitle || "";
 
   function openSheet(nextMode: Mode) {
     setMode(nextMode);
@@ -143,21 +140,12 @@ export default function ContractPaymentCard({ item, index, expanded, onToggle, o
     try {
       setSaving(true);
       await apiPostAny(
-        [
-          `/edit-delete-center/payments/${displayItem.id}/update`,
-          `/my/edit-delete-center/payments/${displayItem.id}/update`,
-        ],
+        [`/edit-delete-center/payments/${displayItem.id}/update`, `/my/edit-delete-center/payments/${displayItem.id}/update`],
         { fields: { amount: String(numericAmount), notes: note.trim() } },
       );
 
       if (mode === "pay") {
-        await apiPostAny(
-          [
-            `/payments/${displayItem.id}/mark-paid`,
-            `/my/payments/${displayItem.id}/mark-paid`,
-          ],
-          {},
-        );
+        await apiPostAny([`/payments/${displayItem.id}/mark-paid`, `/my/payments/${displayItem.id}/mark-paid`], {});
       }
 
       setLocalItem((current) => ({
@@ -187,11 +175,7 @@ export default function ContractPaymentCard({ item, index, expanded, onToggle, o
         onPress: async () => {
           try {
             await apiPostAny(
-              [
-                `/edit-delete-center/payments/${displayItem.id}/delete`,
-                `/my/edit-delete-center/payments/${displayItem.id}/delete`,
-                `/payments/${displayItem.id}/delete`,
-              ],
+              [`/edit-delete-center/payments/${displayItem.id}/delete`, `/my/edit-delete-center/payments/${displayItem.id}/delete`, `/payments/${displayItem.id}/delete`],
               {},
             );
             refreshFromServer();
@@ -206,57 +190,37 @@ export default function ContractPaymentCard({ item, index, expanded, onToggle, o
 
   return (
     <>
-      <TouchableOpacity
-        activeOpacity={0.92}
-        style={[styles.card, { backgroundColor: meta.card, borderColor: meta.border }]}
-        onPress={onToggle}
-      >
-        <View style={styles.topStrip}>
-          <View style={styles.statusSide}>
+      <TouchableOpacity activeOpacity={0.92} style={[styles.card, { backgroundColor: meta.card, borderColor: meta.border }]} onPress={onToggle}>
+        <View style={styles.compactTopRow}>
+          <View style={styles.statusWrap}>
             <View style={[styles.accentDot, { backgroundColor: meta.accent }]} />
             <Text style={[styles.statusChip, { backgroundColor: meta.bg, color: meta.fg }]}>{meta.label}</Text>
           </View>
           <Text style={styles.title}>القسط {index + 1}</Text>
         </View>
 
-        <View style={styles.mainRow}>
+        <View style={styles.compactBodyRow}>
           <View style={styles.amountPanel}>
             <Text style={styles.amountLabel}>{isPaid ? "المسدد" : "المطلوب"}</Text>
-            <Text numberOfLines={2} style={styles.amountValue}>{amountText(displayItem.amount)}</Text>
+            <Text numberOfLines={1} adjustsFontSizeToFit style={styles.amountValue}>{amountText(displayItem.amount)}</Text>
           </View>
-
           <View style={styles.infoBlock}>
             <Text style={styles.dateText} numberOfLines={1}>استحقاق: {dueDate}</Text>
-            {deadlineLine ? <Text style={styles.noteText} numberOfLines={1}>{deadlineLine}</Text> : null}
+            {deadlineDate ? <Text style={styles.miniText} numberOfLines={1}>مهلة: {deadlineDate}</Text> : null}
+            <Text style={styles.miniText} numberOfLines={1}>{isPaid ? `دفع: ${paidDate}` : "غير مدفوعة"}</Text>
           </View>
         </View>
 
-        <View style={styles.footerRow}>
-          <TouchableOpacity
-            activeOpacity={0.88}
-            style={[styles.optionsButton, expanded ? styles.optionsButtonActive : null]}
-            onPress={(event) => {
-              event.stopPropagation?.();
-              onToggle();
-            }}
-          >
-            <Text style={[styles.optionsButtonText, expanded ? styles.optionsButtonTextActive : null]}>{expanded ? "إخفاء" : "خيارات"}</Text>
-            <Text style={[styles.optionsIcon, expanded ? styles.optionsButtonTextActive : null]}>{expanded ? "⌃" : "⌄"}</Text>
-          </TouchableOpacity>
-
-          <View style={styles.datePill}>
-            <Text style={styles.datePillText} numberOfLines={1}>{isPaid ? `تاريخ الدفع: ${paidDate}` : "لم يتم الدفع"}</Text>
-          </View>
+        <View style={styles.compactFooterRow}>
+          <Text style={styles.tapHint}>{expanded ? "إخفاء الخيارات" : "اضغط للخيارات"}</Text>
+          <Text style={styles.chevron}>{expanded ? "⌃" : "⌄"}</Text>
         </View>
 
         {expanded ? (
           <View style={styles.expandedArea}>
-            <View style={styles.expandedHeader}>
-              <Text style={styles.expandedHint}>اختر العملية بدون مغادرة تفاصيل العقد</Text>
-            </View>
             <View style={styles.actionRow}>
-              {!isPaid ? <ActionPill icon="💳" label="تسجيل دفع" tone="success" onPress={() => openSheet("pay")} /> : null}
-              <ActionPill icon="✎" label="تعديل" tone={isPaid ? "dark" : "light"} onPress={() => openSheet("edit")} />
+              {!isPaid ? <ActionPill icon="💳" label="دفع" tone="success" onPress={() => openSheet("pay")} /> : null}
+              <ActionPill icon="✎" label="تعديل" tone="dark" onPress={() => openSheet("edit")} />
               <ActionPill icon="🗑" label="حذف" tone="danger" onPress={confirmDelete} />
             </View>
           </View>
@@ -298,26 +262,10 @@ export default function ContractPaymentCard({ item, index, expanded, onToggle, o
               </View>
 
               <Text style={styles.fieldLabel}>قيمة الدفعة</Text>
-              <TextInput
-                value={amount}
-                onChangeText={setAmount}
-                style={styles.input}
-                keyboardType="decimal-pad"
-                textAlign="right"
-                placeholder="مثال: 2500"
-                placeholderTextColor="#9CA3AF"
-              />
+              <TextInput value={amount} onChangeText={setAmount} style={styles.input} keyboardType="decimal-pad" textAlign="right" placeholder="مثال: 2500" placeholderTextColor="#9CA3AF" />
 
               <Text style={styles.fieldLabel}>الملاحظات / نص الحوالة</Text>
-              <TextInput
-                value={note}
-                onChangeText={setNote}
-                style={[styles.input, styles.notesInput]}
-                textAlign="right"
-                multiline
-                placeholder="مثال: حوالة الراجحي - رقم العملية..."
-                placeholderTextColor="#9CA3AF"
-              />
+              <TextInput value={note} onChangeText={setNote} style={[styles.input, styles.notesInput]} textAlign="right" multiline placeholder="مثال: حوالة الراجحي - رقم العملية..." placeholderTextColor="#9CA3AF" />
             </ScrollView>
 
             <View style={[styles.sheetActionsDock, { paddingBottom: bottomSafeGap }]}> 
@@ -339,46 +287,38 @@ export default function ContractPaymentCard({ item, index, expanded, onToggle, o
 
 const styles = StyleSheet.create({
   card: {
-    borderRadius: 19,
-    padding: 10,
-    marginTop: 8,
+    borderRadius: 16,
+    padding: 9,
+    marginTop: 7,
     borderWidth: 1,
     shadowColor: "#111827",
-    shadowOpacity: 0.04,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.035,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
     elevation: 1,
   },
-  topStrip: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 7 },
-  statusSide: { flexDirection: "row", alignItems: "center", gap: 6 },
-  statusChip: { overflow: "hidden", borderRadius: 999, paddingHorizontal: 9, paddingVertical: 4, fontSize: 11, fontWeight: "900" },
-  accentDot: { width: 10, height: 10, borderRadius: 999 },
-  mainRow: { flexDirection: "row", alignItems: "stretch", gap: 9 },
-  amountPanel: { width: 98, borderRadius: 16, paddingHorizontal: 9, paddingVertical: 8, backgroundColor: "rgba(255,255,255,0.72)", borderWidth: 1, borderColor: "rgba(229,231,235,0.85)", justifyContent: "center" },
-  amountLabel: { color: "#6B7280", fontSize: 11, fontWeight: "900", textAlign: "left" },
-  amountValue: { color: "#111827", fontSize: 15, lineHeight: 20, fontWeight: "900", textAlign: "left", marginTop: 3 },
-  infoBlock: { flex: 1, alignItems: "flex-end", justifyContent: "center", gap: 4 },
-  title: { color: "#111827", fontSize: 18, fontWeight: "900", textAlign: "right" },
-  dateText: { color: "#6B7280", fontSize: 12, fontWeight: "800", textAlign: "right" },
-  noteText: { color: "#7A766F", fontSize: 12, lineHeight: 17, fontWeight: "700", textAlign: "right" },
-  footerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8, marginTop: 8 },
-  optionsButton: { minHeight: 36, minWidth: 92, borderRadius: 13, backgroundColor: "#111827", flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5, paddingHorizontal: 10 },
-  optionsButtonActive: { backgroundColor: "#F7F6F4", borderWidth: 1, borderColor: "#E5E2DD" },
-  optionsButtonText: { color: "#FFFFFF", fontSize: 12, fontWeight: "900" },
-  optionsButtonTextActive: { color: "#111827" },
-  optionsIcon: { color: "#FFFFFF", fontSize: 14, fontWeight: "900" },
-  datePill: { flex: 1, minHeight: 36, borderRadius: 13, backgroundColor: "rgba(255,255,255,0.62)", alignItems: "flex-end", justifyContent: "center", paddingHorizontal: 10, borderWidth: 1, borderColor: "rgba(229,231,235,0.8)" },
-  datePillText: { color: "#6B7280", fontSize: 11, fontWeight: "800", textAlign: "right" },
-  expandedArea: { borderTopWidth: 1, borderTopColor: "rgba(229,231,235,0.9)", marginTop: 10, paddingTop: 10 },
-  expandedHeader: { alignItems: "flex-end", marginBottom: 8 },
-  expandedHint: { color: "#6B7280", fontSize: 11, fontWeight: "800", textAlign: "right" },
-  actionRow: { flexDirection: "row-reverse", gap: 7, flexWrap: "wrap" },
-  actionPill: { flexGrow: 1, minWidth: 86, minHeight: 42, borderRadius: 14, alignItems: "center", justifyContent: "center", paddingHorizontal: 10, borderWidth: 1 },
+  compactTopRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 6 },
+  statusWrap: { flexDirection: "row", alignItems: "center", gap: 6 },
+  statusChip: { overflow: "hidden", borderRadius: 999, paddingHorizontal: 8, paddingVertical: 3, fontSize: 10, fontWeight: "900" },
+  accentDot: { width: 9, height: 9, borderRadius: 999 },
+  title: { color: "#111827", fontSize: 17, fontWeight: "900", textAlign: "right" },
+  compactBodyRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  amountPanel: { width: 96, minHeight: 58, borderRadius: 14, paddingHorizontal: 8, paddingVertical: 7, backgroundColor: "rgba(255,255,255,0.72)", borderWidth: 1, borderColor: "rgba(229,231,235,0.85)", justifyContent: "center" },
+  amountLabel: { color: "#6B7280", fontSize: 10, fontWeight: "900", textAlign: "left" },
+  amountValue: { color: "#111827", fontSize: 14, lineHeight: 18, fontWeight: "900", textAlign: "left", marginTop: 2 },
+  infoBlock: { flex: 1, alignItems: "flex-end", justifyContent: "center", gap: 2 },
+  dateText: { color: "#4B5563", fontSize: 11, fontWeight: "900", textAlign: "right" },
+  miniText: { color: "#7A766F", fontSize: 10.5, lineHeight: 15, fontWeight: "800", textAlign: "right" },
+  compactFooterRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5, marginTop: 5, paddingTop: 5, borderTopWidth: 1, borderTopColor: "rgba(229,231,235,0.75)" },
+  tapHint: { color: "#6B7280", fontSize: 10.5, fontWeight: "900", textAlign: "center" },
+  chevron: { color: "#111827", fontSize: 13, fontWeight: "900" },
+  expandedArea: { marginTop: 6 },
+  actionRow: { flexDirection: "row-reverse", gap: 6, flexWrap: "wrap" },
+  actionPill: { flexGrow: 1, minWidth: 76, minHeight: 34, borderRadius: 12, alignItems: "center", justifyContent: "center", paddingHorizontal: 8, borderWidth: 1 },
   actionDark: { backgroundColor: "#111827", borderColor: "#111827" },
-  actionLight: { backgroundColor: "#FFFFFF", borderColor: "#E5E7EB" },
   actionDanger: { backgroundColor: "#FDECEC", borderColor: "#F4C7CC" },
   actionSuccess: { backgroundColor: "#16834F", borderColor: "#16834F" },
-  actionPillText: { color: "#111827", fontSize: 12, fontWeight: "900", textAlign: "center" },
+  actionPillText: { color: "#111827", fontSize: 11, fontWeight: "900", textAlign: "center" },
   actionPillTextLight: { color: "#FFFFFF" },
   backdrop: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(17,24,39,0.46)" },
   sheet: { backgroundColor: "#FFFFFF", borderTopLeftRadius: 28, borderTopRightRadius: 28, paddingTop: 9, maxHeight: "84%" },
