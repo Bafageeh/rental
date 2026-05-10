@@ -7,7 +7,7 @@ TMP_DIR="/home/pmsa/apps/.tmp"
 PORT="8083"
 HOSTNAME="my.pm.sa"
 API_BASE_URL="https://rental.pm.sa/api"
-DEPLOY_STAMP="2026-05-10-inline-confirm-delete-linked-property-unit-v11"
+DEPLOY_STAMP="2026-05-10-owner-without-properties-force-direct-unit-v12"
 
 choose_app_dir() {
   for candidate in \
@@ -40,6 +40,7 @@ touch "$LOG_FILE"
   echo "IMPORTANT: not restoring EntityDetailsScreen.fixed.tsx"
   echo "IMPORTANT: owner asset summary cards are removed"
   echo "IMPORTANT: delete property/unit previews related records and requires confirmation in both details and edit center"
+  echo "IMPORTANT: owner without properties forces direct owner unit scope"
 } >> "$LOG_FILE"
 
 python3 - <<'PY' | tee -a "/home/pmsa/apps/my-rentals-expo.log"
@@ -283,6 +284,24 @@ if inline.exists():
     print(f'INLINE_DELETE_CONFIRM_LINKED_DELETE_PATCH={"ok" if inline_n else "not_found"}')
 else:
     print('INLINE_DELETE_CONFIRM_LINKED_DELETE_PATCH=not_found')
+
+units = Path('src/app/units.tsx')
+if units.exists():
+    units_text = units.read_text()
+    marker = 'const forceOwnerUnitScope = Boolean(form.owner_id) && filteredPropertyOptions.length === 0 && !propertyIdParam;'
+    if marker not in units_text:
+        units_text = units_text.replace(
+            '  }, [propertyOptions, form.owner_id, propertyIdParam]);\n\n  function setField(key: keyof typeof form, value: string) {',
+            '  }, [propertyOptions, form.owner_id, propertyIdParam]);\n\n  const forceOwnerUnitScope = Boolean(form.owner_id) && filteredPropertyOptions.length === 0 && !propertyIdParam;\n\n  useEffect(() => {\n    if (forceOwnerUnitScope && (form.unit_scope !== "owner" || form.property_id)) {\n      setForm((previous) => ({ ...previous, unit_scope: "owner", property_id: "" }));\n    }\n  }, [forceOwnerUnitScope, form.unit_scope, form.property_id]);\n\n  function setField(key: keyof typeof form, value: string) {'
+        )
+        units_text = units_text.replace(
+            '      <DropdownSelect label="نوع إضافة الوحدة" value={form.unit_scope} options={unitScopeOptions} required disabled={Boolean(propertyIdParam)} onChange={(value) => setField("unit_scope", value)} />',
+            '      <DropdownSelect label="نوع إضافة الوحدة" value={form.unit_scope} options={forceOwnerUnitScope ? [{ id: "owner", label: "وحدة خاصة بالمالك" }] : unitScopeOptions} required disabled={Boolean(propertyIdParam) || forceOwnerUnitScope} onChange={(value) => setField("unit_scope", value)} />\n      {forceOwnerUnitScope ? <View style={styles.infoBox}><Text style={styles.infoText}>لا توجد عقارات لهذا المالك، لذلك تم تثبيت نوع الإضافة على وحدة خاصة بالمالك فقط.</Text></View> : null}'
+        )
+    units.write_text(units_text)
+    print(f'OWNER_WITHOUT_PROPERTIES_FORCE_UNIT_SCOPE_PATCH={"ok" if marker in units_text else "failed"}')
+else:
+    print('OWNER_WITHOUT_PROPERTIES_FORCE_UNIT_SCOPE_PATCH=not_found')
 PY
 
 rm -rf .expo .expo-shared .metro-cache node_modules/.cache || true
