@@ -7,7 +7,7 @@ TMP_DIR="/home/pmsa/apps/.tmp"
 PORT="8083"
 HOSTNAME="my.pm.sa"
 API_BASE_URL="https://rental.pm.sa/api"
-DEPLOY_STAMP="2026-05-10-unit-services-one-row-cards-v4"
+DEPLOY_STAMP="2026-05-10-unit-services-clear-cards-v5"
 
 choose_app_dir() {
   for candidate in \
@@ -56,31 +56,31 @@ text = text.replace(
     '<ServiceChip icon="documents-outline" label="العقود" onPress={() => openUnitService("/contracts")} />',
     '<ServiceChip icon="time-outline" label="سجل العقود" onPress={() => openUnitService("/contracts", "history=1")} />',
 )
-text = re.sub(r'servicesGrid:\s*\{[^\n]+\},', 'servicesGrid: { flexDirection: "row-reverse", flexWrap: "nowrap", gap: 5 },', text)
-text = re.sub(r'headerServicesGrid:\s*\{[^\n]+\},', 'headerServicesGrid: { flexDirection: "row-reverse", flexWrap: "nowrap", gap: 5 },', text)
-text = re.sub(r'headerServicesGridCompact:\s*\{[^\n]+\},', 'headerServicesGridCompact: { flexDirection: "row-reverse", flexWrap: "nowrap", gap: 5 },', text)
+text = re.sub(r'servicesGrid:\s*\{[^\n]+\},', 'servicesGrid: { flexDirection: "row-reverse", flexWrap: "nowrap", gap: 7 },', text)
+text = re.sub(r'headerServicesGrid:\s*\{[^\n]+\},', 'headerServicesGrid: { flexDirection: "row-reverse", flexWrap: "nowrap", gap: 7 },', text)
+text = re.sub(r'headerServicesGridCompact:\s*\{[^\n]+\},', 'headerServicesGridCompact: { flexDirection: "row-reverse", flexWrap: "nowrap", gap: 7 },', text)
 text = re.sub(r'serviceChip:\s*\{.*?\n\s*\},', '''serviceChip: {
     flex: 1,
     minWidth: 0,
-    minHeight: 54,
-    borderRadius: 14,
-    backgroundColor: "#F8FAFC",
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
+    minHeight: 64,
+    borderRadius: 16,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1.5,
+    borderColor: "#BFC3C0",
     alignItems: "center",
     justifyContent: "center",
-    gap: 4,
+    gap: 5,
     paddingHorizontal: 2,
-    paddingVertical: 6,
+    paddingVertical: 7,
   },''', text, flags=re.S)
-text = re.sub(r'serviceIconWrap:\s*\{.*?\n\s*\},', 'serviceIconWrap: { width: 24, height: 24, borderRadius: 12, backgroundColor: "#ffffff", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#EEF2F7" },', text, flags=re.S)
-text = re.sub(r'serviceText:\s*\{.*?\n\s*\},', 'serviceText: { width: "100%", color: "#111827", fontSize: 9.5, fontWeight: "900", textAlign: "center" },', text, flags=re.S)
+text = re.sub(r'serviceIconWrap:\s*\{.*?\n\s*\},', 'serviceIconWrap: { width: 30, height: 30, borderRadius: 15, backgroundColor: "#F1F2F1", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#D9DDD9" },', text, flags=re.S)
+text = re.sub(r'serviceText:\s*\{.*?\n\s*\},', 'serviceText: { width: "100%", color: "#111827", fontSize: 10, lineHeight: 13, fontWeight: "900", textAlign: "center" },', text, flags=re.S)
 text = text.replace('width: "48.5%",', '')
 text = text.replace('flexWrap: "wrap"', 'flexWrap: "nowrap"')
 details.write_text(text)
 
-ok = 'label="سجل العقود"' in text and 'flexWrap: "nowrap"' in text and 'width: "48.5%"' not in text
-print(f'UNIT_SERVICES_ONE_ROW_CARDS_PATCH={"ok" if ok else "failed"}')
+ok = 'label="سجل العقود"' in text and 'backgroundColor: "#FFFFFF"' in text and 'borderColor: "#BFC3C0"' in text
+print(f'UNIT_SERVICES_CLEAR_CARDS_PATCH={"ok" if ok else "failed"}')
 PY
 
 rm -rf .expo .expo-shared .metro-cache node_modules/.cache || true
