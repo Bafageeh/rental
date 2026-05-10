@@ -17,14 +17,23 @@ jobs:
   deploy:
     name: Deploy Expo mobile from monorepo
     runs-on: ubuntu-latest
+    env:
+      RENTAL_DEPLOY_HOST: ${{ secrets.DEPLOY_HOST || secrets.RENTAL_DEPLOY_HOST || secrets.SERVER_HOST || secrets.SSH_HOST }}
+      RENTAL_DEPLOY_USER: ${{ secrets.DEPLOY_USER || secrets.RENTAL_DEPLOY_USER || secrets.SERVER_USER || secrets.SSH_USER }}
+      RENTAL_DEPLOY_PORT: ${{ secrets.DEPLOY_PORT || secrets.RENTAL_DEPLOY_PORT || secrets.SERVER_PORT || secrets.SSH_PORT }}
+      RENTAL_DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY || secrets.RENTAL_DEPLOY_SSH_KEY || secrets.SSH_PRIVATE_KEY || secrets.SERVER_SSH_KEY }}
 
     steps:
       - name: Validate deployment secrets
+        shell: bash
         run: |
-          test -n "${{ secrets.DEPLOY_HOST }}" || exit 1
-          test -n "${{ secrets.DEPLOY_USER }}" || exit 1
-          test -n "${{ secrets.DEPLOY_PORT }}" || exit 1
-          test -n "${{ secrets.DEPLOY_SSH_KEY }}" || exit 1
+          set -euo pipefail
+          missing=0
+          if [ -z "${RENTAL_DEPLOY_HOST:-}" ]; then echo "Missing deploy host. Add one of: DEPLOY_HOST, RENTAL_DEPLOY_HOST, SERVER_HOST, SSH_HOST"; missing=1; fi
+          if [ -z "${RENTAL_DEPLOY_USER:-}" ]; then echo "Missing deploy user. Add one of: DEPLOY_USER, RENTAL_DEPLOY_USER, SERVER_USER, SSH_USER"; missing=1; fi
+          if [ -z "${RENTAL_DEPLOY_PORT:-}" ]; then echo "Missing deploy port. Add one of: DEPLOY_PORT, RENTAL_DEPLOY_PORT, SERVER_PORT, SSH_PORT"; missing=1; fi
+          if [ -z "${RENTAL_DEPLOY_SSH_KEY:-}" ]; then echo "Missing SSH key. Add one of: DEPLOY_SSH_KEY, RENTAL_DEPLOY_SSH_KEY, SSH_PRIVATE_KEY, SERVER_SSH_KEY"; missing=1; fi
+          exit "$missing"
 
       - name: Deploy over SSH
         shell: bash
@@ -32,11 +41,11 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p ~/.ssh
-          printf '%s\n' "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          printf '%s\n' "$RENTAL_DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          ssh-keyscan -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
+          ssh-keyscan -p "$RENTAL_DEPLOY_PORT" "$RENTAL_DEPLOY_HOST" >> ~/.ssh/known_hosts
 
-          ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" 'bash -s' <<'REMOTE'
+          ssh -i ~/.ssh/deploy_key -p "$RENTAL_DEPLOY_PORT" -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes "$RENTAL_DEPLOY_USER@$RENTAL_DEPLOY_HOST" 'bash -s' <<'REMOTE'
           set -e
 
           SOURCE="/home/pmsa/apps/rental-source"
