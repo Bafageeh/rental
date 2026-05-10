@@ -20,6 +20,133 @@ if [ -f "src/components/EntityDetailsScreen.fixed.tsx" ]; then
   cp src/components/EntityDetailsScreen.fixed.tsx src/components/EntityDetailsScreen.tsx
 fi
 
+# Final unit-card refinements requested by user.
+python3 - <<'PY'
+from pathlib import Path
+import re
+
+path = Path('src/components/EntityDetailsScreen.tsx')
+text = path.read_text()
+old = '''        <View style={styles.headerCard}>
+          <View style={styles.unitCardTopRow}>
+            {normalizedEntity === "unit" ? (
+              <View style={styles.unitCardActions}>
+                <InlineEditDeleteActions resource={resourceForEntity(String(entity))} id={id} hideDetails compact iconOnly onChanged={() => load(false)} />
+              </View>
+            ) : <View />}
+            <Text style={styles.entityLabel}>{data?.entity_title || entityTitle[normalizedEntity] || "تفاصيل"}</Text>
+          </View>
+          <Text numberOfLines={2} style={styles.title}>{data?.title || "جاري التحميل..."}</Text>
+          <View style={styles.headerStatsRow}>
+            <Text style={styles.statPill}>{relatedLabel}: {relatedCount}</Text>
+          </View>
+
+          {normalizedEntity === "unit" ? (
+            <View style={styles.headerServicesWrap}>
+              <View style={styles.headerServicesHeader}>
+                <Text style={styles.headerServicesTitle}>خدمات الوحدة</Text>
+                <Ionicons name="grid-outline" size={16} color="#6b7280" />
+              </View>
+              <View style={styles.headerServicesGrid}>
+                <ServiceChip icon="documents-outline" label="العقود" onPress={() => openUnitService("/contracts")} />
+                <ServiceChip icon="create-outline" label="إنشاء عقد" onPress={() => openUnitService("/create-contract")} />
+                <ServiceChip icon="cloud-upload-outline" label="رفع عقد" onPress={() => openUnitService("/upload-contract")} />
+                <ServiceChip icon="images-outline" label="الوسائط" onPress={() => openUnitService("/files", "mode=media")} />
+              </View>
+            </View>
+          ) : null}
+        </View>'''
+new = '''        <View style={styles.headerCard}>
+          {normalizedEntity === "unit" ? (
+            <>
+              <View style={styles.unitHeroRow}>
+                <View style={styles.unitCardActions}>
+                  <InlineEditDeleteActions resource={resourceForEntity(String(entity))} id={id} hideDetails compact iconOnly onChanged={() => load(false)} />
+                </View>
+                <View style={styles.unitTitleWrap}>
+                  <Text numberOfLines={2} style={styles.title}>{data?.title || "جاري التحميل..."}</Text>
+                  <Text style={styles.contractCountPill}>{relatedLabel}: {relatedCount}</Text>
+                </View>
+              </View>
+
+              <View style={styles.headerServicesWrapCompact}>
+                <View style={styles.headerServicesHeaderCompact}>
+                  <Text style={styles.headerServicesTitleCompact}>خدمات الوحدة</Text>
+                  <Ionicons name="grid-outline" size={14} color="#6b7280" />
+                </View>
+                <View style={styles.headerServicesGridCompact}>
+                  <ServiceChip icon="documents-outline" label="العقود" onPress={() => openUnitService("/contracts")} />
+                  <ServiceChip icon="create-outline" label="إنشاء عقد" onPress={() => openUnitService("/create-contract")} />
+                  <ServiceChip icon="cloud-upload-outline" label="رفع عقد" onPress={() => openUnitService("/upload-contract")} />
+                  <ServiceChip icon="images-outline" label="الوسائط" onPress={() => openUnitService("/files", "mode=media")} />
+                </View>
+              </View>
+            </>
+          ) : (
+            <>
+              <Text style={styles.entityLabel}>{data?.entity_title || entityTitle[normalizedEntity] || "تفاصيل"}</Text>
+              <Text numberOfLines={2} style={styles.title}>{data?.title || "جاري التحميل..."}</Text>
+              <View style={styles.headerStatsRow}>
+                <Text style={styles.statPill}>{relatedLabel}: {relatedCount}</Text>
+              </View>
+            </>
+          )}
+        </View>'''
+if old not in text:
+    raise SystemExit('Expected unit card block not found')
+text = text.replace(old, new, 1)
+
+# Compact services and lift title visually.
+text = re.sub(r'serviceChip:\s*\{.*?\n\s*\},', '''serviceChip: {
+    width: "48.5%",
+    minHeight: 38,
+    borderRadius: 14,
+    backgroundColor: "#F8FAFC",
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    justifyContent: "flex-start",
+    gap: 7,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+  },''', text, flags=re.S)
+text = re.sub(r'serviceIconWrap:\s*\{.*?\n\s*\},', 'serviceIconWrap: { width: 24, height: 24, borderRadius: 12, backgroundColor: "#ffffff", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#EEF2F7" },', text, flags=re.S)
+text = re.sub(r'serviceText:\s*\{.*?\n\s*\},', 'serviceText: { flex: 1, color: "#111827", fontSize: 11, fontWeight: "900", textAlign: "right" },', text, flags=re.S)
+text = re.sub(r'title:\s*\{.*?\n\s*\},', '''title: {
+    color: "#111827",
+    fontSize: 23,
+    lineHeight: 31,
+    fontWeight: "900",
+    textAlign: "right",
+    marginTop: 0,
+  },''', text, flags=re.S)
+text = re.sub(r'headerCard:\s*\{.*?\n\s*\},', '''headerCard: {
+    backgroundColor: "#ffffff",
+    borderRadius: 26,
+    padding: 14,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: "#E6E9E6",
+    shadowColor: "#0f766e",
+    shadowOpacity: 0.08,
+    shadowRadius: 16,
+    elevation: 2,
+  },''', text, flags=re.S)
+
+anchor = '  unitCardActions: { flexDirection: "row-reverse", alignItems: "center", justifyContent: "flex-start", gap: 6 },'
+insert = '''  unitCardActions: { flexDirection: "row-reverse", alignItems: "center", justifyContent: "flex-start", gap: 6 },
+  unitHeroRow: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 10 },
+  unitTitleWrap: { flex: 1, alignItems: "flex-end", gap: 7 },
+  contractCountPill: { overflow: "hidden", alignSelf: "flex-end", backgroundColor: "#ECFDF5", color: "#0f766e", borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5, fontSize: 11, fontWeight: "900" },
+  headerServicesWrapCompact: { marginTop: 10, paddingTop: 9, borderTopWidth: 1, borderTopColor: "#E5E7EB" },
+  headerServicesHeaderCompact: { flexDirection: "row-reverse", alignItems: "center", justifyContent: "space-between", marginBottom: 6 },
+  headerServicesTitleCompact: { color: "#374151", fontSize: 11, fontWeight: "900", textAlign: "right" },
+  headerServicesGridCompact: { flexDirection: "row-reverse", flexWrap: "wrap", gap: 6 },'''
+text = text.replace(anchor, insert, 1)
+path.write_text(text)
+PY
+
 stop_known_pid() {
   if [ -f "$PID_FILE" ]; then
     OLD_PID="$(cat "$PID_FILE" 2>/dev/null || true)"
