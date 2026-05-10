@@ -43,30 +43,30 @@ jobs:
             "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" 'bash -s' <<'REMOTE'
           set -e
 
-          SOURCE="/home/pmsa/apps/rental-source"
-          API_PATH="/home/pmsa/apps/my-rentals-api"
+          PROJECT_ROOT="/home/pmsa/apps/rental"
+          API_PATH="$PROJECT_ROOT/my-rentals-api"
           REPO="git@github.com:Bafageeh/rental.git"
+          TMP_CLONE="/home/pmsa/apps/.rental-monorepo-tmp"
 
-          mkdir -p /home/pmsa/apps
+          mkdir -p /home/pmsa/apps "$PROJECT_ROOT"
 
-          if [ ! -d "$SOURCE/.git" ]; then
-            rm -rf "$SOURCE"
-            git clone "$REPO" "$SOURCE"
-          else
-            cd "$SOURCE"
+          if [ -d "$PROJECT_ROOT/.git" ]; then
+            cd "$PROJECT_ROOT"
             git remote set-url origin "$REPO"
             git fetch origin main
             git reset --hard origin/main
+          else
+            rm -rf "$TMP_CLONE"
+            git clone "$REPO" "$TMP_CLONE"
+            rsync -a --delete \
+              --exclude='my-rentals-api/.env' \
+              --exclude='my-rentals-api/vendor' \
+              --exclude='my-rentals-api/storage' \
+              --exclude='my-rentals-mobile/node_modules' \
+              --exclude='my-rentals-mobile/.expo' \
+              "$TMP_CLONE/" "$PROJECT_ROOT/"
+            rm -rf "$TMP_CLONE"
           fi
-
-          mkdir -p "$API_PATH"
-          rsync -a --delete \
-            --exclude='.git' \
-            --exclude='.env' \
-            --exclude='vendor' \
-            --exclude='node_modules' \
-            --exclude='storage' \
-            "$SOURCE/my-rentals-api/" "$API_PATH/"
 
           cd "$API_PATH"
 
