@@ -1,5 +1,6 @@
+import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -206,6 +207,54 @@ function EmptyState({ text }: { text: string }) {
   );
 }
 
+function HeaderIconButton({ icon, label, onPress }: { icon: string; label: string; onPress: () => void }) {
+  return (
+    <TouchableOpacity accessibilityLabel={label} accessibilityRole="button" onPress={onPress} style={styles.headerIconButton} activeOpacity={0.85}>
+      <Ionicons name={icon as any} size={22} color="#ffffff" />
+    </TouchableOpacity>
+  );
+}
+
+function ServiceChip({ icon, label, onPress }: { icon: string; label: string; onPress: () => void }) {
+  return (
+    <TouchableOpacity style={styles.serviceChip} onPress={onPress} activeOpacity={0.86} accessibilityRole="button" accessibilityLabel={label}>
+      <View style={styles.serviceIconWrap}>
+        <Ionicons name={icon as any} size={18} color="#4b5563" />
+      </View>
+      <Text numberOfLines={1} style={styles.serviceText}>{label}</Text>
+    </TouchableOpacity>
+  );
+}
+
+function DetailAccordionSection({
+  title,
+  count,
+  open,
+  onToggle,
+  children,
+}: {
+  title: string;
+  count: number;
+  open: boolean;
+  onToggle: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <View style={styles.sectionCard}>
+      <TouchableOpacity style={styles.accordionHeader} onPress={onToggle} activeOpacity={0.85} accessibilityRole="button">
+        <View style={styles.accordionChevronBox}>
+          <Ionicons name={open ? "chevron-up" : "chevron-down"} size={18} color="#374151" />
+        </View>
+        <View style={styles.accordionTitleBlock}>
+          <Text style={styles.accordionTitle}>{title}</Text>
+          <Text style={styles.accordionSubtitle}>{count} حقل</Text>
+        </View>
+      </TouchableOpacity>
+      {open ? <View style={styles.accordionBody}>{children}</View> : null}
+    </View>
+  );
+}
+
 function RelatedCard({ item, expanded, onToggle, onMarkPaid }: { item: RelatedItem; expanded?: boolean; onToggle?: () => void; onMarkPaid?: () => void }) {
   const isPayment = isPaymentItem(item);
   const isPaid = String(item.status || item.badge || "").toLowerCase().includes("paid") || String(item.badge || "").includes("مدفوعة");
@@ -293,6 +342,7 @@ export default function EntityDetailsScreen({ entity, id }: { entity: EntityKey;
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
   const [expandedPaymentId, setExpandedPaymentId] = useState<number | null>(null);
+  const [openDetailSections, setOpenDetailSections] = useState<Record<string, boolean>>({ primary: true, extra: true });
   const relatedLabel = relatedTabLabel(normalizedEntity);
 
   async function load(isRefresh = false) {
@@ -321,6 +371,10 @@ export default function EntityDetailsScreen({ entity, id }: { entity: EntityKey;
     [data],
   );
   const encodedTitle = encodeURIComponent(data?.title || `${entityTitle[normalizedEntity] || "سجل"} #${id}`);
+
+  function toggleDetailSection(key: "primary" | "extra") {
+    setOpenDetailSections((current) => ({ ...current, [key]: !current[key] }));
+  }
 
   async function markPaymentPaid(payment: RelatedItem) {
     Alert.alert("تأكيد الدفع", `هل تريد تسجيل دفع ${paymentAmount(payment.amount)}؟`, [
@@ -372,11 +426,12 @@ export default function EntityDetailsScreen({ entity, id }: { entity: EntityKey;
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} />}
       >
         <View style={styles.topBar}>
-          <Text style={styles.topTitle}>{entityTitle[normalizedEntity] || "التفاصيل"}</Text>
+          <View style={styles.topTitleBlock}>
+            <Text style={styles.topTitle}>{entityTitle[normalizedEntity] || "التفاصيل"}</Text>
+            <Text style={styles.topSubtitle}>تفاصيل السجل والخدمات المرتبطة</Text>
+          </View>
           {normalizedEntity === "unit" ? (
-            <TouchableOpacity onPress={openAddUnit} style={styles.addUnitButton} activeOpacity={0.85}>
-              <Text style={styles.addUnitButtonText}>＋</Text>
-            </TouchableOpacity>
+            <HeaderIconButton icon="add" label="إضافة وحدة" onPress={openAddUnit} />
           ) : null}
         </View>
 
@@ -390,30 +445,23 @@ export default function EntityDetailsScreen({ entity, id }: { entity: EntityKey;
         </View>
 
         <View style={styles.detailsActionsBox}>
-          <InlineEditDeleteActions resource={resourceForEntity(String(entity))} id={id} hideDetails onChanged={() => load(false)} />
+          <InlineEditDeleteActions resource={resourceForEntity(String(entity))} id={id} hideDetails compact iconOnly onChanged={() => load(false)} />
         </View>
 
         {normalizedEntity === "unit" ? (
           <View style={styles.servicesCard}>
-            <Text style={styles.sectionTitle}>خدمات الوحدة</Text>
-            <Text style={styles.servicesHint}>العقود والملفات هنا مرتبطة بهذه الوحدة فقط.</Text>
+            <View style={styles.servicesHeaderRow}>
+              <View style={styles.servicesTitleBlock}>
+                <Text style={styles.servicesTitle}>خدمات الوحدة</Text>
+                <Text style={styles.servicesHint}>العقود والملفات لهذه الوحدة فقط</Text>
+              </View>
+              <Ionicons name="grid-outline" size={18} color="#6b7280" />
+            </View>
             <View style={styles.servicesGrid}>
-              <TouchableOpacity style={styles.serviceButton} onPress={() => openUnitService("/contracts")}>
-                <Text style={styles.serviceIcon}>📑</Text>
-                <Text style={styles.serviceText}>العقود</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.serviceButton} onPress={() => openUnitService("/create-contract")}>
-                <Text style={styles.serviceIcon}>📝</Text>
-                <Text style={styles.serviceText}>إنشاء عقد</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.serviceButton} onPress={() => openUnitService("/upload-contract")}>
-                <Text style={styles.serviceIcon}>📤</Text>
-                <Text style={styles.serviceText}>رفع عقد</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.serviceButton} onPress={() => openUnitService("/files", "mode=media")}>
-                <Text style={styles.serviceIcon}>🖼️</Text>
-                <Text style={styles.serviceText}>الملفات والوسائط</Text>
-              </TouchableOpacity>
+              <ServiceChip icon="documents-outline" label="العقود" onPress={() => openUnitService("/contracts")} />
+              <ServiceChip icon="create-outline" label="إنشاء عقد" onPress={() => openUnitService("/create-contract")} />
+              <ServiceChip icon="cloud-upload-outline" label="رفع عقد" onPress={() => openUnitService("/upload-contract")} />
+              <ServiceChip icon="images-outline" label="الوسائط" onPress={() => openUnitService("/files", "mode=media")} />
             </View>
           </View>
         ) : null}
@@ -438,14 +486,25 @@ export default function EntityDetailsScreen({ entity, id }: { entity: EntityKey;
         ) : null}
 
         {!loading && !error && data && activeTab === "details" ? (
-          <View style={styles.sectionCard}>
-            <Text style={styles.sectionTitle}>البيانات الأساسية</Text>
-            {primaryFields.length ? primaryFields.map((field) => <FieldRow key={field.key} field={field} />) : <EmptyState text="لا توجد بيانات أساسية." />}
+          <View>
+            <DetailAccordionSection
+              title="البيانات الأساسية"
+              count={primaryFields.length}
+              open={openDetailSections.primary !== false}
+              onToggle={() => toggleDetailSection("primary")}
+            >
+              {primaryFields.length ? primaryFields.map((field) => <FieldRow key={field.key} field={field} />) : <EmptyState text="لا توجد بيانات أساسية." />}
+            </DetailAccordionSection>
+
             {otherFields.length ? (
-              <>
-                <Text style={styles.subSectionTitle}>بيانات إضافية</Text>
+              <DetailAccordionSection
+                title="بيانات إضافية"
+                count={otherFields.length}
+                open={openDetailSections.extra !== false}
+                onToggle={() => toggleDetailSection("extra")}
+              >
                 {otherFields.map((field) => <FieldRow key={field.key} field={field} />)}
-              </>
+              </DetailAccordionSection>
             ) : null}
           </View>
         ) : null}
@@ -480,22 +539,50 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: "#f6f7fb" },
   scroll: { flex: 1 },
   container: { padding: 14, paddingBottom: 28 },
-  topBar: { flexDirection: "row-reverse", alignItems: "center", justifyContent: "space-between", marginBottom: 10 },
-  addUnitButton: { width: 38, height: 38, borderRadius: 19, backgroundColor: "#0f766e", alignItems: "center", justifyContent: "center" },
-  addUnitButtonText: { color: "#ffffff", fontSize: 24, lineHeight: 28, fontWeight: "900" },
-  topTitle: { flex: 1, color: "#111827", fontSize: 20, fontWeight: "900", textAlign: "right" },
-  detailsActionsBox: { backgroundColor: "#fff", borderRadius: 18, padding: 8, marginBottom: 12, borderWidth: 1, borderColor: "#EDECE9" },
-  servicesCard: { backgroundColor: "#fff", borderRadius: 18, padding: 12, marginBottom: 12, borderWidth: 1, borderColor: "#EDECE9" },
-  servicesHint: { color: "#6b7280", fontSize: 12, fontWeight: "800", textAlign: "right", marginBottom: 10 },
-  servicesGrid: { flexDirection: "row-reverse", flexWrap: "wrap", gap: 8 },
-  serviceButton: { width: "48%", minHeight: 78, borderRadius: 16, backgroundColor: "#F7F6F4", borderWidth: 1, borderColor: "#DDDBD6", alignItems: "center", justifyContent: "center", padding: 8 },
-  serviceIcon: { fontSize: 24, marginBottom: 4 },
-  serviceText: { color: "#111827", fontSize: 13, fontWeight: "900", textAlign: "center" },
+  topBar: { flexDirection: "row-reverse", alignItems: "center", justifyContent: "space-between", marginTop: 2, marginBottom: 10, gap: 10 },
+  topTitleBlock: { flex: 1, alignItems: "flex-end" },
+  headerIconButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: "#0f766e",
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  topTitle: { color: "#111827", fontSize: 20, fontWeight: "900", textAlign: "right" },
+  topSubtitle: { color: "#6b7280", fontSize: 11, fontWeight: "800", textAlign: "right", marginTop: 2 },
+  detailsActionsBox: { alignSelf: "flex-start", backgroundColor: "#fff", borderRadius: 18, padding: 5, marginBottom: 10, borderWidth: 1, borderColor: "#EDECE9" },
+  servicesCard: { backgroundColor: "#fff", borderRadius: 17, padding: 10, marginBottom: 10, borderWidth: 1, borderColor: "#EDECE9" },
+  servicesHeaderRow: { flexDirection: "row-reverse", alignItems: "center", justifyContent: "space-between", marginBottom: 8, gap: 8 },
+  servicesTitleBlock: { flex: 1, alignItems: "flex-end" },
+  servicesTitle: { color: "#111827", fontSize: 14, fontWeight: "900", textAlign: "right" },
+  servicesHint: { color: "#6b7280", fontSize: 10, fontWeight: "800", textAlign: "right", marginTop: 1 },
+  servicesGrid: { flexDirection: "row-reverse", flexWrap: "wrap", gap: 7 },
+  serviceChip: {
+    width: "48.5%",
+    minHeight: 46,
+    borderRadius: 14,
+    backgroundColor: "#F7F6F4",
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    justifyContent: "flex-start",
+    gap: 7,
+    paddingHorizontal: 9,
+    paddingVertical: 7,
+  },
+  serviceIconWrap: { width: 28, height: 28, borderRadius: 14, backgroundColor: "#ffffff", alignItems: "center", justifyContent: "center" },
+  serviceText: { flex: 1, color: "#111827", fontSize: 12, fontWeight: "900", textAlign: "right" },
   headerCard: {
     backgroundColor: "#111827",
     borderRadius: 24,
     padding: 16,
-    marginBottom: 12,
+    marginBottom: 10,
   },
   entityLabel: {
     alignSelf: "flex-end",
@@ -587,6 +674,12 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     elevation: 1,
   },
+  accordionHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
+  accordionChevronBox: { width: 34, height: 34, borderRadius: 17, backgroundColor: "#F7F6F4", alignItems: "center", justifyContent: "center" },
+  accordionTitleBlock: { flex: 1, alignItems: "flex-end" },
+  accordionTitle: { color: "#111827", fontSize: 15, fontWeight: "900", textAlign: "right" },
+  accordionSubtitle: { color: "#9ca3af", fontSize: 11, fontWeight: "800", textAlign: "right", marginTop: 2 },
+  accordionBody: { marginTop: 8 },
   sectionHeaderRow: {
     flexDirection: "row",
     justifyContent: "space-between",
