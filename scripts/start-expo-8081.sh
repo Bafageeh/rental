@@ -20,14 +20,15 @@ if [ -f "src/components/EntityDetailsScreen.fixed.tsx" ]; then
   cp src/components/EntityDetailsScreen.fixed.tsx src/components/EntityDetailsScreen.tsx
 fi
 
-# Final unit-card refinements requested by user.
 python3 - <<'PY'
 from pathlib import Path
 import re
 
-path = Path('src/components/EntityDetailsScreen.tsx')
-text = path.read_text()
-old = '''        <View style={styles.headerCard}>
+# 1) Unit details card refinements.
+details = Path('src/components/EntityDetailsScreen.tsx')
+if details.exists():
+    text = details.read_text()
+    old = '''        <View style={styles.headerCard}>
           <View style={styles.unitCardTopRow}>
             {normalizedEntity === "unit" ? (
               <View style={styles.unitCardActions}>
@@ -56,7 +57,7 @@ old = '''        <View style={styles.headerCard}>
             </View>
           ) : null}
         </View>'''
-new = '''        <View style={styles.headerCard}>
+    new = '''        <View style={styles.headerCard}>
           {normalizedEntity === "unit" ? (
             <>
               <View style={styles.unitHeroRow}>
@@ -91,12 +92,9 @@ new = '''        <View style={styles.headerCard}>
             </>
           )}
         </View>'''
-if old not in text:
-    raise SystemExit('Expected unit card block not found')
-text = text.replace(old, new, 1)
-
-# Compact services and lift title visually.
-text = re.sub(r'serviceChip:\s*\{.*?\n\s*\},', '''serviceChip: {
+    if old in text:
+        text = text.replace(old, new, 1)
+    text = re.sub(r'serviceChip:\s*\{.*?\n\s*\},', '''serviceChip: {
     width: "48.5%",
     minHeight: 38,
     borderRadius: 14,
@@ -110,9 +108,9 @@ text = re.sub(r'serviceChip:\s*\{.*?\n\s*\},', '''serviceChip: {
     paddingHorizontal: 8,
     paddingVertical: 6,
   },''', text, flags=re.S)
-text = re.sub(r'serviceIconWrap:\s*\{.*?\n\s*\},', 'serviceIconWrap: { width: 24, height: 24, borderRadius: 12, backgroundColor: "#ffffff", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#EEF2F7" },', text, flags=re.S)
-text = re.sub(r'serviceText:\s*\{.*?\n\s*\},', 'serviceText: { flex: 1, color: "#111827", fontSize: 11, fontWeight: "900", textAlign: "right" },', text, flags=re.S)
-text = re.sub(r'title:\s*\{.*?\n\s*\},', '''title: {
+    text = re.sub(r'serviceIconWrap:\s*\{.*?\n\s*\},', 'serviceIconWrap: { width: 24, height: 24, borderRadius: 12, backgroundColor: "#ffffff", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#EEF2F7" },', text, flags=re.S)
+    text = re.sub(r'serviceText:\s*\{.*?\n\s*\},', 'serviceText: { flex: 1, color: "#111827", fontSize: 11, fontWeight: "900", textAlign: "right" },', text, flags=re.S)
+    text = re.sub(r'title:\s*\{.*?\n\s*\},', '''title: {
     color: "#111827",
     fontSize: 23,
     lineHeight: 31,
@@ -120,7 +118,7 @@ text = re.sub(r'title:\s*\{.*?\n\s*\},', '''title: {
     textAlign: "right",
     marginTop: 0,
   },''', text, flags=re.S)
-text = re.sub(r'headerCard:\s*\{.*?\n\s*\},', '''headerCard: {
+    text = re.sub(r'headerCard:\s*\{.*?\n\s*\},', '''headerCard: {
     backgroundColor: "#ffffff",
     borderRadius: 26,
     padding: 14,
@@ -132,17 +130,74 @@ text = re.sub(r'headerCard:\s*\{.*?\n\s*\},', '''headerCard: {
     shadowRadius: 16,
     elevation: 2,
   },''', text, flags=re.S)
-
-anchor = '  unitCardActions: { flexDirection: "row-reverse", alignItems: "center", justifyContent: "flex-start", gap: 6 },'
-insert = '''  unitCardActions: { flexDirection: "row-reverse", alignItems: "center", justifyContent: "flex-start", gap: 6 },
+    anchor = '  unitCardActions: { flexDirection: "row-reverse", alignItems: "center", justifyContent: "flex-start", gap: 6 },'
+    insert = '''  unitCardActions: { flexDirection: "row-reverse", alignItems: "center", justifyContent: "flex-start", gap: 6 },
   unitHeroRow: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 10 },
   unitTitleWrap: { flex: 1, alignItems: "flex-end", gap: 7 },
   headerServicesWrapCompact: { marginTop: 10, paddingTop: 9, borderTopWidth: 1, borderTopColor: "#E5E7EB" },
   headerServicesHeaderCompact: { flexDirection: "row-reverse", alignItems: "center", justifyContent: "space-between", marginBottom: 6 },
   headerServicesTitleCompact: { color: "#374151", fontSize: 11, fontWeight: "900", textAlign: "right" },
   headerServicesGridCompact: { flexDirection: "row-reverse", flexWrap: "wrap", gap: 6 },'''
-text = text.replace(anchor, insert, 1)
-path.write_text(text)
+    if 'unitHeroRow:' not in text:
+        text = text.replace(anchor, insert, 1)
+    details.write_text(text)
+
+# 2) Unit add/edit display labels.
+arabic = Path('src/lib/arabicDisplay.ts')
+if arabic.exists():
+    text = arabic.read_text()
+    text = text.replace('rent_amount: "قيمة الإيجار"', 'rent_amount: "قيمة الإيجار المقترحة"')
+    arabic.write_text(text)
+
+units = Path('src/app/units.tsx')
+if units.exists():
+    text = units.read_text()
+    text = text.replace('placeholder="قيمة الإيجار"', 'placeholder="قيمة الإيجار المقترحة"')
+    units.write_text(text)
+
+# 3) Unit edit modal: remove detailed split-unit fields and prevent numeric input under yes/no fields.
+inline = Path('src/components/InlineEditDeleteActions.tsx')
+if inline.exists():
+    text = inline.read_text()
+    marker = '''function isCompactPropertyOptionField(resource: string | null | undefined, field: string) {
+  return isPropertyResource(resource) && field === "usage_type";
+}
+'''
+    if 'function isUnitResourceForEdit' not in text and marker in text:
+        helper = marker + '''
+function isUnitResourceForEdit(resource: string | null | undefined) {
+  return resource === "units" || resource === "unit";
+}
+
+function isHiddenUnitEditField(resource: string | null | undefined, field: string) {
+  if (!isUnitResourceForEdit(resource)) return false;
+  return [
+    "parent_unit_id",
+    "main_unit_id",
+    "sub_unit_id",
+    "divided_from_unit_id",
+    "subdivision_parent_id",
+    "division_parent_id",
+    "subdivision_count",
+    "split_from_unit_id",
+  ].includes(field);
+}
+'''
+        text = text.replace(marker, helper)
+    old = '''      const editableFields = resource === "owners"
+        ? item.editable_fields.filter((field: string) => field !== "type")
+        : item.editable_fields;
+'''
+    new = '''      const baseEditableFields = resource === "owners"
+        ? item.editable_fields.filter((field: string) => field !== "type")
+        : item.editable_fields;
+      const editableFields = baseEditableFields.filter((field: string) => !isHiddenUnitEditField(resource, field));
+'''
+    text = text.replace(old, new)
+    if '"is_subdivided",' not in text.split('const importantFields = [', 1)[1].split('];', 1)[0]:
+        text = text.replace('"rent_amount",', '"rent_amount",\n  "is_subdivided",', 1)
+    text = text.replace('{!relationField && optionList.length === 0 ? (', '{!relationField && optionList.length === 0 && !isBoolean ? (')
+    inline.write_text(text)
 PY
 
 stop_known_pid() {
