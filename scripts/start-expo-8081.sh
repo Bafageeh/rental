@@ -40,9 +40,9 @@ text = re.sub(
     flags=re.S,
 )
 
-# ارجاع بطاقة الوحدة للشكل السابق تقريبًا: كلمة وحدة موجودة، حذف رقم السجل فقط، وحذف خدمة العقود
+# ارجاع خدمات الوحدة كاملة: العقود، إنشاء عقد، رفع عقد، الوسائط
 header_pattern = r'\n\s*<View style=\{styles\.headerCard\}>.*?\n\s*</View>\n\n\s*\{normalizedEntity !== "unit" \? \('
-new_header = '''\n        <View style={styles.headerCard}>\n          <View style={styles.unitCardTopRow}>\n            {normalizedEntity === "unit" ? (\n              <View style={styles.unitCardActions}>\n                <InlineEditDeleteActions resource={resourceForEntity(String(entity))} id={id} hideDetails compact iconOnly onChanged={() => load(false)} />\n              </View>\n            ) : <View />}\n            <Text style={styles.entityLabel}>{data?.entity_title || entityTitle[normalizedEntity] || "تفاصيل"}</Text>\n          </View>\n          <Text numberOfLines={2} style={styles.title}>{data?.title || "جاري التحميل..."}</Text>\n          <View style={styles.headerStatsRow}>\n            <Text style={styles.statPill}>{relatedLabel}: {relatedCount}</Text>\n          </View>\n          {normalizedEntity === "unit" ? (\n            <View style={styles.headerServicesWrap}>\n              <Text style={styles.headerServicesTitle}>خدمات الوحدة</Text>\n              {relatedCount < 1 ? (\n                <View style={styles.headerServicesGrid}>\n                  <ServiceChip icon="create-outline" label="إنشاء عقد" onPress={() => openUnitService("/create-contract")} />\n                  <ServiceChip icon="cloud-upload-outline" label="رفع عقد" onPress={() => openUnitService("/upload-contract")} />\n                  <ServiceChip icon="images-outline" label="الوسائط" onPress={() => openUnitService("/files", "mode=media")} />\n                </View>\n              ) : (\n                <View style={styles.headerServicesGrid}>\n                  <ServiceChip icon="images-outline" label="الوسائط" onPress={() => openUnitService("/files", "mode=media")} />\n                </View>\n              )}\n            </View>\n          ) : null}\n        </View>\n\n        {normalizedEntity !== "unit" ? ('''
+new_header = '''\n        <View style={styles.headerCard}>\n          <View style={styles.unitCardTopRow}>\n            {normalizedEntity === "unit" ? (\n              <View style={styles.unitCardActions}>\n                <InlineEditDeleteActions resource={resourceForEntity(String(entity))} id={id} hideDetails compact iconOnly onChanged={() => load(false)} />\n              </View>\n            ) : <View />}\n            <Text style={styles.entityLabel}>{data?.entity_title || entityTitle[normalizedEntity] || "تفاصيل"}</Text>\n          </View>\n          <Text numberOfLines={2} style={styles.title}>{data?.title || "جاري التحميل..."}</Text>\n          <View style={styles.headerStatsRow}>\n            <Text style={styles.statPill}>{relatedLabel}: {relatedCount}</Text>\n          </View>\n          {normalizedEntity === "unit" ? (\n            <View style={styles.headerServicesWrap}>\n              <Text style={styles.headerServicesTitle}>خدمات الوحدة</Text>\n              <View style={styles.headerServicesGrid}>\n                <ServiceChip icon="documents-outline" label="العقود" onPress={() => openUnitService("/contracts")} />\n                <ServiceChip icon="create-outline" label="إنشاء عقد" onPress={() => openUnitService("/create-contract")} />\n                <ServiceChip icon="cloud-upload-outline" label="رفع عقد" onPress={() => openUnitService("/upload-contract")} />\n                <ServiceChip icon="images-outline" label="الوسائط" onPress={() => openUnitService("/files", "mode=media")} />\n              </View>\n            </View>\n          ) : null}\n        </View>\n\n        {normalizedEntity !== "unit" ? ('''
 text = re.sub(header_pattern, new_header, text, count=1, flags=re.S)
 
 # حذف صندوق الخدمات المنفصل إن وجد
@@ -53,9 +53,8 @@ text = re.sub(
     flags=re.S,
 )
 
-# إلغاء أي زر إضافة متبقٍ في البطاقة
+# إزالة رقم السجل وأي زر إضافة متبقٍ
 text = text.replace('''                <HeaderIconButton icon="add" label="إضافة وحدة" onPress={openAddUnit} />\n''', '')
-text = text.replace('''                  <ServiceChip icon="documents-outline" label="العقود" onPress={() => openUnitService("/contracts")} />\n''', '')
 text = text.replace('''            <Text style={styles.statPill}>رقم السجل: {valueOrDash(id)}</Text>\n''', '')
 
 # تصميم البطاقة السابق المحسن
@@ -135,7 +134,7 @@ for key, value in {
 }.items():
     text = re.sub(rf'{key}: \{{[^\n]+\}},', value, text)
 
-# إزالة ستايلات آخر بطاقة لا نحتاجها إذا وجدت
+# إزالة ستايلات لا نحتاجها إذا وجدت
 text = re.sub(r'\n\s*(?:unitHeroRow|unitHeroTitleBlock|unitTitleBadgeRow|contractBadge): \{[^\n]+\},', '', text)
 
 # إزالة تكرارات سطور الستايل
