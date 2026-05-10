@@ -9,11 +9,13 @@ TMP_DIR="/home/pmsa/apps/.tmp"
 PORT="8083"
 HOSTNAME="my.pm.sa"
 API_BASE_URL="https://rental.pm.sa/api"
+DEPLOY_STAMP="2026-05-10-contract-payment-card-compact-v3"
 
 cd "$APP_DIR"
 mkdir -p "$CACHE_DIR" "$TMP_DIR"
 touch "$LOG_FILE"
 : > "$LOG_FILE"
+echo "Starting my-rentals Expo bundle: $DEPLOY_STAMP" >> "$LOG_FILE"
 
 # Use the fixed source directly so the unit services layout does not disappear.
 if [ -f "src/components/EntityDetailsScreen.fixed.tsx" ]; then
@@ -238,8 +240,7 @@ is_port_listening() {
 
 stop_known_pid
 stop_port_if_allowed
-pkill -f "expo start.*--port $PORT" 2>/dev/null || true
-pkill -f "node .*expo.*--port $PORT" 2>/dev/null || true
+pkill -f "expo|metro|react-native|node.*$PORT|node.*8081|node.*8082|node.*8083" 2>/dev/null || true
 sleep 2
 
 if is_port_listening; then
@@ -249,6 +250,7 @@ fi
 
 rm -rf .expo .expo-shared .metro-cache node_modules/.cache || true
 rm -rf "$CACHE_DIR"/expo "$CACHE_DIR"/metro "$CACHE_DIR"/react-native "$CACHE_DIR"/metro-* "$CACHE_DIR"/haste-map-* || true
+watchman watch-del-all >/dev/null 2>&1 || true
 
 setsid bash -lc "cd '$APP_DIR' && exec env \
   BROWSER=none \
