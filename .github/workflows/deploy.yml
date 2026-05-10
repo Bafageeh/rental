@@ -39,6 +39,8 @@ jobs:
           git fetch origin main
           git reset --hard origin/main
           mkdir -p /home/pmsa/apps/.cache /home/pmsa/apps/.tmp
+          rm -rf .expo .expo-shared node_modules/.cache .metro-cache
+          rm -rf /home/pmsa/apps/.cache/expo /home/pmsa/apps/.cache/metro /home/pmsa/apps/.cache/react-native
           npm install --no-audit --no-fund
           node -e "require.resolve('expo-router/entry'); require.resolve('@babel/runtime/helpers/slicedToArray'); console.log('mobile dependencies ok')"
           chmod +x scripts/start-expo-8081.sh
