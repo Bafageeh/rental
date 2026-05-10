@@ -22,7 +22,6 @@ import re
 path = Path('src/components/EntityDetailsScreen.tsx')
 text = path.read_text()
 
-# القوائم المنسدلة مغلقة افتراضيًا
 text = text.replace(
     'const [openDetailSections, setOpenDetailSections] = useState<Record<string, boolean>>({ primary: true, extra: true });',
     'const [openDetailSections, setOpenDetailSections] = useState<Record<string, boolean>>({ primary: false, extra: false });'
@@ -32,10 +31,10 @@ text = text.replace(
     'const [openDetailSections, setOpenDetailSections] = useState<Record<string, boolean>>({ primary: false, extra: false });'
 )
 
-# الغاء عدد الحقول في القوائم المنسدلة
+# إلغاء عدد الحقول في القوائم المنسدلة
 text = re.sub(r'\n\s*<Text style=\{styles\.accordionSubtitle\}>\{count\} حقل</Text>', '', text)
 
-# إخفاء عنوان الصفحة العلوي في تفاصيل الوحدة حتى تبدأ الشاشة ببطاقة الوحدة مباشرة
+# إخفاء عنوان الصفحة العلوي في تفاصيل الوحدة فقط
 text = re.sub(
     r'\n\s*<View style=\{styles\.topBar\}>\n\s*<View style=\{styles\.topTitleBlock\}>\n\s*<Text style=\{styles\.topTitle\}>\{entityTitle\[normalizedEntity\] \|\| "التفاصيل"\}</Text>\n\s*<Text style=\{styles\.topSubtitle\}>تفاصيل السجل والخدمات المرتبطة</Text>\n\s*</View>\n(?:\s*\{normalizedEntity === "unit" \? \(.*?\) : null\}\n)?\s*</View>',
     '''\n        {normalizedEntity !== "unit" ? (\n          <View style={styles.topBar}>\n            <View style={styles.topTitleBlock}>\n              <Text style={styles.topTitle}>{entityTitle[normalizedEntity] || "التفاصيل"}</Text>\n              <Text style={styles.topSubtitle}>تفاصيل السجل والخدمات المرتبطة</Text>\n            </View>\n          </View>\n        ) : null}''',
@@ -43,24 +42,34 @@ text = re.sub(
     flags=re.S,
 )
 
-# تثبيت خدمات الوحدة كاملة داخل بطاقة تفاصيل الوحدة
+# تثبيت بطاقة تفاصيل الوحدة مع خدمات الوحدة داخلها
 header_pattern = r'\n\s*<View style=\{styles\.headerCard\}>.*?\n\s*</View>\n\n\s*\{normalizedEntity !== "unit" \? \('
 new_header = '''\n        <View style={styles.headerCard}>\n          <View style={styles.unitCardTopRow}>\n            {normalizedEntity === "unit" ? (\n              <View style={styles.unitCardActions}>\n                <InlineEditDeleteActions resource={resourceForEntity(String(entity))} id={id} hideDetails compact iconOnly onChanged={() => load(false)} />\n              </View>\n            ) : <View />}\n            <Text style={styles.entityLabel}>{data?.entity_title || entityTitle[normalizedEntity] || "تفاصيل"}</Text>\n          </View>\n          <Text numberOfLines={2} style={styles.title}>{data?.title || "جاري التحميل..."}</Text>\n          <View style={styles.headerStatsRow}>\n            <Text style={styles.statPill}>{relatedLabel}: {relatedCount}</Text>\n          </View>\n          {normalizedEntity === "unit" ? (\n            <View style={styles.headerServicesWrap}>\n              <Text style={styles.headerServicesTitle}>خدمات الوحدة</Text>\n              <View style={styles.headerServicesGrid}>\n                <ServiceChip icon="documents-outline" label="العقود" onPress={() => openUnitService("/contracts")} />\n                <ServiceChip icon="create-outline" label="إنشاء عقد" onPress={() => openUnitService("/create-contract")} />\n                <ServiceChip icon="cloud-upload-outline" label="رفع عقد" onPress={() => openUnitService("/upload-contract")} />\n                <ServiceChip icon="images-outline" label="الوسائط" onPress={() => openUnitService("/files", "mode=media")} />\n              </View>\n            </View>\n          ) : null}\n        </View>\n\n        {normalizedEntity !== "unit" ? ('''
 text = re.sub(header_pattern, new_header, text, count=1, flags=re.S)
 
-# حذف صندوق الخدمات المنفصل إن وجد
-text = re.sub(
-    r'\n\s*\{normalizedEntity === "unit" \? \(\n\s*<View style=\{styles\.servicesCard\}>.*?\n\s*\) : null\}\n\n\s*<SegmentedTabs',
-    '\n\n        <SegmentedTabs',
-    text,
-    flags=re.S,
-)
+# ضمان ظهور خدمات الوحدة حتى لو لم ينجح استبدال البطاقة لأي سبب
+services_block = '''
+        {normalizedEntity === "unit" ? (
+          <View style={styles.servicesCard}>
+            <Text style={styles.sectionTitle}>خدمات الوحدة</Text>
+            <View style={styles.servicesGrid}>
+              <ServiceChip icon="documents-outline" label="العقود" onPress={() => openUnitService("/contracts")} />
+              <ServiceChip icon="create-outline" label="إنشاء عقد" onPress={() => openUnitService("/create-contract")} />
+              <ServiceChip icon="cloud-upload-outline" label="رفع عقد" onPress={() => openUnitService("/upload-contract")} />
+              <ServiceChip icon="images-outline" label="الوسائط" onPress={() => openUnitService("/files", "mode=media")} />
+            </View>
+          </View>
+        ) : null}
+'''
+if 'label="العقود"' not in text:
+    text = text.replace('\n        <SegmentedTabs active={activeTab}', services_block + '\n        <SegmentedTabs active={activeTab}', 1)
 
 # إزالة رقم السجل وأي زر إضافة متبقٍ
 text = text.replace('''                <HeaderIconButton icon="add" label="إضافة وحدة" onPress={openAddUnit} />\n''', '')
 text = text.replace('''            <Text style={styles.statPill}>رقم السجل: {valueOrDash(id)}</Text>\n''', '')
+text = re.sub(r'\n\s*<Text style=\{styles\.statPill\}>رقم السجل: \{valueOrDash\(id\)\}</Text>', '', text)
 
-# تصميم البطاقة السابق المحسن
+# تصميم البطاقة والخدمات
 text = re.sub(r'headerCard:\s*\{.*?\n\s*\},', '''headerCard: {
     backgroundColor: "#ffffff",
     borderRadius: 26,
@@ -119,7 +128,6 @@ text = re.sub(r'serviceChip:\s*\{.*?\n\s*\},', '''serviceChip: {
   },''', text, flags=re.S)
 text = re.sub(r'serviceIconWrap:\s*\{.*?\n\s*\},', '''serviceIconWrap: { width: 28, height: 28, borderRadius: 14, backgroundColor: "#F7F6F4", alignItems: "center", justifyContent: "center" },''', text, flags=re.S)
 
-# ستايلات البطاقة
 style_anchor = '  topTitleBlock: { flex: 1, alignItems: "flex-end" },'
 style_insert = '''  topTitleBlock: { flex: 1, alignItems: "flex-end" },
   unitCardTopRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 6 },
@@ -137,10 +145,8 @@ for key, value in {
 }.items():
     text = re.sub(rf'{key}: \{{[^\n]+\}},', value, text)
 
-# إزالة ستايلات لا نحتاجها إذا وجدت
 text = re.sub(r'\n\s*(?:unitHeroRow|unitHeroTitleBlock|unitTitleBadgeRow|contractBadge): \{[^\n]+\},', '', text)
 
-# إزالة تكرارات سطور الستايل
 for line in set(re.findall(r'\n\s*(?:unitCardTopRow|unitCardActions|headerServicesWrap|headerServicesTitle|headerServicesGrid): \{[^\n]+\},', text)):
     first = text.find(line)
     if first != -1:
