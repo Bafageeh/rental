@@ -75,6 +75,8 @@ Route::middleware(['auth.api', 'api.scope'])->group(function () {
         __DIR__ . '/api/17_renewals.php',
         __DIR__ . '/api/18_utility.php',
         __DIR__ . '/api/100_contract_cascade_delete.php',
+        // يجب تحميل تأكيد حذف العقار/الوحدة قبل المسارات العامة لأن Laravel يستخدم أول مسار مطابق.
+        __DIR__ . '/api/101b_confirmed_property_unit_cascade_delete.php',
         __DIR__ . '/api/102_property_cascade_delete.php',
         __DIR__ . '/api/103_property_deed_extract.php',
         // صكوك خاصة يجب تسجيل مسارها قبل المسار العام حتى لا يلتقط المسار العام الطلب أولًا.
