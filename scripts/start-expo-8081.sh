@@ -9,7 +9,7 @@ TMP_DIR="/home/pmsa/apps/.tmp"
 PORT="8083"
 HOSTNAME="my.pm.sa"
 API_BASE_URL="https://rental.pm.sa/api"
-DEPLOY_STAMP="2026-05-10-contract-payment-card-compact-v3"
+DEPLOY_STAMP="2026-05-10-unit-services-one-row-v1"
 
 cd "$APP_DIR"
 mkdir -p "$CACHE_DIR" "$TMP_DIR"
@@ -17,7 +17,7 @@ touch "$LOG_FILE"
 : > "$LOG_FILE"
 echo "Starting my-rentals Expo bundle: $DEPLOY_STAMP" >> "$LOG_FILE"
 
-# Use the fixed source directly so the unit services layout does not disappear.
+# Use the fixed source directly so the unit details layout does not disappear.
 if [ -f "src/components/EntityDetailsScreen.fixed.tsx" ]; then
   cp src/components/EntityDetailsScreen.fixed.tsx src/components/EntityDetailsScreen.tsx
 fi
@@ -96,22 +96,27 @@ if details.exists():
         </View>'''
     if old in text:
         text = text.replace(old, new, 1)
+
+    # Services layout: keep the same chips and labels, but force all 4 chips into one small row.
     text = re.sub(r'serviceChip:\s*\{.*?\n\s*\},', '''serviceChip: {
-    width: "48.5%",
-    minHeight: 38,
-    borderRadius: 14,
+    flex: 1,
+    minWidth: 0,
+    minHeight: 48,
+    borderRadius: 13,
     backgroundColor: "#F8FAFC",
     borderWidth: 1,
     borderColor: "#E5E7EB",
-    flexDirection: "row-reverse",
     alignItems: "center",
-    justifyContent: "flex-start",
-    gap: 7,
-    paddingHorizontal: 8,
-    paddingVertical: 6,
+    justifyContent: "center",
+    gap: 3,
+    paddingHorizontal: 3,
+    paddingVertical: 5,
   },''', text, flags=re.S)
-    text = re.sub(r'serviceIconWrap:\s*\{.*?\n\s*\},', 'serviceIconWrap: { width: 24, height: 24, borderRadius: 12, backgroundColor: "#ffffff", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#EEF2F7" },', text, flags=re.S)
-    text = re.sub(r'serviceText:\s*\{.*?\n\s*\},', 'serviceText: { flex: 1, color: "#111827", fontSize: 11, fontWeight: "900", textAlign: "right" },', text, flags=re.S)
+    text = re.sub(r'serviceIconWrap:\s*\{.*?\n\s*\},', 'serviceIconWrap: { width: 23, height: 23, borderRadius: 12, backgroundColor: "#ffffff", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#EEF2F7" },', text, flags=re.S)
+    text = re.sub(r'serviceText:\s*\{.*?\n\s*\},', 'serviceText: { width: "100%", color: "#111827", fontSize: 10, fontWeight: "900", textAlign: "center" },', text, flags=re.S)
+    text = re.sub(r'headerServicesGrid:\s*\{[^\n]+\},', 'headerServicesGrid: { flexDirection: "row-reverse", flexWrap: "nowrap", gap: 4 },', text)
+    text = re.sub(r'headerServicesGridCompact:\s*\{[^\n]+\},', 'headerServicesGridCompact: { flexDirection: "row-reverse", flexWrap: "nowrap", gap: 4 },', text)
+
     text = re.sub(r'title:\s*\{.*?\n\s*\},', '''title: {
     color: "#111827",
     fontSize: 23,
@@ -139,7 +144,7 @@ if details.exists():
   headerServicesWrapCompact: { marginTop: 10, paddingTop: 9, borderTopWidth: 1, borderTopColor: "#E5E7EB" },
   headerServicesHeaderCompact: { flexDirection: "row-reverse", alignItems: "center", justifyContent: "space-between", marginBottom: 6 },
   headerServicesTitleCompact: { color: "#374151", fontSize: 11, fontWeight: "900", textAlign: "right" },
-  headerServicesGridCompact: { flexDirection: "row-reverse", flexWrap: "wrap", gap: 6 },'''
+  headerServicesGridCompact: { flexDirection: "row-reverse", flexWrap: "nowrap", gap: 4 },'''
     if 'unitHeroRow:' not in text:
         text = text.replace(anchor, insert, 1)
     details.write_text(text)
