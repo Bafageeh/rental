@@ -1,0 +1,39 @@
+{
+    "extends": "expo/tsconfig.base",
+    "compilerOptions": {
+        "strict": true,
+        "paths": {
+            "@/*": [
+                "./src/*"
+            ],
+            "@/assets/*": [
+                "./assets/*"
+            ]
+        }
+    },
+    "include": [
+        "**/*.ts",
+        "**/*.tsx",
+        ".expo/types/**/*.ts",
+        "expo-env.d.ts"
+    ],
+    "exclude": [
+        "node_modules",
+        "src/app_file_backups",
+        "src/lib_file_backups",
+        "src/app_disabled",
+        "_archived_src_backups",
+        ".expo",
+        "dist",
+        "build",
+        "phase1_backups",
+        "phase1_backups/**/*",
+        "phase2_backups",
+        "phase2_backups/**/*",
+        "phase3_backups",
+        "phase3_backups/**/*",
+        "**/phase1_backups/**",
+        "**/phase2_backups/**",
+        "**/phase3_backups/**"
+    ]
+}
