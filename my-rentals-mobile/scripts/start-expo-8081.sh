@@ -7,7 +7,7 @@ TMP_DIR="/home/pmsa/apps/.tmp"
 PORT="8083"
 HOSTNAME="my.pm.sa"
 API_BASE_URL="https://rental.pm.sa/api"
-DEPLOY_STAMP="2026-05-10-owner-assets-summary-cards-removed-v8"
+DEPLOY_STAMP="2026-05-10-confirm-delete-linked-property-unit-v9"
 
 choose_app_dir() {
   for candidate in \
@@ -39,6 +39,7 @@ touch "$LOG_FILE"
   echo "DATE=$(date '+%Y-%m-%d %H:%M:%S')"
   echo "IMPORTANT: not restoring EntityDetailsScreen.fixed.tsx"
   echo "IMPORTANT: owner asset summary cards are removed"
+  echo "IMPORTANT: delete property/unit previews related records and requires confirmation"
 } >> "$LOG_FILE"
 
 python3 - <<'PY' | tee -a "/home/pmsa/apps/my-rentals-expo.log"
@@ -115,6 +116,81 @@ owner_text = re.sub(
 )
 owner_dashboard.write_text(owner_text)
 print(f'OWNER_ASSET_SUMMARY_CARDS_REMOVED={"ok" if "assetSummaryStrip" not in owner_text else "failed"}')
+
+edit_center = Path('src/app/edit-delete-center.tsx')
+if edit_center.exists():
+    edit_text = edit_center.read_text()
+    replacement = r'''async function deleteRecord() {
+    if (!selected) {
+      Alert.alert("تنبيه", "اختر سجلًا أولاً");
+      return;
+    }
+
+    const deleteEndpoints = [
+      `/my/edit-delete-center/${selected.resource}/${selected.id}/delete`,
+      `/edit-delete-center/${selected.resource}/${selected.id}/delete`,
+    ];
+
+    const runDelete = async (force = false) => {
+      try {
+        setSaving(true);
+        const result = await apiPostAny(deleteEndpoints, force ? { force: true } : {});
+        Alert.alert("تم", result?.message || "تم حذف السجل");
+        await loadRecords(resource, search);
+      } catch (e) {
+        const message = errorMessage(e);
+        Alert.alert("تعذر الحذف", message);
+      } finally {
+        setSaving(false);
+      }
+    };
+
+    const confirmDelete = (message: string, force = false) => {
+      Alert.alert("تأكيد الحذف", message, [
+        { text: "إلغاء", style: "cancel" },
+        {
+          text: "حذف",
+          style: "destructive",
+          onPress: () => runDelete(force),
+        },
+      ]);
+    };
+
+    try {
+      setSaving(true);
+      const preview = await apiPostAny(deleteEndpoints, { preview_only: true });
+      const blockers = Array.isArray(preview?.blockers) ? preview.blockers : [];
+      const hasRelations = blockers.length > 0;
+      const relationDetails = hasRelations ? blockers.map((item: string) => `• ${item}`).join("\n") : "لا توجد ارتباطات مسجلة.";
+
+      setSaving(false);
+
+      if (hasRelations) {
+        confirmDelete(
+          `${selected.title}\n\nهذا السجل مرتبط بالبيانات التالية:\n${relationDetails}\n\nهل تريد حذف السجل وكل ما هو مرتبط به؟`,
+          true,
+        );
+      } else {
+        confirmDelete(
+          `${selected.title}\n\nهل تريد حذف هذا السجل؟\nسيتم نقله إلى سلة المحذوفات إذا كان باتش السلة مثبتًا.`,
+          false,
+        );
+      }
+    } catch (e) {
+      setSaving(false);
+      confirmDelete(
+        `${selected.title}\n\nتعذر فحص الارتباطات قبل الحذف. هل تريد المتابعة؟`,
+        false,
+      );
+    }
+  }
+'''
+    patched, n = re.subn(r'async function deleteRecord\(\) \{.*?\n  \}\n\n  useEffect\(\(\) => \{', replacement + '\n  useEffect(() => {', edit_text, count=1, flags=re.S)
+    if n:
+        edit_center.write_text(patched)
+    print(f'EDIT_DELETE_CENTER_CONFIRM_LINKED_DELETE_PATCH={"ok" if n else "not_found"}')
+else:
+    print('EDIT_DELETE_CENTER_CONFIRM_LINKED_DELETE_PATCH=not_found')
 PY
 
 rm -rf .expo .expo-shared .metro-cache node_modules/.cache || true
