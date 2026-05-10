@@ -31,39 +31,35 @@ text = text.replace(
     'const [openDetailSections, setOpenDetailSections] = useState<Record<string, boolean>>({ primary: false, extra: false });'
 )
 
-# Remove any unit action buttons from the small title row; actions will live inside the main unit card.
+# Hide the small page title row on unit details. The unit card itself becomes the header.
 text = text.replace(
-'''          {normalizedEntity === "unit" ? (\n            <HeaderIconButton icon="add" label="إضافة وحدة" onPress={openAddUnit} />\n          ) : null}''',
-''
+'''        <View style={styles.topBar}>\n          <View style={styles.topTitleBlock}>\n            <Text style={styles.topTitle}>{entityTitle[normalizedEntity] || "التفاصيل"}</Text>\n            <Text style={styles.topSubtitle}>تفاصيل السجل والخدمات المرتبطة</Text>\n          </View>\n\n        </View>''',
+'''        {normalizedEntity !== "unit" ? (\n          <View style={styles.topBar}>\n            <View style={styles.topTitleBlock}>\n              <Text style={styles.topTitle}>{entityTitle[normalizedEntity] || "التفاصيل"}</Text>\n              <Text style={styles.topSubtitle}>تفاصيل السجل والخدمات المرتبطة</Text>\n            </View>\n          </View>\n        ) : null}'''
 )
 text = text.replace(
-'''          {normalizedEntity === "unit" ? (\n            <View style={styles.topActionsRow}>\n              <InlineEditDeleteActions resource={resourceForEntity(String(entity))} id={id} hideDetails compact iconOnly onChanged={() => load(false)} />\n              <HeaderIconButton icon="add" label="إضافة وحدة" onPress={openAddUnit} />\n            </View>\n          ) : null}''',
-''
-)
-
-# Hide the old action box for unit details because the icons are now in the main card.
-text = text.replace(
-'''        <View style={styles.detailsActionsBox}>\n          <InlineEditDeleteActions resource={resourceForEntity(String(entity))} id={id} hideDetails compact iconOnly onChanged={() => load(false)} />\n        </View>''',
-'''        {normalizedEntity !== "unit" ? (\n          <View style={styles.detailsActionsBox}>\n            <InlineEditDeleteActions resource={resourceForEntity(String(entity))} id={id} hideDetails compact iconOnly onChanged={() => load(false)} />\n          </View>\n        ) : null}'''
+'''        <View style={styles.topBar}>\n          <View style={styles.topTitleBlock}>\n            <Text style={styles.topTitle}>{entityTitle[normalizedEntity] || "التفاصيل"}</Text>\n            <Text style={styles.topSubtitle}>تفاصيل السجل والخدمات المرتبطة</Text>\n          </View>\n          {normalizedEntity === "unit" ? (\n            <HeaderIconButton icon="add" label="إضافة وحدة" onPress={openAddUnit} />\n          ) : null}\n        </View>''',
+'''        {normalizedEntity !== "unit" ? (\n          <View style={styles.topBar}>\n            <View style={styles.topTitleBlock}>\n              <Text style={styles.topTitle}>{entityTitle[normalizedEntity] || "التفاصيل"}</Text>\n              <Text style={styles.topSubtitle}>تفاصيل السجل والخدمات المرتبطة</Text>\n            </View>\n          </View>\n        ) : null}'''
 )
 text = text.replace(
-'''        {normalizedEntity !== "unit" ? (\n          <View style={styles.detailsActionsBox}>\n            <InlineEditDeleteActions resource={resourceForEntity(String(entity))} id={id} hideDetails compact iconOnly onChanged={() => load(false)} />\n          </View>\n        ) : null}''',
-'''        {normalizedEntity !== "unit" ? (\n          <View style={styles.detailsActionsBox}>\n            <InlineEditDeleteActions resource={resourceForEntity(String(entity))} id={id} hideDetails compact iconOnly onChanged={() => load(false)} />\n          </View>\n        ) : null}'''
+'''        <View style={styles.topBar}>\n          <View style={styles.topTitleBlock}>\n            <Text style={styles.topTitle}>{entityTitle[normalizedEntity] || "التفاصيل"}</Text>\n            <Text style={styles.topSubtitle}>تفاصيل السجل والخدمات المرتبطة</Text>\n          </View>\n          {normalizedEntity === "unit" ? (\n            <View style={styles.topActionsRow}>\n              <InlineEditDeleteActions resource={resourceForEntity(String(entity))} id={id} hideDetails compact iconOnly onChanged={() => load(false)} />\n              <HeaderIconButton icon="add" label="إضافة وحدة" onPress={openAddUnit} />\n            </View>\n          ) : null}\n        </View>''',
+'''        {normalizedEntity !== "unit" ? (\n          <View style={styles.topBar}>\n            <View style={styles.topTitleBlock}>\n              <Text style={styles.topTitle}>{entityTitle[normalizedEntity] || "التفاصيل"}</Text>\n              <Text style={styles.topSubtitle}>تفاصيل السجل والخدمات المرتبطة</Text>\n            </View>\n          </View>\n        ) : null}'''
 )
 
-# Put action icons inside the main header card.
+# Keep action icons and services inside the main unit card.
 text = text.replace(
 '''        <View style={styles.headerCard}>\n          <Text style={styles.entityLabel}>{data?.entity_title || entityTitle[normalizedEntity] || "تفاصيل"}</Text>\n          <Text numberOfLines={2} style={styles.title}>{data?.title || "جاري التحميل..."}</Text>''',
 '''        <View style={styles.headerCard}>\n          <View style={styles.unitCardTopRow}>\n            {normalizedEntity === "unit" ? (\n              <View style={styles.unitCardActions}>\n                <InlineEditDeleteActions resource={resourceForEntity(String(entity))} id={id} hideDetails compact iconOnly onChanged={() => load(false)} />\n                <HeaderIconButton icon="add" label="إضافة وحدة" onPress={openAddUnit} />\n              </View>\n            ) : <View />}\n            <Text style={styles.entityLabel}>{data?.entity_title || entityTitle[normalizedEntity] || "تفاصيل"}</Text>\n          </View>\n          <Text numberOfLines={2} style={styles.title}>{data?.title || "جاري التحميل..."}</Text>'''
 )
-
-# Put unit services inside the main header card under the stats row.
 text = text.replace(
 '''          <View style={styles.headerStatsRow}>\n            <Text style={styles.statPill}>{relatedLabel}: {relatedCount}</Text>\n            <Text style={styles.statPill}>رقم السجل: {valueOrDash(id)}</Text>\n          </View>\n        </View>''',
 '''          <View style={styles.headerStatsRow}>\n            <Text style={styles.statPill}>{relatedLabel}: {relatedCount}</Text>\n            <Text style={styles.statPill}>رقم السجل: {valueOrDash(id)}</Text>\n          </View>\n          {normalizedEntity === "unit" ? (\n            <View style={styles.headerServicesWrap}>\n              <Text style={styles.headerServicesTitle}>خدمات الوحدة</Text>\n              <View style={styles.headerServicesGrid}>\n                <ServiceChip icon="documents-outline" label="العقود" onPress={() => openUnitService("/contracts")} />\n                <ServiceChip icon="create-outline" label="إنشاء عقد" onPress={() => openUnitService("/create-contract")} />\n                <ServiceChip icon="cloud-upload-outline" label="رفع عقد" onPress={() => openUnitService("/upload-contract")} />\n                <ServiceChip icon="images-outline" label="الوسائط" onPress={() => openUnitService("/files", "mode=media")} />\n              </View>\n            </View>\n          ) : null}\n        </View>'''
 )
 
-# Remove the old separate unit services card if it still exists.
+# Hide old action box and old separate services card on unit details.
+text = text.replace(
+'''        <View style={styles.detailsActionsBox}>\n          <InlineEditDeleteActions resource={resourceForEntity(String(entity))} id={id} hideDetails compact iconOnly onChanged={() => load(false)} />\n        </View>''',
+'''        {normalizedEntity !== "unit" ? (\n          <View style={styles.detailsActionsBox}>\n            <InlineEditDeleteActions resource={resourceForEntity(String(entity))} id={id} hideDetails compact iconOnly onChanged={() => load(false)} />\n          </View>\n        ) : null}'''
+)
 text = re.sub(
     r'\n\s*\{normalizedEntity === "unit" \? \(\n\s*<View style=\{styles\.servicesCard\}>.*?\n\s*\) : null\}\n\n\s*<SegmentedTabs',
     '\n\n        <SegmentedTabs',
@@ -71,18 +67,28 @@ text = re.sub(
     flags=re.S,
 )
 
-# Add styles for the merged top card layout.
+# Refresh the visual style: light creative unit card instead of black.
+replacements = {
+    'headerCard: {\n    backgroundColor: "#111827",\n    borderRadius: 24,\n    padding: 16,\n    marginBottom: 10,\n  },': 'headerCard: {\n    backgroundColor: "#ffffff",\n    borderRadius: 26,\n    padding: 15,\n    marginBottom: 10,\n    borderWidth: 1,\n    borderColor: "#E6E9E6",\n    shadowColor: "#0f766e",\n    shadowOpacity: 0.08,\n    shadowRadius: 16,\n    elevation: 2,\n  },',
+    'entityLabel: {\n    alignSelf: "flex-end",\n    color: "#c7d2fe",\n    fontSize: 13,\n    fontWeight: "900",\n    marginBottom: 6,\n  },': 'entityLabel: {\n    alignSelf: "flex-end",\n    color: "#0f766e",\n    fontSize: 13,\n    fontWeight: "900",\n    marginBottom: 6,\n  },',
+    'title: {\n    color: "#fff",\n    fontSize: 22,\n    lineHeight: 31,\n    fontWeight: "900",\n    textAlign: "right",\n  },': 'title: {\n    color: "#111827",\n    fontSize: 22,\n    lineHeight: 31,\n    fontWeight: "900",\n    textAlign: "right",\n  },',
+    'backgroundColor: "rgba(255,255,255,0.12)",\n    color: "#fff",': 'backgroundColor: "#F0FDF4",\n    color: "#065F46",',
+}
+for old, new in replacements.items():
+    text = text.replace(old, new)
+
+# Ensure merged card styles exist and are tuned for light card.
 text = text.replace(
 '''  topTitleBlock: { flex: 1, alignItems: "flex-end" },''',
-'''  topTitleBlock: { flex: 1, alignItems: "flex-end" },\n  topActionsRow: { flexDirection: "row-reverse", alignItems: "center", justifyContent: "flex-start", gap: 6 },\n  unitCardTopRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 6 },\n  unitCardActions: { flexDirection: "row-reverse", alignItems: "center", justifyContent: "flex-start", gap: 6 },\n  headerServicesWrap: { marginTop: 12, paddingTop: 10, borderTopWidth: 1, borderTopColor: "rgba(255,255,255,0.12)" },\n  headerServicesTitle: { color: "#e5e7eb", fontSize: 12, fontWeight: "900", textAlign: "right", marginBottom: 8 },\n  headerServicesGrid: { flexDirection: "row-reverse", flexWrap: "wrap", gap: 7 },'''
+'''  topTitleBlock: { flex: 1, alignItems: "flex-end" },\n  topActionsRow: { flexDirection: "row-reverse", alignItems: "center", justifyContent: "flex-start", gap: 6 },\n  unitCardTopRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 6 },\n  unitCardActions: { flexDirection: "row-reverse", alignItems: "center", justifyContent: "flex-start", gap: 6 },\n  headerServicesWrap: { marginTop: 12, paddingTop: 10, borderTopWidth: 1, borderTopColor: "#E5E7EB" },\n  headerServicesTitle: { color: "#374151", fontSize: 12, fontWeight: "900", textAlign: "right", marginBottom: 8 },\n  headerServicesGrid: { flexDirection: "row-reverse", flexWrap: "wrap", gap: 7 },'''
 )
-# Avoid duplicate style entries if the script runs repeatedly.
-text = re.sub(r'(topActionsRow: \{[^\n]+\},\n)(\s*topActionsRow: \{[^\n]+\},\n)+', r'\1', text)
-text = re.sub(r'(unitCardTopRow: \{[^\n]+\},\n)(\s*unitCardTopRow: \{[^\n]+\},\n)+', r'\1', text)
-text = re.sub(r'(unitCardActions: \{[^\n]+\},\n)(\s*unitCardActions: \{[^\n]+\},\n)+', r'\1', text)
-text = re.sub(r'(headerServicesWrap: \{[^\n]+\},\n)(\s*headerServicesWrap: \{[^\n]+\},\n)+', r'\1', text)
-text = re.sub(r'(headerServicesTitle: \{[^\n]+\},\n)(\s*headerServicesTitle: \{[^\n]+\},\n)+', r'\1', text)
-text = re.sub(r'(headerServicesGrid: \{[^\n]+\},\n)(\s*headerServicesGrid: \{[^\n]+\},\n)+', r'\1', text)
+# If these styles already exist from a previous run, normalize them to the latest design.
+text = re.sub(r'topActionsRow: \{[^\n]+\},', 'topActionsRow: { flexDirection: "row-reverse", alignItems: "center", justifyContent: "flex-start", gap: 6 },', text)
+text = re.sub(r'unitCardTopRow: \{[^\n]+\},', 'unitCardTopRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 6 },', text)
+text = re.sub(r'unitCardActions: \{[^\n]+\},', 'unitCardActions: { flexDirection: "row-reverse", alignItems: "center", justifyContent: "flex-start", gap: 6 },', text)
+text = re.sub(r'headerServicesWrap: \{[^\n]+\},', 'headerServicesWrap: { marginTop: 12, paddingTop: 10, borderTopWidth: 1, borderTopColor: "#E5E7EB" },', text)
+text = re.sub(r'headerServicesTitle: \{[^\n]+\},', 'headerServicesTitle: { color: "#374151", fontSize: 12, fontWeight: "900", textAlign: "right", marginBottom: 8 },', text)
+text = re.sub(r'headerServicesGrid: \{[^\n]+\},', 'headerServicesGrid: { flexDirection: "row-reverse", flexWrap: "wrap", gap: 7 },', text)
 
 path.write_text(text)
 PY
