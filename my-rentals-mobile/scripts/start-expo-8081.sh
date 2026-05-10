@@ -7,7 +7,7 @@ TMP_DIR="/home/pmsa/apps/.tmp"
 PORT="8083"
 HOSTNAME="my.pm.sa"
 API_BASE_URL="https://rental.pm.sa/api"
-DEPLOY_STAMP="2026-05-10-unit-rent-suggested-label-v14"
+DEPLOY_STAMP="2026-05-10-unit-edit-floor-number-and-boolean-cleanup-v15"
 
 choose_app_dir() {
   for candidate in \
@@ -15,13 +15,9 @@ choose_app_dir() {
     "/home/pmsa/apps/my-rentals-mobile" \
     "/mnt/home-storage/home/pmsa/apps/rental/my-rentals-mobile" \
     "/mnt/home-storage/home/pmsa/apps/my-rentals-mobile"; do
-    if [ -f "$candidate/package.json" ]; then
-      printf '%s\n' "$candidate"
-      return 0
-    fi
+    if [ -f "$candidate/package.json" ]; then printf '%s\n' "$candidate"; return 0; fi
   done
-  echo "Cannot find my-rentals-mobile app directory" >&2
-  exit 1
+  echo "Cannot find my-rentals-mobile app directory" >&2; exit 1
 }
 
 APP_DIR="$(choose_app_dir)"
@@ -36,18 +32,15 @@ touch "$LOG_FILE"
   echo "HOSTNAME=$HOSTNAME"
   echo "CURRENT_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
   echo "DATE=$(date '+%Y-%m-%d %H:%M:%S')"
-  echo "IMPORTANT: owner asset summary cards are removed"
-  echo "IMPORTANT: delete property/unit previews related records and requires confirmation"
-  echo "IMPORTANT: owner without properties forces direct owner unit scope"
-  echo "IMPORTANT: unit status hidden and derived from active contracts"
-  echo "IMPORTANT: unit rent input says قيمة الإيجار المقترحة"
+  echo "IMPORTANT: unit edit floor accepts digits only"
+  echo "IMPORTANT: boolean yes/no fields no longer render duplicate numeric input"
 } >> "$LOG_FILE"
 
 python3 - <<'PY' | tee -a "/home/pmsa/apps/my-rentals-expo.log"
 from pathlib import Path
 import re
 
-def patch_file(path: str, fn):
+def patch_file(path, fn):
     p = Path(path)
     if not p.exists():
         print(f'{path}=not_found')
@@ -58,148 +51,92 @@ def patch_file(path: str, fn):
         p.write_text(after)
     print(f'{path}=patched')
 
-# شاشة تفاصيل الوحدة والخدمات وحالة الوحدة المشتقة من العقود.
-def patch_details(text: str) -> str:
-    text = text.replace(
-        '<ServiceChip icon="documents-outline" label="العقود" onPress={() => openUnitService("/contracts")} />',
-        '<ServiceChip icon="time-outline" label="سجل العقود" onPress={() => openUnitService("/contracts", "history=1")} />',
-    )
-    text = re.sub(r'servicesGrid:\s*\{[^\n]+\},', 'servicesGrid: { flexDirection: "row-reverse", flexWrap: "nowrap", gap: 7 },', text)
-    text = re.sub(r'headerServicesGrid:\s*\{[^\n]+\},', 'headerServicesGrid: { flexDirection: "row-reverse", flexWrap: "nowrap", gap: 7 },', text)
-    text = re.sub(r'headerServicesGridCompact:\s*\{[^\n]+\},', 'headerServicesGridCompact: { flexDirection: "row-reverse", flexWrap: "nowrap", gap: 7 },', text)
-    text = re.sub(r'serviceChip:\s*\{.*?\n\s*\},', '''serviceChip: {
-    flex: 1,
-    minWidth: 0,
-    minHeight: 64,
-    borderRadius: 16,
-    backgroundColor: "#FFFFFF",
-    borderWidth: 1.5,
-    borderColor: "#BFC3C0",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 5,
-    paddingHorizontal: 2,
-    paddingVertical: 7,
-  },''', text, flags=re.S)
-    text = re.sub(r'serviceIconWrap:\s*\{.*?\n\s*\},', 'serviceIconWrap: { width: 30, height: 30, borderRadius: 15, backgroundColor: "#F1F2F1", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#D9DDD9" },', text, flags=re.S)
-    text = re.sub(r'serviceText:\s*\{.*?\n\s*\},', 'serviceText: { width: "100%", color: "#111827", fontSize: 10, lineHeight: 13, fontWeight: "900", textAlign: "center" },', text, flags=re.S)
-    text = text.replace('width: "48.5%",', '')
-    text = text.replace('flexWrap: "wrap"', 'flexWrap: "nowrap"')
-    if 'const displayedPrimaryFields = useMemo(' not in text:
+def add_numeric_helpers(text):
+    if 'function numericOnly(value: unknown)' not in text:
         text = text.replace(
-            '  const primaryFields = useMemo(() => (data?.fields || []).filter((field) => isPrimaryField(field.key)), [data]);\n  const otherFields = useMemo(() => (data?.fields || []).filter((field) => !isPrimaryField(field.key)), [data]);',
-            '''  const primaryFields = useMemo(() => (data?.fields || []).filter((field) => isPrimaryField(field.key)), [data]);
-  const otherFields = useMemo(() => (data?.fields || []).filter((field) => !isPrimaryField(field.key)), [data]);
-  const hasActiveContract = useMemo(() => {
-    if (normalizedEntity !== "unit") return false;
-    return (data?.sections || []).some((section) =>
-      String(section.key || "").includes("contract") &&
-      (section.items || []).some((item) => {
-        const status = String(item.status || item.badge || "").toLowerCase();
-        return status.includes("active") || status.includes("نشط");
-      }),
-    );
-  }, [data, normalizedEntity]);
-  const derivedUnitStatusField = useMemo(() => ({
-    key: "status",
-    label: "الحالة",
-    value: hasActiveContract ? "مستأجرة" : "متاحة",
-    raw_value: hasActiveContract ? "rented" : "available",
-  }), [hasActiveContract]);
-  const displayedPrimaryFields = useMemo(() => {
-    if (normalizedEntity !== "unit") return primaryFields;
-    const withoutStatus = primaryFields.filter((field) => field.key !== "status");
-    const statusIndex = withoutStatus.findIndex((field) => ["unit_number", "property_id", "owner_id"].includes(field.key));
-    if (statusIndex >= 0) {
-      const next = [...withoutStatus];
-      next.splice(statusIndex + 1, 0, derivedUnitStatusField);
-      return next;
-    }
-    return [derivedUnitStatusField, ...withoutStatus];
-  }, [normalizedEntity, primaryFields, derivedUnitStatusField]);
-  const displayedOtherFields = useMemo(() => normalizedEntity === "unit" ? otherFields.filter((field) => field.key !== "status") : otherFields, [normalizedEntity, otherFields]);'''
+            'function valueToString(value: unknown) {',
+            'function numericOnly(value: unknown) { return String(value ?? "").replace(/[^0-9]/g, ""); }\n\nfunction valueToString(value: unknown) {'
         )
-        text = text.replace('count={primaryFields.length}', 'count={displayedPrimaryFields.length}')
-        text = text.replace('primaryFields.length ? primaryFields.map((field) => <FieldRow key={field.key} field={field} />)', 'displayedPrimaryFields.length ? displayedPrimaryFields.map((field) => <FieldRow key={field.key} field={field} />)')
-        text = text.replace('otherFields.length ? (', 'displayedOtherFields.length ? (')
-        text = text.replace('count={otherFields.length}', 'count={displayedOtherFields.length}')
-        text = text.replace('{otherFields.map((field) => <FieldRow key={field.key} field={field} />)}', '{displayedOtherFields.map((field) => <FieldRow key={field.key} field={field} />)}')
     return text
 
-patch_file('src/components/EntityDetailsScreen.tsx', patch_details)
-
-# شاشة المالك: إزالة بطاقات عقارات/وحدات/مباشرة.
-def patch_owner_dashboard(text: str) -> str:
-    text = re.sub(
-        r'\n\s*<View style=\{styles\.assetSummaryStrip\}>\s*'
-        r'<View style=\{styles\.assetSummaryItem\}>\s*'
-        r'<Text style=\{styles\.assetSummaryValue\}>\{count\(properties\.length\)\}</Text>\s*'
-        r'<Text style=\{styles\.assetSummaryLabel\}>عقارات</Text>\s*'
-        r'</View>\s*'
-        r'<View style=\{styles\.assetSummaryItem\}>\s*'
-        r'<Text style=\{styles\.assetSummaryValue\}>\{count\(units\.length\)\}</Text>\s*'
-        r'<Text style=\{styles\.assetSummaryLabel\}>وحدات</Text>\s*'
-        r'</View>\s*'
-        r'<View style=\{styles\.assetSummaryItem\}>\s*'
-        r'<Text style=\{styles\.assetSummaryValue\}>\{count\(directOwnerUnits\.length\)\}</Text>\s*'
-        r'<Text style=\{styles\.assetSummaryLabel\}>مباشرة</Text>\s*'
-        r'</View>\s*'
-        r'</View>\s*',
-        '\n',
-        text,
-        flags=re.S,
+def patch_inline(text):
+    text = add_numeric_helpers(text)
+    text = text.replace(
+        '      const editableFields = resource === "owners"\n        ? item.editable_fields.filter((field: string) => field !== "type")\n        : item.editable_fields;',
+        '      const editableFields = resource === "owners"\n        ? item.editable_fields.filter((field: string) => field !== "type")\n        : resource === "units"\n          ? item.editable_fields.filter((field: string) => field !== "status")\n          : item.editable_fields;'
     )
-    text = re.sub(
-        r'\n\s*assetSummaryStrip:\s*\{[^\n]+\},\s*'
-        r'\n\s*assetSummaryItem:\s*\{[^\n]+\},\s*'
-        r'\n\s*assetSummaryValue:\s*\{[^\n]+\},\s*'
-        r'\n\s*assetSummaryLabel:\s*\{[^\n]+\},',
-        '\n',
-        text,
+    text = text.replace(
+        '    const nextValue = field === "national_short_address" ? value.replace(/[^A-Za-z0-9]/g, "").slice(0, 8).toUpperCase() : value;',
+        '    const nextValue = field === "national_short_address" ? value.replace(/[^A-Za-z0-9]/g, "").slice(0, 8).toUpperCase() : field === "floor" ? numericOnly(value) : value;'
     )
+    text = text.replace(
+        '{!relationField && optionList.length === 0 ? (',
+        '{!relationField && !isBoolean && optionList.length === 0 ? ('
+    )
+    text = text.replace(
+        'keyboardType={field === "property_area" ? "decimal-pad" : "default"}',
+        'keyboardType={field === "floor" ? "number-pad" : field === "property_area" ? "decimal-pad" : "default"}'
+    )
+    if 'inputMode={field === "floor" ? "numeric" : undefined}' not in text:
+        text = text.replace(
+            'keyboardType={field === "floor" ? "number-pad" : field === "property_area" ? "decimal-pad" : "default"}\n            placeholder={fieldLabel(field)}',
+            'keyboardType={field === "floor" ? "number-pad" : field === "property_area" ? "decimal-pad" : "default"}\n            inputMode={field === "floor" ? "numeric" : undefined}\n            placeholder={fieldLabel(field)}'
+        )
     return text
 
-patch_file('src/components/OwnerDashboardScreenWithActions.tsx', patch_owner_dashboard)
+patch_file('src/components/InlineEditDeleteActions.tsx', patch_inline)
 
-# شاشة الوحدات: تثبيت وحدة خاصة بالمالك، إخفاء الحالة، وتغيير تسمية الإيجار المقترح.
-def patch_units(text: str) -> str:
+def patch_edit_center(text):
+    text = text.replace('rent_amount: "قيمة الإيجار",', 'rent_amount: "قيمة الإيجار المقترحة",')
+    text = add_numeric_helpers(text)
+    text = text.replace(
+        '    const editableFields = Array.isArray(safeItem.editable_fields) ? safeItem.editable_fields : [];',
+        '    const editableFields = Array.isArray(safeItem.editable_fields) ? (safeItem.resource === "units" ? safeItem.editable_fields.filter((field: string) => field !== "status") : safeItem.editable_fields) : [];'
+    )
+    text = text.replace(
+        '    const nextValue = field === "national_short_address" ? value.replace(/[^A-Za-z0-9]/g, "").slice(0, 8).toUpperCase() : value;',
+        '    const nextValue = field === "national_short_address" ? value.replace(/[^A-Za-z0-9]/g, "").slice(0, 8).toUpperCase() : field === "floor" ? numericOnly(value) : value;'
+    )
+    text = text.replace(
+        '{!relationKey && !isBoolean && optionList.length === 0 ? (',
+        '{!relationKey && !isBoolean && optionList.length === 0 ? ('
+    )
+    # Older versions had boolean TextInput because !isBoolean was missing; normalize any old condition.
+    text = text.replace(
+        '{!relationKey && optionList.length === 0 ? (',
+        '{!relationKey && !isBoolean && optionList.length === 0 ? ('
+    )
+    text = text.replace(
+        'keyboardType={field === "property_area" ? "decimal-pad" : "default"}',
+        'keyboardType={field === "floor" ? "number-pad" : field === "property_area" ? "decimal-pad" : "default"}'
+    )
+    if 'inputMode={field === "floor" ? "numeric" : undefined}' not in text:
+        text = text.replace(
+            'keyboardType={field === "floor" ? "number-pad" : field === "property_area" ? "decimal-pad" : "default"}\n            placeholder={labelFor(field, selected?.resource)}',
+            'keyboardType={field === "floor" ? "number-pad" : field === "property_area" ? "decimal-pad" : "default"}\n            inputMode={field === "floor" ? "numeric" : undefined}\n            placeholder={labelFor(field, selected?.resource)}'
+        )
+    return text
+
+patch_file('src/app/edit-delete-center.tsx', patch_edit_center)
+
+def patch_units(text):
+    text = text.replace('placeholder="قيمة الإيجار"', 'placeholder="قيمة الإيجار المقترحة"')
+    text = text.replace('الإيجار / الحالة:', 'الإيجار المقترح / الحالة:')
+    text = text.replace('      <DropdownSelect label="الحالة" value={form.status} options={statusOptions} onChange={(value) => setField("status", value)} />\n', '')
     if 'const forceOwnerUnitScope = Boolean(form.owner_id) && filteredPropertyOptions.length === 0 && !propertyIdParam;' not in text:
         text = text.replace(
             '  }, [propertyOptions, form.owner_id, propertyIdParam]);\n\n  function setField(key: keyof typeof form, value: string) {',
             '  }, [propertyOptions, form.owner_id, propertyIdParam]);\n\n  const forceOwnerUnitScope = Boolean(form.owner_id) && filteredPropertyOptions.length === 0 && !propertyIdParam;\n\n  useEffect(() => {\n    if (forceOwnerUnitScope && (form.unit_scope !== "owner" || form.property_id)) {\n      setForm((previous) => ({ ...previous, unit_scope: "owner", property_id: "" }));\n    }\n  }, [forceOwnerUnitScope, form.unit_scope, form.property_id]);\n\n  function setField(key: keyof typeof form, value: string) {'
         )
-        text = text.replace(
-            '      <DropdownSelect label="نوع إضافة الوحدة" value={form.unit_scope} options={unitScopeOptions} required disabled={Boolean(propertyIdParam)} onChange={(value) => setField("unit_scope", value)} />',
-            '      <DropdownSelect label="نوع إضافة الوحدة" value={form.unit_scope} options={forceOwnerUnitScope ? [{ id: "owner", label: "وحدة خاصة بالمالك" }] : unitScopeOptions} required disabled={Boolean(propertyIdParam) || forceOwnerUnitScope} onChange={(value) => setField("unit_scope", value)} />\n      {forceOwnerUnitScope ? <View style={styles.infoBox}><Text style={styles.infoText}>لا توجد عقارات لهذا المالك، لذلك تم تثبيت نوع الإضافة على وحدة خاصة بالمالك فقط.</Text></View> : null}'
-        )
-    text = text.replace('      <DropdownSelect label="الحالة" value={form.status} options={statusOptions} onChange={(value) => setField("status", value)} />\n', '')
-    text = text.replace('placeholder="قيمة الإيجار"', 'placeholder="قيمة الإيجار المقترحة"')
-    text = text.replace('الإيجار / الحالة:', 'الإيجار المقترح / الحالة:')
+    text = text.replace(
+        '<DropdownSelect label="نوع إضافة الوحدة" value={form.unit_scope} options={unitScopeOptions} required disabled={Boolean(propertyIdParam)} onChange={(value) => setField("unit_scope", value)} />',
+        '<DropdownSelect label="نوع إضافة الوحدة" value={form.unit_scope} options={forceOwnerUnitScope ? [{ id: "owner", label: "وحدة خاصة بالمالك" }] : unitScopeOptions} required disabled={Boolean(propertyIdParam) || forceOwnerUnitScope} onChange={(value) => setField("unit_scope", value)} />\n      {forceOwnerUnitScope ? <View style={styles.infoBox}><Text style={styles.infoText}>لا توجد عقارات لهذا المالك، لذلك تم تثبيت نوع الإضافة على وحدة خاصة بالمالك فقط.</Text></View> : null}'
+    )
     return text
 
 patch_file('src/app/units.tsx', patch_units)
 
-# منع تعديل حالة الوحدة يدويًا من محرري التعديل.
-def patch_edit_center(text: str) -> str:
-    text = text.replace(
-        '    const editableFields = Array.isArray(safeItem.editable_fields) ? safeItem.editable_fields : [];',
-        '    const editableFields = Array.isArray(safeItem.editable_fields) ? (safeItem.resource === "units" ? safeItem.editable_fields.filter((field: string) => field !== "status") : safeItem.editable_fields) : [];'
-    )
-    return text
-
-patch_file('src/app/edit-delete-center.tsx', patch_edit_center)
-
-def patch_inline(text: str) -> str:
-    text = text.replace(
-        '      const editableFields = resource === "owners"\n        ? item.editable_fields.filter((field: string) => field !== "type")\n        : item.editable_fields;',
-        '      const editableFields = resource === "owners"\n        ? item.editable_fields.filter((field: string) => field !== "type")\n        : resource === "units"\n          ? item.editable_fields.filter((field: string) => field !== "status")\n          : item.editable_fields;'
-    )
-    return text
-
-patch_file('src/components/InlineEditDeleteActions.tsx', patch_inline)
-
-# ملف الترجمات العام: قيمة الإيجار المقترحة.
-def patch_arabic(text: str) -> str:
+def patch_arabic(text):
     return text.replace('rent_amount: "قيمة الإيجار"', 'rent_amount: "قيمة الإيجار المقترحة"')
 
 patch_file('src/lib/arabicDisplay.ts', patch_arabic)
@@ -210,9 +147,7 @@ rm -rf "$CACHE_DIR"/expo "$CACHE_DIR"/metro "$CACHE_DIR"/react-native "$CACHE_DI
 
 if command -v lsof >/dev/null 2>&1; then
   old_pids="$(lsof -tiTCP:"$PORT" -sTCP:LISTEN 2>/dev/null || true)"
-  if [ -n "$old_pids" ]; then
-    echo "$old_pids" | xargs -r kill -9 2>/dev/null || true
-  fi
+  [ -n "$old_pids" ] && echo "$old_pids" | xargs -r kill -9 2>/dev/null || true
 fi
 pkill -f "expo start.*--port $PORT|node.*$PORT" 2>/dev/null || true
 sleep 2
