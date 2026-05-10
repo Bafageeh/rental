@@ -17,24 +17,73 @@ touch "$LOG_FILE"
 
 python3 - <<'PY'
 from pathlib import Path
+import re
+
 path = Path('src/components/EntityDetailsScreen.tsx')
 text = path.read_text()
+
 text = text.replace(
     'const [openDetailSections, setOpenDetailSections] = useState<Record<string, boolean>>({ primary: true, extra: true });',
     'const [openDetailSections, setOpenDetailSections] = useState<Record<string, boolean>>({ primary: false, extra: false });'
 )
 text = text.replace(
-'''          {normalizedEntity === "unit" ? (\n            <HeaderIconButton icon="add" label="إضافة وحدة" onPress={openAddUnit} />\n          ) : null}''',
-'''          {normalizedEntity === "unit" ? (\n            <View style={styles.topActionsRow}>\n              <InlineEditDeleteActions resource={resourceForEntity(String(entity))} id={id} hideDetails compact iconOnly onChanged={() => load(false)} />\n              <HeaderIconButton icon="add" label="إضافة وحدة" onPress={openAddUnit} />\n            </View>\n          ) : null}'''
+    'const [openDetailSections, setOpenDetailSections] = useState<Record<string, boolean>>({ primary: true, extra: false });',
+    'const [openDetailSections, setOpenDetailSections] = useState<Record<string, boolean>>({ primary: false, extra: false });'
 )
+
+# Remove any unit action buttons from the small title row; actions will live inside the main unit card.
+text = text.replace(
+'''          {normalizedEntity === "unit" ? (\n            <HeaderIconButton icon="add" label="إضافة وحدة" onPress={openAddUnit} />\n          ) : null}''',
+''
+)
+text = text.replace(
+'''          {normalizedEntity === "unit" ? (\n            <View style={styles.topActionsRow}>\n              <InlineEditDeleteActions resource={resourceForEntity(String(entity))} id={id} hideDetails compact iconOnly onChanged={() => load(false)} />\n              <HeaderIconButton icon="add" label="إضافة وحدة" onPress={openAddUnit} />\n            </View>\n          ) : null}''',
+''
+)
+
+# Hide the old action box for unit details because the icons are now in the main card.
 text = text.replace(
 '''        <View style={styles.detailsActionsBox}>\n          <InlineEditDeleteActions resource={resourceForEntity(String(entity))} id={id} hideDetails compact iconOnly onChanged={() => load(false)} />\n        </View>''',
 '''        {normalizedEntity !== "unit" ? (\n          <View style={styles.detailsActionsBox}>\n            <InlineEditDeleteActions resource={resourceForEntity(String(entity))} id={id} hideDetails compact iconOnly onChanged={() => load(false)} />\n          </View>\n        ) : null}'''
 )
 text = text.replace(
-'''  topTitleBlock: { flex: 1, alignItems: "flex-end" },''',
-'''  topTitleBlock: { flex: 1, alignItems: "flex-end" },\n  topActionsRow: { flexDirection: "row-reverse", alignItems: "center", justifyContent: "flex-start", gap: 6 },'''
+'''        {normalizedEntity !== "unit" ? (\n          <View style={styles.detailsActionsBox}>\n            <InlineEditDeleteActions resource={resourceForEntity(String(entity))} id={id} hideDetails compact iconOnly onChanged={() => load(false)} />\n          </View>\n        ) : null}''',
+'''        {normalizedEntity !== "unit" ? (\n          <View style={styles.detailsActionsBox}>\n            <InlineEditDeleteActions resource={resourceForEntity(String(entity))} id={id} hideDetails compact iconOnly onChanged={() => load(false)} />\n          </View>\n        ) : null}'''
 )
+
+# Put action icons inside the main header card.
+text = text.replace(
+'''        <View style={styles.headerCard}>\n          <Text style={styles.entityLabel}>{data?.entity_title || entityTitle[normalizedEntity] || "تفاصيل"}</Text>\n          <Text numberOfLines={2} style={styles.title}>{data?.title || "جاري التحميل..."}</Text>''',
+'''        <View style={styles.headerCard}>\n          <View style={styles.unitCardTopRow}>\n            {normalizedEntity === "unit" ? (\n              <View style={styles.unitCardActions}>\n                <InlineEditDeleteActions resource={resourceForEntity(String(entity))} id={id} hideDetails compact iconOnly onChanged={() => load(false)} />\n                <HeaderIconButton icon="add" label="إضافة وحدة" onPress={openAddUnit} />\n              </View>\n            ) : <View />}\n            <Text style={styles.entityLabel}>{data?.entity_title || entityTitle[normalizedEntity] || "تفاصيل"}</Text>\n          </View>\n          <Text numberOfLines={2} style={styles.title}>{data?.title || "جاري التحميل..."}</Text>'''
+)
+
+# Put unit services inside the main header card under the stats row.
+text = text.replace(
+'''          <View style={styles.headerStatsRow}>\n            <Text style={styles.statPill}>{relatedLabel}: {relatedCount}</Text>\n            <Text style={styles.statPill}>رقم السجل: {valueOrDash(id)}</Text>\n          </View>\n        </View>''',
+'''          <View style={styles.headerStatsRow}>\n            <Text style={styles.statPill}>{relatedLabel}: {relatedCount}</Text>\n            <Text style={styles.statPill}>رقم السجل: {valueOrDash(id)}</Text>\n          </View>\n          {normalizedEntity === "unit" ? (\n            <View style={styles.headerServicesWrap}>\n              <Text style={styles.headerServicesTitle}>خدمات الوحدة</Text>\n              <View style={styles.headerServicesGrid}>\n                <ServiceChip icon="documents-outline" label="العقود" onPress={() => openUnitService("/contracts")} />\n                <ServiceChip icon="create-outline" label="إنشاء عقد" onPress={() => openUnitService("/create-contract")} />\n                <ServiceChip icon="cloud-upload-outline" label="رفع عقد" onPress={() => openUnitService("/upload-contract")} />\n                <ServiceChip icon="images-outline" label="الوسائط" onPress={() => openUnitService("/files", "mode=media")} />\n              </View>\n            </View>\n          ) : null}\n        </View>'''
+)
+
+# Remove the old separate unit services card if it still exists.
+text = re.sub(
+    r'\n\s*\{normalizedEntity === "unit" \? \(\n\s*<View style=\{styles\.servicesCard\}>.*?\n\s*\) : null\}\n\n\s*<SegmentedTabs',
+    '\n\n        <SegmentedTabs',
+    text,
+    flags=re.S,
+)
+
+# Add styles for the merged top card layout.
+text = text.replace(
+'''  topTitleBlock: { flex: 1, alignItems: "flex-end" },''',
+'''  topTitleBlock: { flex: 1, alignItems: "flex-end" },\n  topActionsRow: { flexDirection: "row-reverse", alignItems: "center", justifyContent: "flex-start", gap: 6 },\n  unitCardTopRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 6 },\n  unitCardActions: { flexDirection: "row-reverse", alignItems: "center", justifyContent: "flex-start", gap: 6 },\n  headerServicesWrap: { marginTop: 12, paddingTop: 10, borderTopWidth: 1, borderTopColor: "rgba(255,255,255,0.12)" },\n  headerServicesTitle: { color: "#e5e7eb", fontSize: 12, fontWeight: "900", textAlign: "right", marginBottom: 8 },\n  headerServicesGrid: { flexDirection: "row-reverse", flexWrap: "wrap", gap: 7 },'''
+)
+# Avoid duplicate style entries if the script runs repeatedly.
+text = re.sub(r'(topActionsRow: \{[^\n]+\},\n)(\s*topActionsRow: \{[^\n]+\},\n)+', r'\1', text)
+text = re.sub(r'(unitCardTopRow: \{[^\n]+\},\n)(\s*unitCardTopRow: \{[^\n]+\},\n)+', r'\1', text)
+text = re.sub(r'(unitCardActions: \{[^\n]+\},\n)(\s*unitCardActions: \{[^\n]+\},\n)+', r'\1', text)
+text = re.sub(r'(headerServicesWrap: \{[^\n]+\},\n)(\s*headerServicesWrap: \{[^\n]+\},\n)+', r'\1', text)
+text = re.sub(r'(headerServicesTitle: \{[^\n]+\},\n)(\s*headerServicesTitle: \{[^\n]+\},\n)+', r'\1', text)
+text = re.sub(r'(headerServicesGrid: \{[^\n]+\},\n)(\s*headerServicesGrid: \{[^\n]+\},\n)+', r'\1', text)
+
 path.write_text(text)
 PY
 
