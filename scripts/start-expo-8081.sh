@@ -65,7 +65,6 @@ new = '''        <View style={styles.headerCard}>
                 </View>
                 <View style={styles.unitTitleWrap}>
                   <Text numberOfLines={2} style={styles.title}>{data?.title || "جاري التحميل..."}</Text>
-                  <Text style={styles.contractCountPill}>{relatedLabel}: {relatedCount}</Text>
                 </View>
               </View>
 
@@ -75,7 +74,7 @@ new = '''        <View style={styles.headerCard}>
                   <Ionicons name="grid-outline" size={14} color="#6b7280" />
                 </View>
                 <View style={styles.headerServicesGridCompact}>
-                  <ServiceChip icon="documents-outline" label="العقود" onPress={() => openUnitService("/contracts")} />
+                  <ServiceChip icon="time-outline" label="سجل العقود" onPress={() => openUnitService("/contracts", "history=1")} />
                   <ServiceChip icon="create-outline" label="إنشاء عقد" onPress={() => openUnitService("/create-contract")} />
                   <ServiceChip icon="cloud-upload-outline" label="رفع عقد" onPress={() => openUnitService("/upload-contract")} />
                   <ServiceChip icon="images-outline" label="الوسائط" onPress={() => openUnitService("/files", "mode=media")} />
@@ -138,7 +137,6 @@ anchor = '  unitCardActions: { flexDirection: "row-reverse", alignItems: "center
 insert = '''  unitCardActions: { flexDirection: "row-reverse", alignItems: "center", justifyContent: "flex-start", gap: 6 },
   unitHeroRow: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 10 },
   unitTitleWrap: { flex: 1, alignItems: "flex-end", gap: 7 },
-  contractCountPill: { overflow: "hidden", alignSelf: "flex-end", backgroundColor: "#ECFDF5", color: "#0f766e", borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5, fontSize: 11, fontWeight: "900" },
   headerServicesWrapCompact: { marginTop: 10, paddingTop: 9, borderTopWidth: 1, borderTopColor: "#E5E7EB" },
   headerServicesHeaderCompact: { flexDirection: "row-reverse", alignItems: "center", justifyContent: "space-between", marginBottom: 6 },
   headerServicesTitleCompact: { color: "#374151", fontSize: 11, fontWeight: "900", textAlign: "right" },
