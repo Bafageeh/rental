@@ -7,7 +7,7 @@ TMP_DIR="/home/pmsa/apps/.tmp"
 PORT="8083"
 HOSTNAME="my.pm.sa"
 API_BASE_URL="https://rental.pm.sa/api"
-DEPLOY_STAMP="2026-05-10-owner-without-properties-force-direct-unit-v12"
+DEPLOY_STAMP="2026-05-10-unit-status-derived-from-contracts-v13"
 
 choose_app_dir() {
   for candidate in \
@@ -41,6 +41,7 @@ touch "$LOG_FILE"
   echo "IMPORTANT: owner asset summary cards are removed"
   echo "IMPORTANT: delete property/unit previews related records and requires confirmation in both details and edit center"
   echo "IMPORTANT: owner without properties forces direct owner unit scope"
+  echo "IMPORTANT: unit status field hidden; details status is derived from active contracts"
 } >> "$LOG_FILE"
 
 python3 - <<'PY' | tee -a "/home/pmsa/apps/my-rentals-expo.log"
@@ -77,11 +78,56 @@ text = re.sub(r'serviceIconWrap:\s*\{.*?\n\s*\},', 'serviceIconWrap: { width: 30
 text = re.sub(r'serviceText:\s*\{.*?\n\s*\},', 'serviceText: { width: "100%", color: "#111827", fontSize: 10, lineHeight: 13, fontWeight: "900", textAlign: "center" },', text, flags=re.S)
 text = text.replace('width: "48.5%",', '')
 text = text.replace('flexWrap: "wrap"', 'flexWrap: "nowrap"')
+
+# تفاصيل الوحدة: الحالة لا تعتمد على حقل status المخزن، بل على وجود عقد نشط.
+marker = 'const displayedPrimaryFields = useMemo('
+if marker not in text:
+    text = text.replace(
+        '  const primaryFields = useMemo(() => (data?.fields || []).filter((field) => isPrimaryField(field.key)), [data]);\n  const otherFields = useMemo(() => (data?.fields || []).filter((field) => !isPrimaryField(field.key)), [data]);',
+        '''  const primaryFields = useMemo(() => (data?.fields || []).filter((field) => isPrimaryField(field.key)), [data]);
+  const otherFields = useMemo(() => (data?.fields || []).filter((field) => !isPrimaryField(field.key)), [data]);
+  const hasActiveContract = useMemo(() => {
+    if (normalizedEntity !== "unit") return false;
+    return (data?.sections || []).some((section) =>
+      String(section.key || "").includes("contract") &&
+      (section.items || []).some((item) => {
+        const status = String(item.status || item.badge || "").toLowerCase();
+        return status.includes("active") || status.includes("نشط");
+      }),
+    );
+  }, [data, normalizedEntity]);
+  const derivedUnitStatusField = useMemo(() => ({
+    key: "status",
+    label: "الحالة",
+    value: hasActiveContract ? "مستأجرة" : "متاحة",
+    raw_value: hasActiveContract ? "rented" : "available",
+  }), [hasActiveContract]);
+  const displayedPrimaryFields = useMemo(() => {
+    if (normalizedEntity !== "unit") return primaryFields;
+    const withoutStatus = primaryFields.filter((field) => field.key !== "status");
+    const statusIndex = withoutStatus.findIndex((field) => ["unit_number", "property_id", "owner_id"].includes(field.key));
+    if (statusIndex >= 0) {
+      const next = [...withoutStatus];
+      next.splice(statusIndex + 1, 0, derivedUnitStatusField);
+      return next;
+    }
+    return [derivedUnitStatusField, ...withoutStatus];
+  }, [normalizedEntity, primaryFields, derivedUnitStatusField]);
+  const displayedOtherFields = useMemo(() => normalizedEntity === "unit" ? otherFields.filter((field) => field.key !== "status") : otherFields, [normalizedEntity, otherFields]);'''
+    )
+    text = text.replace('count={primaryFields.length}', 'count={displayedPrimaryFields.length}')
+    text = text.replace('primaryFields.length ? primaryFields.map((field) => <FieldRow key={field.key} field={field} />)', 'displayedPrimaryFields.length ? displayedPrimaryFields.map((field) => <FieldRow key={field.key} field={field} />)')
+    text = text.replace('otherFields.length ? (', 'displayedOtherFields.length ? (')
+    text = text.replace('count={otherFields.length}', 'count={displayedOtherFields.length}')
+    text = text.replace('{otherFields.map((field) => <FieldRow key={field.key} field={field} />)}', '{displayedOtherFields.map((field) => <FieldRow key={field.key} field={field} />)}')
+
 details.write_text(text)
 
 old_restore_marker = 'unitCardTopRow' in text and 'headerServicesWrap' in text and 'normalizedEntity !== "unit"' in text
 ok = 'label="سجل العقود"' in text and 'backgroundColor: "#FFFFFF"' in text and not old_restore_marker
+status_ok = 'displayedPrimaryFields' in text and 'hasActiveContract ? "مستأجرة" : "متاحة"' in text
 print(f'UNIT_SCREEN_KEEP_CURRENT_LAYOUT_PATCH={"ok" if ok else "ok_with_existing_layout"}')
+print(f'UNIT_DETAILS_DERIVED_STATUS_PATCH={"ok" if status_ok else "failed"}')
 
 owner_dashboard = Path('src/components/OwnerDashboardScreenWithActions.tsx')
 if not owner_dashboard.exists():
@@ -190,6 +236,13 @@ if edit_center.exists():
     patched, n = re.subn(pattern, lambda m: replacement + '\n  useEffect(() => {', edit_text, count=1, flags=re.S)
     if n:
         edit_center.write_text(patched)
+    # إلغاء تعديل حالة الوحدة يدويًا من مركز التعديل.
+    edit_text2 = edit_center.read_text()
+    edit_text2 = edit_text2.replace(
+        '    const editableFields = Array.isArray(safeItem.editable_fields) ? safeItem.editable_fields : [];',
+        '    const editableFields = Array.isArray(safeItem.editable_fields) ? (safeItem.resource === "units" ? safeItem.editable_fields.filter((field: string) => field !== "status") : safeItem.editable_fields) : [];'
+    )
+    edit_center.write_text(edit_text2)
     print(f'EDIT_DELETE_CENTER_CONFIRM_LINKED_DELETE_PATCH={"ok" if n else "not_found"}')
 else:
     print('EDIT_DELETE_CENTER_CONFIRM_LINKED_DELETE_PATCH=not_found')
@@ -281,6 +334,13 @@ if inline.exists():
     inline_patched, inline_n = re.subn(inline_pattern, lambda m: inline_replacement + '\n  useEffect(() => {', inline_text, count=1, flags=re.S)
     if inline_n:
         inline.write_text(inline_patched)
+    # إلغاء تعديل حالة الوحدة يدويًا من نافذة التعديل المختصرة.
+    inline_text2 = inline.read_text()
+    inline_text2 = inline_text2.replace(
+        '      const editableFields = resource === "owners"\n        ? item.editable_fields.filter((field: string) => field !== "type")\n        : item.editable_fields;',
+        '      const editableFields = resource === "owners"\n        ? item.editable_fields.filter((field: string) => field !== "type")\n        : resource === "units"\n          ? item.editable_fields.filter((field: string) => field !== "status")\n          : item.editable_fields;'
+    )
+    inline.write_text(inline_text2)
     print(f'INLINE_DELETE_CONFIRM_LINKED_DELETE_PATCH={"ok" if inline_n else "not_found"}')
 else:
     print('INLINE_DELETE_CONFIRM_LINKED_DELETE_PATCH=not_found')
@@ -298,8 +358,11 @@ if units.exists():
             '      <DropdownSelect label="نوع إضافة الوحدة" value={form.unit_scope} options={unitScopeOptions} required disabled={Boolean(propertyIdParam)} onChange={(value) => setField("unit_scope", value)} />',
             '      <DropdownSelect label="نوع إضافة الوحدة" value={form.unit_scope} options={forceOwnerUnitScope ? [{ id: "owner", label: "وحدة خاصة بالمالك" }] : unitScopeOptions} required disabled={Boolean(propertyIdParam) || forceOwnerUnitScope} onChange={(value) => setField("unit_scope", value)} />\n      {forceOwnerUnitScope ? <View style={styles.infoBox}><Text style={styles.infoText}>لا توجد عقارات لهذا المالك، لذلك تم تثبيت نوع الإضافة على وحدة خاصة بالمالك فقط.</Text></View> : null}'
         )
+    # إلغاء حقل الحالة من نموذج إضافة الوحدة، مع إبقاء القيمة الافتراضية للإرسال فقط.
+    units_text = units_text.replace('      <DropdownSelect label="الحالة" value={form.status} options={statusOptions} onChange={(value) => setField("status", value)} />\n', '')
     units.write_text(units_text)
     print(f'OWNER_WITHOUT_PROPERTIES_FORCE_UNIT_SCOPE_PATCH={"ok" if marker in units_text else "failed"}')
+    print(f'UNIT_ADD_STATUS_FIELD_REMOVED={"ok" if "label=\"الحالة\" value={form.status}" not in units_text else "failed"}')
 else:
     print('OWNER_WITHOUT_PROPERTIES_FORCE_UNIT_SCOPE_PATCH=not_found')
 PY
