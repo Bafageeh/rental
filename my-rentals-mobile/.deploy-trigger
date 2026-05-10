@@ -1,0 +1,2 @@
+trigger mobile deploy after adding DEPLOY_USER root and deployment secrets
+2026-05-10
