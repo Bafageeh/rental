@@ -63,7 +63,6 @@ export default function ContractDetailsScreen({ id }: { id: string | number }) {
           <Text style={styles.heroTitle}>{data?.title || "تفاصيل العقد"}</Text>
           <View style={styles.heroPills}>
             <Text style={styles.heroPill}>الدفعات: {payments.length}</Text>
-            <Text style={styles.heroPill}>رقم السجل: {String(id)}</Text>
           </View>
         </View>
 
