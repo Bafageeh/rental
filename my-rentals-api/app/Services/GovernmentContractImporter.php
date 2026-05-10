@@ -58,16 +58,38 @@ class GovernmentContractImporter
 
         $nationalId = $lessor['national_id'] ?? null;
         if ($nationalId) {
-            return Owner::updateOrCreate(
-                ['national_id' => $nationalId],
-                [
-                    'name' => $lessor['name'] ?? 'مالك غير محدد',
-                    'phone' => $lessor['phone'] ?? null,
-                    'email' => $lessor['email'] ?? null,
-                    'national_id' => $nationalId,
-                    'type' => 'external',
-                ]
-            );
+            $owner = Owner::where('national_id', $nationalId)->first();
+
+            if ($owner) {
+                $updates = [];
+
+                if (!empty($lessor['phone'])) {
+                    $updates['phone'] = $lessor['phone'];
+                }
+
+                if (!empty($lessor['email'])) {
+                    $updates['email'] = $lessor['email'];
+                }
+
+                if (empty($owner->type)) {
+                    $updates['type'] = 'external';
+                }
+
+                if (!empty($updates)) {
+                    $owner->fill($updates);
+                    $owner->save();
+                }
+
+                return $owner;
+            }
+
+            return Owner::create([
+                'name' => $lessor['name'] ?? 'مالك غير محدد',
+                'phone' => $lessor['phone'] ?? null,
+                'email' => $lessor['email'] ?? null,
+                'national_id' => $nationalId,
+                'type' => 'external',
+            ]);
         }
 
         return Owner::firstOrCreate(
