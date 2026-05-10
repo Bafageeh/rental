@@ -7,7 +7,7 @@ TMP_DIR="/home/pmsa/apps/.tmp"
 PORT="8083"
 HOSTNAME="my.pm.sa"
 API_BASE_URL="https://rental.pm.sa/api"
-DEPLOY_STAMP="2026-05-10-confirm-delete-linked-property-unit-v9"
+DEPLOY_STAMP="2026-05-10-fix-delete-confirm-string-v10"
 
 choose_app_dir() {
   for candidate in \
@@ -40,6 +40,7 @@ touch "$LOG_FILE"
   echo "IMPORTANT: not restoring EntityDetailsScreen.fixed.tsx"
   echo "IMPORTANT: owner asset summary cards are removed"
   echo "IMPORTANT: delete property/unit previews related records and requires confirmation"
+  echo "IMPORTANT: fixed literal newline in edit-delete-center delete confirmation"
 } >> "$LOG_FILE"
 
 python3 - <<'PY' | tee -a "/home/pmsa/apps/my-rentals-expo.log"
@@ -161,31 +162,32 @@ if edit_center.exists():
       const preview = await apiPostAny(deleteEndpoints, { preview_only: true });
       const blockers = Array.isArray(preview?.blockers) ? preview.blockers : [];
       const hasRelations = blockers.length > 0;
-      const relationDetails = hasRelations ? blockers.map((item: string) => `• ${item}`).join("\n") : "لا توجد ارتباطات مسجلة.";
+      const relationDetails = hasRelations ? blockers.map((item: string) => `• ${item}`).join("\\n") : "لا توجد ارتباطات مسجلة.";
 
       setSaving(false);
 
       if (hasRelations) {
         confirmDelete(
-          `${selected.title}\n\nهذا السجل مرتبط بالبيانات التالية:\n${relationDetails}\n\nهل تريد حذف السجل وكل ما هو مرتبط به؟`,
+          `${selected.title}\\n\\nهذا السجل مرتبط بالبيانات التالية:\\n${relationDetails}\\n\\nهل تريد حذف السجل وكل ما هو مرتبط به؟`,
           true,
         );
       } else {
         confirmDelete(
-          `${selected.title}\n\nهل تريد حذف هذا السجل؟\nسيتم نقله إلى سلة المحذوفات إذا كان باتش السلة مثبتًا.`,
+          `${selected.title}\\n\\nهل تريد حذف هذا السجل؟\\nسيتم نقله إلى سلة المحذوفات إذا كان باتش السلة مثبتًا.`,
           false,
         );
       }
     } catch (e) {
       setSaving(false);
       confirmDelete(
-        `${selected.title}\n\nتعذر فحص الارتباطات قبل الحذف. هل تريد المتابعة؟`,
+        `${selected.title}\\n\\nتعذر فحص الارتباطات قبل الحذف. هل تريد المتابعة؟`,
         false,
       );
     }
   }
 '''
-    patched, n = re.subn(r'async function deleteRecord\(\) \{.*?\n  \}\n\n  useEffect\(\(\) => \{', replacement + '\n  useEffect(() => {', edit_text, count=1, flags=re.S)
+    pattern = r'async function deleteRecord\(\) \{.*?\n  \}\n\n  useEffect\(\(\) => \{'
+    patched, n = re.subn(pattern, lambda m: replacement + '\n  useEffect(() => {', edit_text, count=1, flags=re.S)
     if n:
         edit_center.write_text(patched)
     print(f'EDIT_DELETE_CENTER_CONFIRM_LINKED_DELETE_PATCH={"ok" if n else "not_found"}')
