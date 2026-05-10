@@ -62,6 +62,8 @@ Route::middleware(['auth.api', 'api.scope'])->group(function () {
         __DIR__ . '/api/06_reports.php',
         __DIR__ . '/api/07_files.php',
         __DIR__ . '/api/08_accounts.php',
+        // يجب تحميل قواعد فترات العقود قبل المسار العام حتى لا يمنع العقود التاريخية.
+        __DIR__ . '/api/08b_contract_period_rules.php',
         __DIR__ . '/api/09_contracts.php',
         __DIR__ . '/api/10_alerts.php',
         __DIR__ . '/api/11_auth_permissions.php',
