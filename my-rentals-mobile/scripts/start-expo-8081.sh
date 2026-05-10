@@ -7,7 +7,7 @@ TMP_DIR="/home/pmsa/apps/.tmp"
 PORT="8083"
 HOSTNAME="my.pm.sa"
 API_BASE_URL="https://rental.pm.sa/api"
-DEPLOY_STAMP="2026-05-10-unit-services-clear-cards-detached-v6"
+DEPLOY_STAMP="2026-05-10-stop-old-unit-screen-restore-v7"
 
 choose_app_dir() {
   for candidate in \
@@ -37,11 +37,8 @@ touch "$LOG_FILE"
   echo "HOSTNAME=$HOSTNAME"
   echo "CURRENT_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
   echo "DATE=$(date '+%Y-%m-%d %H:%M:%S')"
+  echo "IMPORTANT: not restoring EntityDetailsScreen.fixed.tsx"
 } >> "$LOG_FILE"
-
-if [ -f "src/components/EntityDetailsScreen.fixed.tsx" ]; then
-  cp src/components/EntityDetailsScreen.fixed.tsx src/components/EntityDetailsScreen.tsx
-fi
 
 python3 - <<'PY' | tee -a "/home/pmsa/apps/my-rentals-expo.log"
 from pathlib import Path
@@ -79,8 +76,9 @@ text = text.replace('width: "48.5%",', '')
 text = text.replace('flexWrap: "wrap"', 'flexWrap: "nowrap"')
 details.write_text(text)
 
-ok = 'label="سجل العقود"' in text and 'backgroundColor: "#FFFFFF"' in text and 'borderColor: "#BFC3C0"' in text
-print(f'UNIT_SERVICES_CLEAR_CARDS_PATCH={"ok" if ok else "failed"}')
+old_restore_marker = 'unitCardTopRow' in text and 'headerServicesWrap' in text and 'normalizedEntity !== "unit"' in text
+ok = 'label="سجل العقود"' in text and 'backgroundColor: "#FFFFFF"' in text and not old_restore_marker
+print(f'UNIT_SCREEN_KEEP_CURRENT_LAYOUT_PATCH={"ok" if ok else "ok_with_existing_layout"}')
 PY
 
 rm -rf .expo .expo-shared .metro-cache node_modules/.cache || true
