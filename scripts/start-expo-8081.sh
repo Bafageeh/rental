@@ -32,6 +32,9 @@ text = text.replace(
     'const [openDetailSections, setOpenDetailSections] = useState<Record<string, boolean>>({ primary: false, extra: false });'
 )
 
+# الغاء عدد الحقول في القوائم المنسدلة
+text = re.sub(r'\n\s*<Text style=\{styles\.accordionSubtitle\}>\{count\} حقل</Text>', '', text)
+
 # إخفاء عنوان الصفحة العلوي في تفاصيل الوحدة حتى تبدأ الشاشة ببطاقة الوحدة مباشرة
 text = re.sub(
     r'\n\s*<View style=\{styles\.topBar\}>\n\s*<View style=\{styles\.topTitleBlock\}>\n\s*<Text style=\{styles\.topTitle\}>\{entityTitle\[normalizedEntity\] \|\| "التفاصيل"\}</Text>\n\s*<Text style=\{styles\.topSubtitle\}>تفاصيل السجل والخدمات المرتبطة</Text>\n\s*</View>\n(?:\s*\{normalizedEntity === "unit" \? \(.*?\) : null\}\n)?\s*</View>',
@@ -40,7 +43,7 @@ text = re.sub(
     flags=re.S,
 )
 
-# ارجاع خدمات الوحدة كاملة: العقود، إنشاء عقد، رفع عقد، الوسائط
+# تثبيت خدمات الوحدة كاملة داخل بطاقة تفاصيل الوحدة
 header_pattern = r'\n\s*<View style=\{styles\.headerCard\}>.*?\n\s*</View>\n\n\s*\{normalizedEntity !== "unit" \? \('
 new_header = '''\n        <View style={styles.headerCard}>\n          <View style={styles.unitCardTopRow}>\n            {normalizedEntity === "unit" ? (\n              <View style={styles.unitCardActions}>\n                <InlineEditDeleteActions resource={resourceForEntity(String(entity))} id={id} hideDetails compact iconOnly onChanged={() => load(false)} />\n              </View>\n            ) : <View />}\n            <Text style={styles.entityLabel}>{data?.entity_title || entityTitle[normalizedEntity] || "تفاصيل"}</Text>\n          </View>\n          <Text numberOfLines={2} style={styles.title}>{data?.title || "جاري التحميل..."}</Text>\n          <View style={styles.headerStatsRow}>\n            <Text style={styles.statPill}>{relatedLabel}: {relatedCount}</Text>\n          </View>\n          {normalizedEntity === "unit" ? (\n            <View style={styles.headerServicesWrap}>\n              <Text style={styles.headerServicesTitle}>خدمات الوحدة</Text>\n              <View style={styles.headerServicesGrid}>\n                <ServiceChip icon="documents-outline" label="العقود" onPress={() => openUnitService("/contracts")} />\n                <ServiceChip icon="create-outline" label="إنشاء عقد" onPress={() => openUnitService("/create-contract")} />\n                <ServiceChip icon="cloud-upload-outline" label="رفع عقد" onPress={() => openUnitService("/upload-contract")} />\n                <ServiceChip icon="images-outline" label="الوسائط" onPress={() => openUnitService("/files", "mode=media")} />\n              </View>\n            </View>\n          ) : null}\n        </View>\n\n        {normalizedEntity !== "unit" ? ('''
 text = re.sub(header_pattern, new_header, text, count=1, flags=re.S)
