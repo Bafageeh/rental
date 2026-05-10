@@ -201,7 +201,7 @@ function ServiceChip({ icon, label, onPress }: { icon: string; label: string; on
   return (
     <TouchableOpacity style={styles.serviceChip} onPress={onPress} activeOpacity={0.86} accessibilityRole="button" accessibilityLabel={label}>
       <View style={styles.serviceIconWrap}>
-        <Ionicons name={icon as any} size={18} color="#4b5563" />
+        <Ionicons name={icon as any} size={16} color="#4b5563" />
       </View>
       <Text numberOfLines={1} style={styles.serviceText}>{label}</Text>
     </TouchableOpacity>
@@ -484,21 +484,21 @@ const styles = StyleSheet.create({
   topSubtitle: { color: "#6b7280", fontSize: 11, fontWeight: "800", textAlign: "right", marginTop: 2 },
   detailsActionsBox: { alignSelf: "flex-start", backgroundColor: "#fff", borderRadius: 18, padding: 5, marginBottom: 10, borderWidth: 1, borderColor: "#EDECE9" },
   serviceChip: {
-    width: "48.5%",
-    minHeight: 46,
-    borderRadius: 16,
+    flex: 1,
+    minWidth: 0,
+    minHeight: 48,
+    borderRadius: 13,
     backgroundColor: "#F8FAFC",
     borderWidth: 1,
     borderColor: "#E5E7EB",
-    flexDirection: "row-reverse",
     alignItems: "center",
-    justifyContent: "flex-start",
-    gap: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
+    justifyContent: "center",
+    gap: 3,
+    paddingHorizontal: 3,
+    paddingVertical: 5,
   },
-  serviceIconWrap: { width: 30, height: 30, borderRadius: 15, backgroundColor: "#ffffff", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#EEF2F7" },
-  serviceText: { flex: 1, color: "#111827", fontSize: 12, fontWeight: "900", textAlign: "right" },
+  serviceIconWrap: { width: 23, height: 23, borderRadius: 12, backgroundColor: "#ffffff", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#EEF2F7" },
+  serviceText: { width: "100%", color: "#111827", fontSize: 10, fontWeight: "900", textAlign: "center" },
   headerCard: {
     backgroundColor: "#ffffff",
     borderRadius: 26,
@@ -545,7 +545,7 @@ const styles = StyleSheet.create({
   headerServicesWrap: { marginTop: 12, paddingTop: 10, borderTopWidth: 1, borderTopColor: "#E5E7EB" },
   headerServicesHeader: { flexDirection: "row-reverse", alignItems: "center", justifyContent: "space-between", marginBottom: 8 },
   headerServicesTitle: { color: "#374151", fontSize: 12, fontWeight: "900", textAlign: "right" },
-  headerServicesGrid: { flexDirection: "row-reverse", flexWrap: "wrap", gap: 7 },
+  headerServicesGrid: { flexDirection: "row-reverse", flexWrap: "nowrap", gap: 4 },
   tabsWrap: { backgroundColor: "#DDDBD6", borderRadius: 18, padding: 4, flexDirection: "row-reverse", gap: 4, marginBottom: 12 },
   tabButton: { flex: 1, borderRadius: 14, paddingVertical: 9, alignItems: "center" },
   tabButtonActive: { backgroundColor: "#fff", shadowColor: "#000", shadowOpacity: 0.06, shadowRadius: 8, elevation: 1 },
