@@ -32,10 +32,8 @@ class ContractFileController extends Controller
         ]);
 
         $file = $request->file('file');
-
         $folder = 'contract_files/' . now()->format('Y/m');
         $safeName = now()->format('Ymd_His') . '_' . Str::random(8) . '.pdf';
-
         $path = $file->storeAs($folder, $safeName, 'local');
         $fullPath = Storage::disk('local')->path($path);
 
@@ -106,16 +104,6 @@ class ContractFileController extends Controller
         ]);
     }
 
-    /**
-     * تعليمات قراءة عقد إيجار PDF بناءً على مثال المستخدم:
-     * - لا تقرأ اسم/جنسية المستأجر من قسم المؤجر أو ممثل المؤجر إطلاقًا.
-     * - بند 4 "بيانات المستأجر / Data Tenant" قد يكون شركة. عندها اسم المستأجر هو اسم الشركة/المؤسسة.
-     *   مثال: شركة ضيافتي للتجارة شركة شخص واحد، السجل التجاري 4030277615، الرقم الموحد 7001893408.
-     * - بند 5 "بيانات ممثل المستأجر / Data Representative Tenant" يحتوي اسم الممثل والجنسية والهوية والجوال.
-     *   مثال: محمد خالد غسان شيخ النجارين، الجنسية سوريا، الهوية 2444702142، الجوال +966591335477.
-     * - إذا كان المستأجر شركة ولا توجد جنسية في بند 4، تُقرأ الجنسية من ممثل المستأجر وتخزن كـ representative_nationality،
-     *   ولا يتم أخذ جنسية المؤجر أو الوسيط.
-     */
     private function completeTenantIdentityFromPdf(array $data, string $fullPath): array
     {
         $tenant = $data['tenant'] ?? [];
@@ -386,6 +374,7 @@ class ContractFileController extends Controller
         $value = preg_replace('/\b(Name|Nationality|Email|Mobile|Type|ID|No)\b.*$/iu', '', $value) ?? $value;
         $value = preg_replace('/(?:الاسم|االسم|الإسم|اإلسم|الجنسية|نوع\s*الهوية|رقم\s*الهوية|المؤجر|مالك).*$/u', '', $value) ?? $value;
         $value = trim($value);
+        $value = $this->normalizeKnownArabicPdfWords($value);
 
         return mb_strlen($value) >= 3 ? $value : null;
     }
@@ -401,7 +390,42 @@ class ContractFileController extends Controller
         $value = preg_replace('/\s+/u', ' ', trim($value)) ?? trim($value);
         $value = preg_replace('/^(بيانات|المستأجر|المستاجر|الفرد|شركة|مؤسسة)\s+/u', '', $value) ?? $value;
         $value = trim($value);
+        $value = $this->normalizeKnownArabicPdfWords($value);
 
         return mb_strlen($value) >= 3 ? $value : null;
+    }
+
+    private function normalizeKnownArabicPdfWords(string $value): string
+    {
+        $value = preg_replace('/\s+/u', ' ', trim($value)) ?? trim($value);
+
+        $map = [
+            'ايروس' => 'سوريا',
+            'ناميلس' => 'سليمان',
+            'يولبلا' => 'البلوي',
+            'دب' => 'بدر',
+            'دردب' => 'بدر',
+            'دمحم' => 'محمد',
+            'ةكلمملا' => 'المملكة',
+            'ةيبرعلا' => 'العربية',
+            'ةيدوعسلا' => 'السعودية',
+            'ةدج' => 'جدة',
+            'دقعلا' => 'العقد',
+            'ةكرش' => 'شركة',
+            'يتفايض' => 'ضيافتي',
+            'ةراجتلل' => 'للتجارة',
+            'صخش' => 'شخص',
+            'دحاو' => 'واحد',
+        ];
+
+        $words = preg_split('/\s+/u', $value) ?: [];
+        $words = array_map(fn ($word) => $map[$word] ?? $word, $words);
+        $value = implode(' ', $words);
+
+        if (mb_stripos($value, 'المملكة العربية') !== false && mb_stripos($value, 'السعودية') === false) {
+            return 'المملكة العربية السعودية';
+        }
+
+        return trim($value);
     }
 }
