@@ -203,6 +203,9 @@ class GovernmentContractImporter
         $recordNumber = $contractData['ejar_record_number'] ?? $contractData['government_contract_number'] ?? null;
         $versionNumber = $contractData['ejar_version_number'] ?? null;
         $displayNumber = $contractData['contract_number'] ?? ($recordNumber && $versionNumber ? $recordNumber . ' / ' . $versionNumber : $recordNumber);
+        $startDate = $contractData['start_date'] ? Carbon::parse($contractData['start_date'])->toDateString() : null;
+        $endDate = $contractData['end_date'] ? Carbon::parse($contractData['end_date'])->toDateString() : null;
+        $status = $endDate && Carbon::parse($endDate)->lt(today()) ? 'ended' : 'active';
 
         $payload = [
             'unit_id' => $unit->id,
@@ -214,8 +217,8 @@ class GovernmentContractImporter
             'contract_type' => $contractData['contract_type'] ?? null,
             'sealing_date' => $contractData['sealing_date'] ?? null,
             'sealing_location' => $contractData['sealing_location'] ?? null,
-            'start_date' => $contractData['start_date'] ?? null,
-            'end_date' => $contractData['end_date'] ?? null,
+            'start_date' => $startDate,
+            'end_date' => $endDate,
             'rent_amount' => $financial['rent_amount'] ?? 0,
             'parking_fee' => $financial['parking_annual_amount'] ?? 0,
             'services_fee' => 0,
@@ -232,17 +235,77 @@ class GovernmentContractImporter
             'gas_annual_amount' => $financial['gas_annual_amount'] ?? 0,
             'parking_annual_amount' => $financial['parking_annual_amount'] ?? 0,
             'rented_parking_lots' => $financial['rented_parking_lots'] ?? 0,
-            'status' => 'active',
+            'status' => $status,
             'source' => 'government_pdf',
         ];
 
         $payload = $this->onlyExistingColumns('contracts', $payload);
 
-        if ($recordNumber) {
-            return Contract::updateOrCreate(['government_contract_number' => $recordNumber], $payload);
+        if ($startDate && $endDate) {
+            $existingSameIdentityAndDates = $this->findMatchingIdentityAndDates($unit, $tenant, $startDate, $endDate);
+
+            if ($existingSameIdentityAndDates) {
+                $existingSameIdentityAndDates->fill($payload);
+                $existingSameIdentityAndDates->save();
+                $this->syncUnitStatus($unit, $status, $financial['rent_amount'] ?? null);
+                return $existingSameIdentityAndDates;
+            }
+
+            $this->abortIfOverlappingPeriod($unit, $startDate, $endDate);
         }
 
-        return Contract::create($payload);
+        $contract = new Contract($payload);
+        $contract->save();
+        $this->syncUnitStatus($unit, $status, $financial['rent_amount'] ?? null);
+        return $contract;
+    }
+
+    private function findMatchingIdentityAndDates(Unit $unit, Tenant $tenant, string $startDate, string $endDate): ?Contract
+    {
+        $tenantNationalId = trim((string) ($tenant->national_id ?? ''));
+
+        return Contract::where('unit_id', $unit->id)
+            ->whereDate('start_date', $startDate)
+            ->whereDate('end_date', $endDate)
+            ->whereHas('tenant', function ($query) use ($tenant, $tenantNationalId) {
+                if ($tenantNationalId !== '') {
+                    $query->where('national_id', $tenantNationalId);
+                } else {
+                    $query->where('id', $tenant->id);
+                }
+            })
+            ->first();
+    }
+
+    private function abortIfOverlappingPeriod(Unit $unit, string $startDate, string $endDate): void
+    {
+        $overlap = Contract::where('unit_id', $unit->id)
+            ->whereDate('start_date', '<=', $endDate)
+            ->whereDate('end_date', '>=', $startDate)
+            ->first();
+
+        if (!$overlap) {
+            return;
+        }
+
+        abort(response()->json([
+            'status' => 'error',
+            'message' => 'لا يمكن حفظ العقد؛ توجد فترة عقد أخرى متداخلة على نفس الوحدة. يسمح بعقود تاريخية متعددة فقط إذا لم تتداخل التواريخ.',
+            'existing_contract_id' => $overlap->id,
+            'existing_start_date' => $overlap->start_date,
+            'existing_end_date' => $overlap->end_date,
+        ], 422));
+    }
+
+    private function syncUnitStatus(Unit $unit, string $contractStatus, $rentAmount = null): void
+    {
+        $unit->status = $contractStatus === 'active' ? 'rented' : 'available';
+
+        if ($contractStatus === 'active' && $rentAmount !== null) {
+            $unit->rent_amount = $rentAmount;
+        }
+
+        $unit->save();
     }
 
     private function storePayments(Contract $contract, array $payments, array $financial, array $contractData): void
