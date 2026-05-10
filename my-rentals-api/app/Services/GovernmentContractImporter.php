@@ -52,6 +52,13 @@ class GovernmentContractImporter
             return $forcedUnit->property->owner;
         }
 
+        if ($forcedUnit && Schema::hasColumn('units', 'owner_id') && $forcedUnit->owner_id) {
+            $owner = Owner::find($forcedUnit->owner_id);
+            if ($owner) {
+                return $owner;
+            }
+        }
+
         if ($forcedProperty && $forcedProperty->owner) {
             return $forcedProperty->owner;
         }
@@ -205,7 +212,19 @@ class GovernmentContractImporter
         }
 
         if ($forcedUnit) {
-            $forcedUnit->fill(array_filter($payload, fn ($value) => $value !== null && $value !== ''));
+            // مهم جدًا: عند رفع عقد PDF لوحدة محددة من الشاشة، لا نسمح للاستخراج بتغيير هوية الوحدة.
+            // لا تغيّر رقم الوحدة مثل شقة 9 إلى رقم قرأه الـ PDF، ولا تنقلها لعقار/مالك آخر.
+            // يتم تحديث بيانات وصفية آمنة فقط، ثم العقد يربط بنفس forcedUnit.id.
+            $safePayload = $payload;
+            unset(
+                $safePayload['property_id'],
+                $safePayload['owner_id'],
+                $safePayload['unit_scope'],
+                $safePayload['unit_number'],
+                $safePayload['floor']
+            );
+
+            $forcedUnit->fill(array_filter($safePayload, fn ($value) => $value !== null && $value !== ''));
             $forcedUnit->save();
             return $forcedUnit;
         }
