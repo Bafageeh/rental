@@ -7,7 +7,7 @@ TMP_DIR="/home/pmsa/apps/.tmp"
 PORT="8083"
 HOSTNAME="my.pm.sa"
 API_BASE_URL="https://rental.pm.sa/api"
-DEPLOY_STAMP="2026-05-10-stop-old-unit-screen-restore-v7"
+DEPLOY_STAMP="2026-05-10-owner-assets-summary-cards-removed-v8"
 
 choose_app_dir() {
   for candidate in \
@@ -38,6 +38,7 @@ touch "$LOG_FILE"
   echo "CURRENT_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
   echo "DATE=$(date '+%Y-%m-%d %H:%M:%S')"
   echo "IMPORTANT: not restoring EntityDetailsScreen.fixed.tsx"
+  echo "IMPORTANT: owner asset summary cards are removed"
 } >> "$LOG_FILE"
 
 python3 - <<'PY' | tee -a "/home/pmsa/apps/my-rentals-expo.log"
@@ -79,6 +80,41 @@ details.write_text(text)
 old_restore_marker = 'unitCardTopRow' in text and 'headerServicesWrap' in text and 'normalizedEntity !== "unit"' in text
 ok = 'label="سجل العقود"' in text and 'backgroundColor: "#FFFFFF"' in text and not old_restore_marker
 print(f'UNIT_SCREEN_KEEP_CURRENT_LAYOUT_PATCH={"ok" if ok else "ok_with_existing_layout"}')
+
+owner_dashboard = Path('src/components/OwnerDashboardScreenWithActions.tsx')
+if not owner_dashboard.exists():
+    raise SystemExit('OwnerDashboardScreenWithActions.tsx not found')
+
+owner_text = owner_dashboard.read_text()
+owner_text = re.sub(
+    r'\n\s*<View style=\{styles\.assetSummaryStrip\}>\s*'
+    r'<View style=\{styles\.assetSummaryItem\}>\s*'
+    r'<Text style=\{styles\.assetSummaryValue\}>\{count\(properties\.length\)\}</Text>\s*'
+    r'<Text style=\{styles\.assetSummaryLabel\}>عقارات</Text>\s*'
+    r'</View>\s*'
+    r'<View style=\{styles\.assetSummaryItem\}>\s*'
+    r'<Text style=\{styles\.assetSummaryValue\}>\{count\(units\.length\)\}</Text>\s*'
+    r'<Text style=\{styles\.assetSummaryLabel\}>وحدات</Text>\s*'
+    r'</View>\s*'
+    r'<View style=\{styles\.assetSummaryItem\}>\s*'
+    r'<Text style=\{styles\.assetSummaryValue\}>\{count\(directOwnerUnits\.length\)\}</Text>\s*'
+    r'<Text style=\{styles\.assetSummaryLabel\}>مباشرة</Text>\s*'
+    r'</View>\s*'
+    r'</View>\s*',
+    '\n',
+    owner_text,
+    flags=re.S,
+)
+owner_text = re.sub(
+    r'\n\s*assetSummaryStrip:\s*\{[^\n]+\},\s*'
+    r'\n\s*assetSummaryItem:\s*\{[^\n]+\},\s*'
+    r'\n\s*assetSummaryValue:\s*\{[^\n]+\},\s*'
+    r'\n\s*assetSummaryLabel:\s*\{[^\n]+\},',
+    '\n',
+    owner_text,
+)
+owner_dashboard.write_text(owner_text)
+print(f'OWNER_ASSET_SUMMARY_CARDS_REMOVED={"ok" if "assetSummaryStrip" not in owner_text else "failed"}')
 PY
 
 rm -rf .expo .expo-shared .metro-cache node_modules/.cache || true
