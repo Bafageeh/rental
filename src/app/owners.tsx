@@ -33,8 +33,12 @@ function valueOrDash(value?: string | null) {
   return value && String(value).trim() ? value : "-";
 }
 
+function normalize(value?: string | number | null) {
+  return String(value ?? "").trim().toLowerCase();
+}
+
 export default function OwnersScreen() {
-  const { loading: authLoading, loggedIn, isAdmin } = useAuth();
+  const { loading: authLoading, loggedIn, isAdmin, user } = useAuth();
   const [items, setItems] = useState<Owner[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -108,6 +112,13 @@ export default function OwnersScreen() {
     router.push(`/owner/${owner.id}` as never);
   }
 
+  function isCurrentAdminOwner(owner: Owner) {
+    const authOwnerId = Number(user?.owner_id ?? 0);
+    const sameOwnerId = authOwnerId > 0 && owner.id === authOwnerId;
+    const sameEmail = Boolean(owner.email && user?.email && normalize(owner.email) === normalize(user.email));
+    return isAdmin && (sameOwnerId || sameEmail);
+  }
+
   useEffect(() => {
     if (authLoading) return;
     if (!canAccess) {
@@ -148,17 +159,20 @@ export default function OwnersScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refreshScreen} tintColor="#0F9B6F" />}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.headerRow}>
+        <View style={styles.topActionsRow}>
           <TouchableOpacity
-            style={[styles.addIconButton, showForm ? styles.closeIconButton : null]}
+            style={[styles.addOwnerButton, showForm ? styles.closeOwnerButton : null]}
             onPress={() => setShowForm(!showForm)}
             activeOpacity={0.85}
             accessibilityRole="button"
             accessibilityLabel={showForm ? "إغلاق نموذج إضافة مالك" : "إضافة مالك جديد"}
           >
-            <Text style={styles.addIconText}>{showForm ? "×" : "+"}</Text>
+            <Text style={styles.addOwnerIcon}>{showForm ? "×" : "👤＋"}</Text>
+            <Text style={styles.addOwnerText}>{showForm ? "إغلاق" : "مالك جديد"}</Text>
           </TouchableOpacity>
+        </View>
 
+        <View style={styles.headerRow}>
           <View style={styles.headerTextBlock}>
             <Text style={styles.title}>الملاك</Text>
             <Text style={styles.subtitle}>اضغط على بطاقة المالك لعرض تفاصيل الأملاك والتحكم بعقاراته</Text>
@@ -195,54 +209,50 @@ export default function OwnersScreen() {
           </View>
         ) : null}
 
-        {items.map((owner) => (
-          <TouchableOpacity
-            key={owner.id}
-            style={styles.card}
-            activeOpacity={0.88}
-            onPress={() => openOwnerAssets(owner)}
-            accessibilityRole="button"
-            accessibilityLabel={`تفاصيل أملاك ${owner.name || "المالك"}`}
-          >
-            <View style={styles.cardTopRow}>
-              <InlineEditDeleteActions resource="owners" id={owner.id} onChanged={load} hideDetails hideDelete compact iconOnly />
-              <Text style={styles.badge}>مالك</Text>
-            </View>
+        {items.map((owner) => {
+          const isMyAdminOwner = isCurrentAdminOwner(owner);
 
-            <Text numberOfLines={2} style={styles.cardTitle}>{owner.name || "مالك بدون اسم"}</Text>
-
-            <View style={styles.metricsRow}>
-              <View style={styles.metricPill}>
-                <Text style={styles.metricValue}>{owner.properties_count ?? 0}</Text>
-                <Text style={styles.metricLabel}>عقار</Text>
+          return (
+            <TouchableOpacity
+              key={owner.id}
+              style={[styles.card, isMyAdminOwner ? styles.myAdminCard : null]}
+              activeOpacity={0.88}
+              onPress={() => openOwnerAssets(owner)}
+              accessibilityRole="button"
+              accessibilityLabel={`تفاصيل أملاك ${owner.name || "المالك"}`}
+            >
+              <View style={styles.cardTopRow}>
+                <InlineEditDeleteActions resource="owners" id={owner.id} onChanged={load} hideDetails hideDelete compact iconOnly />
+                <Text style={[styles.badge, isMyAdminOwner ? styles.myAssetsBadge : null]}>
+                  {isMyAdminOwner ? "أملاكي" : "مالك"}
+                </Text>
               </View>
-              <View style={styles.metricPill}>
-                <Text style={styles.metricValue}>{owner.units_count ?? 0}</Text>
-                <Text style={styles.metricLabel}>وحدة</Text>
-              </View>
-              <View style={styles.metricPill}>
-                <Text style={styles.metricValue}>{owner.contracts_count ?? 0}</Text>
-                <Text style={styles.metricLabel}>عقد</Text>
-              </View>
-            </View>
 
-            <View style={styles.infoBox}>
-              <Text style={styles.detail}>الجوال: {valueOrDash(owner.phone)}</Text>
-              <Text style={styles.detail}>البريد: {valueOrDash(owner.email)}</Text>
-              <Text style={styles.detail}>رقم الهوية: {valueOrDash(owner.national_id)}</Text>
-            </View>
+              <Text numberOfLines={2} style={[styles.cardTitle, isMyAdminOwner ? styles.myAdminTitle : null]}>{owner.name || "مالك بدون اسم"}</Text>
 
-            {owner.has_rental_assets ? (
-              <TouchableOpacity
-                style={styles.uploadContractButton}
-                activeOpacity={0.85}
-                onPress={() => router.push(`/upload-contract?owner_id=${owner.id}&owner_name=${encodeURIComponent(owner.name || "مالك")}` as never)}
-              >
-                <Text style={styles.uploadContractButtonText}>📤 رفع عقد لهذا المالك</Text>
-              </TouchableOpacity>
-            ) : null}
-          </TouchableOpacity>
-        ))}
+              <View style={styles.metricsRow}>
+                <View style={[styles.metricPill, isMyAdminOwner ? styles.myAdminMetricPill : null]}>
+                  <Text style={styles.metricValue}>{owner.properties_count ?? 0}</Text>
+                  <Text style={styles.metricLabel}>عقار</Text>
+                </View>
+                <View style={[styles.metricPill, isMyAdminOwner ? styles.myAdminMetricPill : null]}>
+                  <Text style={styles.metricValue}>{owner.units_count ?? 0}</Text>
+                  <Text style={styles.metricLabel}>وحدة</Text>
+                </View>
+                <View style={[styles.metricPill, isMyAdminOwner ? styles.myAdminMetricPill : null]}>
+                  <Text style={styles.metricValue}>{owner.contracts_count ?? 0}</Text>
+                  <Text style={styles.metricLabel}>عقد</Text>
+                </View>
+              </View>
+
+              <View style={[styles.infoBox, isMyAdminOwner ? styles.myAdminInfoBox : null]}>
+                <Text style={styles.detail}>الجوال: {valueOrDash(owner.phone)}</Text>
+                <Text style={styles.detail}>البريد: {valueOrDash(owner.email)}</Text>
+                <Text style={styles.detail}>رقم الهوية: {valueOrDash(owner.national_id)}</Text>
+              </View>
+            </TouchableOpacity>
+          );
+        })}
       </ScrollView>
     </SafeAreaView>
   );
@@ -250,15 +260,17 @@ export default function OwnersScreen() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: "#F7F6F4" },
-  container: { padding: 12, paddingBottom: 40 },
+  container: { padding: 12, paddingTop: 6, paddingBottom: 40 },
   centerBox: { flex: 1, alignItems: "center", justifyContent: "center", padding: 20 },
+  topActionsRow: { flexDirection: "row", justifyContent: "flex-start", alignItems: "center", marginBottom: 8 },
   headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 14 },
   headerTextBlock: { flex: 1, alignItems: "flex-end" },
   title: { fontSize: 30, fontWeight: "900", color: "#111827", textAlign: "right" },
   subtitle: { marginTop: 6, fontSize: 14, color: "#7A766F", textAlign: "right", fontWeight: "700" },
-  addIconButton: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center", backgroundColor: "#111827", shadowColor: "#000", shadowOpacity: 0.08, shadowRadius: 8, elevation: 2 },
-  closeIconButton: { backgroundColor: "#7f1d1d" },
-  addIconText: { color: "#ffffff", fontSize: 30, lineHeight: 34, fontWeight: "900" },
+  addOwnerButton: { minHeight: 40, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 7, alignItems: "center", justifyContent: "center", flexDirection: "row-reverse", gap: 6, backgroundColor: "#111827", shadowColor: "#000", shadowOpacity: 0.08, shadowRadius: 8, elevation: 2 },
+  closeOwnerButton: { backgroundColor: "#7f1d1d" },
+  addOwnerIcon: { color: "#ffffff", fontSize: 18, lineHeight: 23, fontWeight: "900" },
+  addOwnerText: { color: "#ffffff", fontSize: 12, fontWeight: "900" },
   formCard: { backgroundColor: "#ffffff", borderRadius: 18, padding: 12, marginBottom: 10, borderWidth: 1, borderColor: "#EDECE9" },
   formTitle: { fontSize: 16, fontWeight: "900", color: "#111827", textAlign: "right", marginBottom: 10 },
   input: { backgroundColor: "#F7F6F4", borderWidth: 1, borderColor: "#DDDBD6", borderRadius: 12, padding: 12, marginBottom: 10, color: "#111827" },
@@ -273,15 +285,18 @@ const styles = StyleSheet.create({
   button: { marginTop: 14, backgroundColor: "#111827", padding: 12, borderRadius: 12, alignItems: "center" },
   buttonText: { color: "#fff", fontWeight: "900" },
   card: { backgroundColor: "#fff", borderRadius: 22, padding: 12, marginBottom: 10, borderWidth: 1, borderColor: "#EDECE9", shadowColor: "#000", shadowOpacity: 0.04, shadowRadius: 10, elevation: 1 },
+  myAdminCard: { backgroundColor: "#FFF7ED", borderColor: "#FDBA74", shadowOpacity: 0.07, elevation: 2 },
   cardTopRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 },
   badge: { backgroundColor: "#e0f2fe", color: "#075985", paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, overflow: "hidden", fontWeight: "900", fontSize: 12 },
+  myAssetsBadge: { backgroundColor: "#fed7aa", color: "#9a3412" },
   cardTitle: { fontSize: 18, fontWeight: "900", color: "#111827", textAlign: "right", marginBottom: 10 },
+  myAdminTitle: { color: "#7c2d12" },
   metricsRow: { flexDirection: "row-reverse", gap: 7, marginBottom: 10 },
   metricPill: { flex: 1, backgroundColor: "#F7F6F4", borderWidth: 1, borderColor: "#EDECE9", borderRadius: 16, paddingVertical: 9, alignItems: "center" },
+  myAdminMetricPill: { backgroundColor: "#FFFBEB", borderColor: "#FED7AA" },
   metricValue: { color: "#111827", fontWeight: "900", fontSize: 18 },
   metricLabel: { color: "#6b7280", fontWeight: "800", fontSize: 12, marginTop: 2 },
   infoBox: { backgroundColor: "#FAFAF9", borderRadius: 16, padding: 10, gap: 4 },
+  myAdminInfoBox: { backgroundColor: "#FFF7ED" },
   detail: { color: "#5E5B55", textAlign: "right", fontWeight: "700", lineHeight: 21 },
-  uploadContractButton: { marginTop: 10, backgroundColor: "#ecfdf5", borderWidth: 1, borderColor: "#99f6e4", padding: 10, borderRadius: 14, alignItems: "center" },
-  uploadContractButtonText: { color: "#065f46", fontWeight: "900" },
 });
