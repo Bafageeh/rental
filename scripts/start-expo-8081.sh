@@ -6,7 +6,7 @@ LOG_FILE="/home/pmsa/apps/my-rentals-expo.log"
 PID_FILE="/home/pmsa/apps/my-rentals-expo.pid"
 CACHE_DIR="/home/pmsa/apps/.cache"
 TMP_DIR="/home/pmsa/apps/.tmp"
-PORT="8081"
+PORT="8083"
 HOSTNAME="my.pm.sa"
 API_BASE_URL="https://rental.pm.sa/api"
 
@@ -53,20 +53,24 @@ is_port_listening() {
 
 stop_known_pid
 stop_port_if_allowed
+pkill -f "expo start.*--port $PORT" 2>/dev/null || true
+pkill -f "node .*expo.*--port $PORT" 2>/dev/null || true
 sleep 2
 
 if is_port_listening; then
-  echo "Port $PORT is still busy by a process this user cannot stop. Run as root: lsof -ti:8081 | xargs -r kill -9"
+  echo "Port $PORT is still busy by a process this user cannot stop. Run as root: lsof -ti:8083 | xargs -r kill -9"
   exit 1
 fi
 
-rm -rf .expo "$CACHE_DIR"/metro-* "$CACHE_DIR"/haste-map-* || true
+rm -rf .expo .expo-shared .metro-cache node_modules/.cache || true
+rm -rf "$CACHE_DIR"/expo "$CACHE_DIR"/metro "$CACHE_DIR"/react-native "$CACHE_DIR"/metro-* "$CACHE_DIR"/haste-map-* || true
 
 setsid bash -lc "cd '$APP_DIR' && exec env \
   BROWSER=none \
   CI=1 \
   EXPO_NO_TELEMETRY=1 \
   EXPO_PUBLIC_API_BASE_URL='$API_BASE_URL' \
+  EXPO_PUBLIC_API_URL='$API_BASE_URL' \
   REACT_NATIVE_PACKAGER_HOSTNAME='$HOSTNAME' \
   XDG_CACHE_HOME='$CACHE_DIR' \
   TMPDIR='$TMP_DIR' \
