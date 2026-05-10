@@ -113,7 +113,9 @@ export default function ContractPaymentCard({ item, index, expanded, onToggle, o
   const isPaid = statusKey(displayItem) === "paid";
   const dueDate = displayItem.due_date || displayItem.title || "-";
   const paidDate = displayItem.paid_date || "لم تسجل بعد";
-  const helperNote = displayItem.notes || displayItem.subtitle || "اضغط على زر الإجراءات للتعديل أو تسجيل الدفع.";
+  const deadlineLine = displayItem.deadline_date
+    ? `نهاية مهلة السداد: ${displayItem.deadline_date}`
+    : (displayItem.subtitle || "");
 
   function openSheet(nextMode: Mode) {
     setMode(nextMode);
@@ -210,20 +212,22 @@ export default function ContractPaymentCard({ item, index, expanded, onToggle, o
         onPress={onToggle}
       >
         <View style={styles.topStrip}>
-          <Text style={[styles.statusChip, { backgroundColor: meta.bg, color: meta.fg }]}>{meta.label}</Text>
-          <View style={[styles.accentDot, { backgroundColor: meta.accent }]} />
+          <View style={styles.statusSide}>
+            <View style={[styles.accentDot, { backgroundColor: meta.accent }]} />
+            <Text style={[styles.statusChip, { backgroundColor: meta.bg, color: meta.fg }]}>{meta.label}</Text>
+          </View>
+          <Text style={styles.title}>القسط {index + 1}</Text>
         </View>
 
         <View style={styles.mainRow}>
           <View style={styles.amountPanel}>
             <Text style={styles.amountLabel}>{isPaid ? "المسدد" : "المطلوب"}</Text>
-            <Text style={styles.amountValue}>{amountText(displayItem.amount)}</Text>
+            <Text numberOfLines={2} style={styles.amountValue}>{amountText(displayItem.amount)}</Text>
           </View>
 
           <View style={styles.infoBlock}>
-            <Text style={styles.title}>القسط {index + 1}</Text>
-            <Text style={styles.dateText}>استحقاق: {dueDate}</Text>
-            <Text numberOfLines={2} style={styles.noteText}>{helperNote}</Text>
+            <Text style={styles.dateText} numberOfLines={1}>استحقاق: {dueDate}</Text>
+            {deadlineLine ? <Text style={styles.noteText} numberOfLines={1}>{deadlineLine}</Text> : null}
           </View>
         </View>
 
@@ -236,12 +240,12 @@ export default function ContractPaymentCard({ item, index, expanded, onToggle, o
               onToggle();
             }}
           >
-            <Text style={[styles.optionsButtonText, expanded ? styles.optionsButtonTextActive : null]}>{expanded ? "إخفاء الخيارات" : "إجراءات"}</Text>
+            <Text style={[styles.optionsButtonText, expanded ? styles.optionsButtonTextActive : null]}>{expanded ? "إخفاء" : "خيارات"}</Text>
             <Text style={[styles.optionsIcon, expanded ? styles.optionsButtonTextActive : null]}>{expanded ? "⌃" : "⌄"}</Text>
           </TouchableOpacity>
 
           <View style={styles.datePill}>
-            <Text style={styles.datePillText}>{isPaid ? `تاريخ الدفع: ${paidDate}` : "لم يتم الدفع"}</Text>
+            <Text style={styles.datePillText} numberOfLines={1}>{isPaid ? `تاريخ الدفع: ${paidDate}` : "لم يتم الدفع"}</Text>
           </View>
         </View>
 
@@ -335,45 +339,46 @@ export default function ContractPaymentCard({ item, index, expanded, onToggle, o
 
 const styles = StyleSheet.create({
   card: {
-    borderRadius: 24,
-    padding: 14,
-    marginTop: 12,
+    borderRadius: 19,
+    padding: 10,
+    marginTop: 8,
     borderWidth: 1,
     shadowColor: "#111827",
-    shadowOpacity: 0.05,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 2,
+    shadowOpacity: 0.04,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 1,
   },
-  topStrip: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 11 },
-  statusChip: { overflow: "hidden", borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6, fontSize: 12, fontWeight: "900" },
-  accentDot: { width: 12, height: 12, borderRadius: 999 },
-  mainRow: { flexDirection: "row", alignItems: "stretch", gap: 12 },
-  amountPanel: { width: 122, borderRadius: 20, padding: 12, backgroundColor: "rgba(255,255,255,0.72)", borderWidth: 1, borderColor: "rgba(229,231,235,0.85)", justifyContent: "center" },
-  amountLabel: { color: "#6B7280", fontSize: 12, fontWeight: "900", textAlign: "left" },
-  amountValue: { color: "#111827", fontSize: 17, lineHeight: 24, fontWeight: "900", textAlign: "left", marginTop: 5 },
-  infoBlock: { flex: 1, alignItems: "flex-end", justifyContent: "center" },
-  title: { color: "#111827", fontSize: 21, fontWeight: "900", textAlign: "right" },
-  dateText: { color: "#6B7280", fontSize: 13, fontWeight: "800", marginTop: 7, textAlign: "right" },
-  noteText: { color: "#7A766F", fontSize: 13, lineHeight: 20, fontWeight: "700", marginTop: 8, textAlign: "right" },
-  footerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10, marginTop: 13 },
-  optionsButton: { minHeight: 44, minWidth: 116, borderRadius: 16, backgroundColor: "#111827", flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingHorizontal: 14 },
+  topStrip: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 7 },
+  statusSide: { flexDirection: "row", alignItems: "center", gap: 6 },
+  statusChip: { overflow: "hidden", borderRadius: 999, paddingHorizontal: 9, paddingVertical: 4, fontSize: 11, fontWeight: "900" },
+  accentDot: { width: 10, height: 10, borderRadius: 999 },
+  mainRow: { flexDirection: "row", alignItems: "stretch", gap: 9 },
+  amountPanel: { width: 98, borderRadius: 16, paddingHorizontal: 9, paddingVertical: 8, backgroundColor: "rgba(255,255,255,0.72)", borderWidth: 1, borderColor: "rgba(229,231,235,0.85)", justifyContent: "center" },
+  amountLabel: { color: "#6B7280", fontSize: 11, fontWeight: "900", textAlign: "left" },
+  amountValue: { color: "#111827", fontSize: 15, lineHeight: 20, fontWeight: "900", textAlign: "left", marginTop: 3 },
+  infoBlock: { flex: 1, alignItems: "flex-end", justifyContent: "center", gap: 4 },
+  title: { color: "#111827", fontSize: 18, fontWeight: "900", textAlign: "right" },
+  dateText: { color: "#6B7280", fontSize: 12, fontWeight: "800", textAlign: "right" },
+  noteText: { color: "#7A766F", fontSize: 12, lineHeight: 17, fontWeight: "700", textAlign: "right" },
+  footerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8, marginTop: 8 },
+  optionsButton: { minHeight: 36, minWidth: 92, borderRadius: 13, backgroundColor: "#111827", flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5, paddingHorizontal: 10 },
   optionsButtonActive: { backgroundColor: "#F7F6F4", borderWidth: 1, borderColor: "#E5E2DD" },
-  optionsButtonText: { color: "#FFFFFF", fontSize: 13, fontWeight: "900" },
+  optionsButtonText: { color: "#FFFFFF", fontSize: 12, fontWeight: "900" },
   optionsButtonTextActive: { color: "#111827" },
-  optionsIcon: { color: "#FFFFFF", fontSize: 16, fontWeight: "900" },
-  datePill: { flex: 1, minHeight: 42, borderRadius: 16, backgroundColor: "rgba(255,255,255,0.62)", alignItems: "flex-end", justifyContent: "center", paddingHorizontal: 12, borderWidth: 1, borderColor: "rgba(229,231,235,0.8)" },
-  datePillText: { color: "#6B7280", fontSize: 12, fontWeight: "800", textAlign: "right" },
-  expandedArea: { borderTopWidth: 1, borderTopColor: "rgba(229,231,235,0.9)", marginTop: 14, paddingTop: 13 },
-  expandedHeader: { alignItems: "flex-end", marginBottom: 10 },
-  expandedHint: { color: "#6B7280", fontSize: 12, fontWeight: "800", textAlign: "right" },
-  actionRow: { flexDirection: "row-reverse", gap: 9, flexWrap: "wrap" },
-  actionPill: { flexGrow: 1, minWidth: 94, minHeight: 48, borderRadius: 17, alignItems: "center", justifyContent: "center", paddingHorizontal: 12, borderWidth: 1 },
+  optionsIcon: { color: "#FFFFFF", fontSize: 14, fontWeight: "900" },
+  datePill: { flex: 1, minHeight: 36, borderRadius: 13, backgroundColor: "rgba(255,255,255,0.62)", alignItems: "flex-end", justifyContent: "center", paddingHorizontal: 10, borderWidth: 1, borderColor: "rgba(229,231,235,0.8)" },
+  datePillText: { color: "#6B7280", fontSize: 11, fontWeight: "800", textAlign: "right" },
+  expandedArea: { borderTopWidth: 1, borderTopColor: "rgba(229,231,235,0.9)", marginTop: 10, paddingTop: 10 },
+  expandedHeader: { alignItems: "flex-end", marginBottom: 8 },
+  expandedHint: { color: "#6B7280", fontSize: 11, fontWeight: "800", textAlign: "right" },
+  actionRow: { flexDirection: "row-reverse", gap: 7, flexWrap: "wrap" },
+  actionPill: { flexGrow: 1, minWidth: 86, minHeight: 42, borderRadius: 14, alignItems: "center", justifyContent: "center", paddingHorizontal: 10, borderWidth: 1 },
   actionDark: { backgroundColor: "#111827", borderColor: "#111827" },
   actionLight: { backgroundColor: "#FFFFFF", borderColor: "#E5E7EB" },
   actionDanger: { backgroundColor: "#FDECEC", borderColor: "#F4C7CC" },
   actionSuccess: { backgroundColor: "#16834F", borderColor: "#16834F" },
-  actionPillText: { color: "#111827", fontSize: 13, fontWeight: "900", textAlign: "center" },
+  actionPillText: { color: "#111827", fontSize: 12, fontWeight: "900", textAlign: "center" },
   actionPillTextLight: { color: "#FFFFFF" },
   backdrop: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(17,24,39,0.46)" },
   sheet: { backgroundColor: "#FFFFFF", borderTopLeftRadius: 28, borderTopRightRadius: 28, paddingTop: 9, maxHeight: "84%" },
