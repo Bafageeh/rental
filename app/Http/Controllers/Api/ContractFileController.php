@@ -122,19 +122,24 @@ class ContractFileController extends Controller
             $text = $this->normalizePdfText($pdf->getText());
             $tenantBlock = $this->tenantBlock($text);
 
+            if ($tenantBlock === '') {
+                $data['tenant_identity_fallback_note'] = 'لم يتم العثور على قسم بيانات المستأجر بوضوح؛ تم ترك الاسم والجنسية كما هي لتجنب قراءة بيانات المؤجر.';
+                return $data;
+            }
+
             if ($missingName) {
-                $name = $this->extractTenantNameFallback($tenantBlock, $text);
+                $name = $this->extractTenantNameFallback($tenantBlock);
                 if ($name) {
                     $tenant['name'] = $name;
-                    $tenant['name_source'] = 'controller_fallback_tenant_block';
+                    $tenant['name_source'] = 'controller_strict_tenant_block';
                 }
             }
 
             if ($missingNationality) {
-                $nationality = $this->extractTenantNationalityFallback($tenantBlock, $text);
+                $nationality = $this->extractTenantNationalityFallback($tenantBlock);
                 if ($nationality) {
                     $tenant['nationality'] = $nationality;
-                    $tenant['nationality_source'] = 'controller_fallback_tenant_block';
+                    $tenant['nationality_source'] = 'controller_strict_tenant_block';
                 }
             }
 
@@ -165,65 +170,72 @@ class ContractFileController extends Controller
 
     private function tenantBlock(string $text): string
     {
-        $pairs = [
-            ['Data Tenant', 'Data Representative Tenant'],
-            ['Data Tenant', 'Brokerage Entity'],
-            ['Tenant Data', 'Tenant Representative Data'],
-            ['بيانات المستأجر', 'بيانات ممثل المستأجر'],
-            ['بيانات المستأجر', 'بيانات ممثل المستاجر'],
-            ['بيانات المستأجر', 'Brokerage Entity'],
-            ['بيانات المستاجر', 'بيانات ممثل المستاجر'],
-            ['بيانات المستاجر', 'Brokerage Entity'],
+        $startMarkers = [
+            'Data Tenant',
+            'Tenant Data',
+            'بيانات المستأجر',
+            'بيانات المستاجر',
         ];
 
-        foreach ($pairs as [$start, $end]) {
-            $block = $this->between($text, $start, $end);
-            if (trim($block) !== '') {
+        $endMarkers = [
+            'Data Representative Tenant',
+            'Tenant Representative Data',
+            'بيانات ممثل المستأجر',
+            'بيانات ممثل المستاجر',
+            'Brokerage Entity',
+            'Data Brokerage',
+            'بيانات الوسيط',
+            'بيانات المنشأة الوسيطة',
+            'بيانات العقار',
+        ];
+
+        foreach ($startMarkers as $start) {
+            $startPos = mb_stripos($text, $start);
+            if ($startPos === false) {
+                continue;
+            }
+
+            $startPos += mb_strlen($start);
+            $bestEnd = null;
+
+            foreach ($endMarkers as $end) {
+                $endPos = mb_stripos($text, $end, $startPos);
+                if ($endPos !== false && ($bestEnd === null || $endPos < $bestEnd)) {
+                    $bestEnd = $endPos;
+                }
+            }
+
+            $block = $bestEnd === null
+                ? mb_substr($text, $startPos, 2500)
+                : mb_substr($text, $startPos, $bestEnd - $startPos);
+
+            $block = trim($block);
+            if ($block !== '' && !$this->looksLikeLessorBlock($block)) {
                 return $block;
             }
         }
 
-        return $text;
+        return '';
     }
 
-    private function between(string $text, string $start, string $end): string
+    private function looksLikeLessorBlock(string $block): bool
     {
-        $startPos = mb_stripos($text, $start);
-        if ($startPos === false) {
-            return '';
-        }
-
-        $startPos += mb_strlen($start);
-        $endPos = mb_stripos($text, $end, $startPos);
-
-        if ($endPos === false) {
-            return mb_substr($text, $startPos);
-        }
-
-        return mb_substr($text, $startPos, $endPos - $startPos);
+        return mb_stripos($block, 'Data Lessor') !== false
+            || mb_stripos($block, 'بيانات المؤجر') !== false
+            || mb_stripos($block, 'Lessor Data') !== false;
     }
 
-    private function extractTenantNameFallback(string $tenantBlock, string $fullText): ?string
+    private function extractTenantNameFallback(string $tenantBlock): ?string
     {
-        $blocks = array_values(array_filter([$tenantBlock, mb_substr($fullText, 0, 8000)]));
+        $patterns = [
+            '/(?:الاسم|االسم|الإسم|اإلسم)\s*:?\s*([\p{Arabic}\s]{3,80}?)(?:\s*Name|\n|الجنس|Nationality|نوع\s*الهوية|رقم\s*الهوية)/u',
+            '/Name\s*:?\s*([\p{Arabic}\s]{3,80}?)(?:\s*(?:Nationality|الجنس|Type\s*ID|نوع\s*الهوية|ID\s*No|رقم\s*الهوية)|\n)/ui',
+            '/Name\s*([\p{Arabic}\s]{3,80}?)\s*:?\s*(?:مسالا|مساال)/u',
+            '/Name\s*([\p{Arabic}\s]{3,80}?)(?:\d{8,}|ID|Nationality)/ui',
+        ];
 
-        foreach ($blocks as $block) {
-            $patterns = [
-                '/(?:الاسم|االسم|الإسم|اإلسم)\s*:?\s*([\p{Arabic}\s]{3,80}?)(?:\s*Name|\n|الجنس|Nationality|نوع\s*الهوية|رقم\s*الهوية)/u',
-                '/Name\s*:?\s*([\p{Arabic}\s]{3,80}?)(?:\s*(?:Nationality|الجنس|Type\s*ID|نوع\s*الهوية|ID\s*No|رقم\s*الهوية)|\n)/ui',
-                '/Name\s*([\p{Arabic}\s]{3,80}?)\s*:?\s*(?:مسالا|مساال)/u',
-            ];
-
-            foreach ($patterns as $pattern) {
-                if (preg_match($pattern, $block, $matches)) {
-                    $candidate = $this->cleanArabicName($matches[1] ?? '');
-                    if ($candidate) {
-                        return $candidate;
-                    }
-                }
-            }
-
-            if (preg_match('/Name\s*([\p{Arabic}\s]{3,80}?)(?:\d{8,}|ID|Nationality)/ui', $block, $matches)) {
+        foreach ($patterns as $pattern) {
+            if (preg_match($pattern, $tenantBlock, $matches)) {
                 $candidate = $this->cleanArabicName($matches[1] ?? '');
                 if ($candidate) {
                     return $candidate;
@@ -234,23 +246,19 @@ class ContractFileController extends Controller
         return null;
     }
 
-    private function extractTenantNationalityFallback(string $tenantBlock, string $fullText): ?string
+    private function extractTenantNationalityFallback(string $tenantBlock): ?string
     {
-        $blocks = array_values(array_filter([$tenantBlock, mb_substr($fullText, 0, 8000)]));
+        $patterns = [
+            '/(?:الجنسية|الجنسّية|الجنسَّية|الجنس\s*ية)\s*:?\s*([\p{Arabic}\s]{3,80}?)(?:\s*Nationality|\n|نوع\s*الهوية|Type\s*ID|رقم\s*الهوية)/u',
+            '/Nationality\s*:?\s*([\p{Arabic}\s]{3,80}?)(?:\s*(?:الجنسية|الجنس|Type\s*ID|نوع\s*الهوية|ID\s*No|رقم\s*الهوية)|\n)/ui',
+            '/Nationality\s*([\p{Arabic}\s]{3,80}?)\s*:?\s*(?:ةيسنجلا|الجنسية)/u',
+        ];
 
-        foreach ($blocks as $block) {
-            $patterns = [
-                '/(?:الجنسية|الجنسّية|الجنسَّية|الجنس\s*ية)\s*:?\s*([\p{Arabic}\s]{3,80}?)(?:\s*Nationality|\n|نوع\s*الهوية|Type\s*ID|رقم\s*الهوية)/u',
-                '/Nationality\s*:?\s*([\p{Arabic}\s]{3,80}?)(?:\s*(?:الجنسية|الجنس|Type\s*ID|نوع\s*الهوية|ID\s*No|رقم\s*الهوية)|\n)/ui',
-                '/Nationality\s*([\p{Arabic}\s]{3,80}?)\s*:?\s*(?:ةيسنجلا|الجنسية)/u',
-            ];
-
-            foreach ($patterns as $pattern) {
-                if (preg_match($pattern, $block, $matches)) {
-                    $candidate = $this->cleanArabicPhrase($matches[1] ?? '');
-                    if ($candidate) {
-                        return $candidate;
-                    }
+        foreach ($patterns as $pattern) {
+            if (preg_match($pattern, $tenantBlock, $matches)) {
+                $candidate = $this->cleanArabicPhrase($matches[1] ?? '');
+                if ($candidate) {
+                    return $candidate;
                 }
             }
         }
@@ -266,7 +274,7 @@ class ContractFileController extends Controller
         }
 
         $value = preg_replace('/\b(Name|Nationality|Email|Mobile|Type|ID|No)\b.*$/iu', '', $value) ?? $value;
-        $value = preg_replace('/(?:الاسم|االسم|الإسم|اإلسم|الجنسية|نوع\s*الهوية|رقم\s*الهوية).*$/u', '', $value) ?? $value;
+        $value = preg_replace('/(?:الاسم|االسم|الإسم|اإلسم|الجنسية|نوع\s*الهوية|رقم\s*الهوية|المؤجر|مالك).*$/u', '', $value) ?? $value;
         $value = trim($value);
 
         return mb_strlen($value) >= 3 ? $value : null;
