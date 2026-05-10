@@ -1,0 +1,82 @@
+name: Deploy Rental API
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'my-rentals-api/**'
+      - '.github/workflows/deploy-api.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: rental-deploy-api-main
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Deploy Laravel API from monorepo
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Validate deployment secrets
+        run: |
+          test -n "${{ secrets.DEPLOY_HOST }}" || (echo "Missing DEPLOY_HOST" && exit 1)
+          test -n "${{ secrets.DEPLOY_USER }}" || (echo "Missing DEPLOY_USER" && exit 1)
+          test -n "${{ secrets.DEPLOY_PORT }}" || (echo "Missing DEPLOY_PORT" && exit 1)
+          test -n "${{ secrets.DEPLOY_SSH_KEY }}" || (echo "Missing DEPLOY_SSH_KEY" && exit 1)
+
+      - name: Deploy over SSH
+        shell: bash
+        timeout-minutes: 12
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
+
+          ssh -i ~/.ssh/deploy_key \
+            -p "${{ secrets.DEPLOY_PORT }}" \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" 'bash -s' <<'REMOTE'
+          set -e
+
+          SOURCE="/home/pmsa/apps/rental-source"
+          API_PATH="/home/pmsa/apps/my-rentals-api"
+          REPO="git@github.com:Bafageeh/rental.git"
+
+          mkdir -p /home/pmsa/apps
+
+          if [ ! -d "$SOURCE/.git" ]; then
+            rm -rf "$SOURCE"
+            git clone "$REPO" "$SOURCE"
+          else
+            cd "$SOURCE"
+            git remote set-url origin "$REPO"
+            git fetch origin main
+            git reset --hard origin/main
+          fi
+
+          mkdir -p "$API_PATH"
+          rsync -a --delete \
+            --exclude='.git' \
+            --exclude='.env' \
+            --exclude='vendor' \
+            --exclude='node_modules' \
+            --exclude='storage' \
+            "$SOURCE/my-rentals-api/" "$API_PATH/"
+
+          cd "$API_PATH"
+
+          if command -v composer >/dev/null 2>&1; then
+            composer install --no-dev --prefer-dist --optimize-autoloader --no-interaction
+          fi
+
+          php artisan migrate --force
+          php artisan optimize:clear
+          php artisan config:clear
+          php artisan route:clear
+          php artisan cache:clear
+          REMOTE
