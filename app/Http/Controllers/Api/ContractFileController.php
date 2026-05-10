@@ -106,40 +106,88 @@ class ContractFileController extends Controller
         ]);
     }
 
+    /**
+     * تعليمات قراءة عقد إيجار PDF بناءً على مثال المستخدم:
+     * - لا تقرأ اسم/جنسية المستأجر من قسم المؤجر أو ممثل المؤجر إطلاقًا.
+     * - بند 4 "بيانات المستأجر / Data Tenant" قد يكون شركة. عندها اسم المستأجر هو اسم الشركة/المؤسسة.
+     *   مثال: شركة ضيافتي للتجارة شركة شخص واحد، السجل التجاري 4030277615، الرقم الموحد 7001893408.
+     * - بند 5 "بيانات ممثل المستأجر / Data Representative Tenant" يحتوي اسم الممثل والجنسية والهوية والجوال.
+     *   مثال: محمد خالد غسان شيخ النجارين، الجنسية سوريا، الهوية 2444702142، الجوال +966591335477.
+     * - إذا كان المستأجر شركة ولا توجد جنسية في بند 4، تُقرأ الجنسية من ممثل المستأجر وتخزن كـ representative_nationality،
+     *   ولا يتم أخذ جنسية المؤجر أو الوسيط.
+     */
     private function completeTenantIdentityFromPdf(array $data, string $fullPath): array
     {
         $tenant = $data['tenant'] ?? [];
-        $missingName = empty($tenant['name']) || trim((string) $tenant['name']) === 'مستأجر غير محدد';
-        $missingNationality = empty($tenant['nationality']);
-
-        if (!$missingName && !$missingNationality) {
-            return $data;
-        }
 
         try {
             $parser = new Parser();
             $pdf = $parser->parseFile($fullPath);
             $text = $this->normalizePdfText($pdf->getText());
             $tenantBlock = $this->tenantBlock($text);
+            $tenantRepresentativeBlock = $this->tenantRepresentativeBlock($text);
 
             if ($tenantBlock === '') {
                 $data['tenant_identity_fallback_note'] = 'لم يتم العثور على قسم بيانات المستأجر بوضوح؛ تم ترك الاسم والجنسية كما هي لتجنب قراءة بيانات المؤجر.';
                 return $data;
             }
 
-            if ($missingName) {
+            $companyTenant = $this->extractCompanyTenant($tenantBlock);
+            if ($companyTenant['name'] ?? null) {
+                $tenant['name'] = $companyTenant['name'];
+                $tenant['tenant_kind'] = 'company';
+                $tenant['name_source'] = 'tenant_company_section';
+                if (!empty($companyTenant['organization_type'])) {
+                    $tenant['organization_type'] = $companyTenant['organization_type'];
+                }
+                if (!empty($companyTenant['cr_number'])) {
+                    $tenant['commercial_registration_number'] = $companyTenant['cr_number'];
+                }
+                if (!empty($companyTenant['unified_number'])) {
+                    $tenant['unified_number'] = $companyTenant['unified_number'];
+                }
+            } else {
                 $name = $this->extractTenantNameFallback($tenantBlock);
                 if ($name) {
                     $tenant['name'] = $name;
-                    $tenant['name_source'] = 'controller_strict_tenant_block';
+                    $tenant['tenant_kind'] = 'individual';
+                    $tenant['name_source'] = 'tenant_individual_section';
                 }
             }
 
-            if ($missingNationality) {
-                $nationality = $this->extractTenantNationalityFallback($tenantBlock);
-                if ($nationality) {
-                    $tenant['nationality'] = $nationality;
-                    $tenant['nationality_source'] = 'controller_strict_tenant_block';
+            $tenantNationality = $this->extractTenantNationalityFallback($tenantBlock);
+            if ($tenantNationality) {
+                $tenant['nationality'] = $tenantNationality;
+                $tenant['nationality_source'] = 'tenant_section';
+            }
+
+            if ($tenantRepresentativeBlock !== '') {
+                $repName = $this->extractTenantNameFallback($tenantRepresentativeBlock);
+                $repNationality = $this->extractTenantNationalityFallback($tenantRepresentativeBlock);
+                $repId = $this->extractIdNumber($tenantRepresentativeBlock);
+                $repPhone = $this->extractMobileNumber($tenantRepresentativeBlock);
+
+                if ($repName) {
+                    $tenant['representative_name'] = $repName;
+                }
+                if ($repNationality) {
+                    $tenant['representative_nationality'] = $repNationality;
+                    if (empty($tenant['nationality']) && empty($companyTenant['name'])) {
+                        $tenant['nationality'] = $repNationality;
+                        $tenant['nationality_source'] = 'tenant_representative_section';
+                    }
+                }
+                if ($repId) {
+                    $tenant['representative_id_number'] = $repId;
+                    if (empty($tenant['national_id']) && empty($companyTenant['name'])) {
+                        $tenant['national_id'] = $repId;
+                    }
+                }
+                if ($repPhone) {
+                    $tenant['representative_phone'] = $repPhone;
+                    if (empty($tenant['phone'])) {
+                        $tenant['phone'] = $repPhone;
+                    }
                 }
             }
 
@@ -170,14 +218,12 @@ class ContractFileController extends Controller
 
     private function tenantBlock(string $text): string
     {
-        $startMarkers = [
+        return $this->strictBlock($text, [
             'Data Tenant',
             'Tenant Data',
             'بيانات المستأجر',
             'بيانات المستاجر',
-        ];
-
-        $endMarkers = [
+        ], [
             'Data Representative Tenant',
             'Tenant Representative Data',
             'بيانات ممثل المستأجر',
@@ -187,8 +233,30 @@ class ContractFileController extends Controller
             'بيانات الوسيط',
             'بيانات المنشأة الوسيطة',
             'بيانات العقار',
-        ];
+        ]);
+    }
 
+    private function tenantRepresentativeBlock(string $text): string
+    {
+        return $this->strictBlock($text, [
+            'Data Representative Tenant',
+            'Tenant Representative Data',
+            'بيانات ممثل المستأجر',
+            'بيانات ممثل المستاجر',
+        ], [
+            'Brokerage Entity',
+            'Data Brokerage',
+            'بيانات الوسيط',
+            'بيانات المنشأة الوسيطة',
+            'Data document Ownership',
+            'Ownership document Data',
+            'بيانات مستندات الملكية',
+            'بيانات العقار',
+        ]);
+    }
+
+    private function strictBlock(string $text, array $startMarkers, array $endMarkers): string
+    {
         foreach ($startMarkers as $start) {
             $startPos = mb_stripos($text, $start);
             if ($startPos === false) {
@@ -210,7 +278,7 @@ class ContractFileController extends Controller
                 : mb_substr($text, $startPos, $bestEnd - $startPos);
 
             $block = trim($block);
-            if ($block !== '' && !$this->looksLikeLessorBlock($block)) {
+            if ($block !== '' && !$this->looksLikeWrongPartyBlock($block)) {
                 return $block;
             }
         }
@@ -218,14 +286,36 @@ class ContractFileController extends Controller
         return '';
     }
 
-    private function looksLikeLessorBlock(string $block): bool
+    private function looksLikeWrongPartyBlock(string $block): bool
     {
         return mb_stripos($block, 'Data Lessor') !== false
             || mb_stripos($block, 'بيانات المؤجر') !== false
-            || mb_stripos($block, 'Lessor Data') !== false;
+            || mb_stripos($block, 'Lessor Data') !== false
+            || mb_stripos($block, 'Name Broker') !== false
+            || mb_stripos($block, 'اسم الموظف') !== false;
     }
 
-    private function extractTenantNameFallback(string $tenantBlock): ?string
+    private function extractCompanyTenant(string $tenantBlock): array
+    {
+        $name = null;
+
+        if (preg_match('/Company\s*name\/Founder\s*([\p{Arabic}\s]+?)\s*(?:نوع\s*المنظمة|Type\s*Organization|رقم\s*السجل)/ui', $tenantBlock, $m)) {
+            $name = $this->cleanArabicPhrase($m[1] ?? null);
+        }
+
+        if (!$name && preg_match('/اسم\s*(?:الشركة|الَّشركة|المؤسسة|المؤَّسسة)\s*:?\s*([\p{Arabic}\s]+?)\s*(?:Company|نوع\s*المنظمة|Type\s*Organization|رقم\s*السجل)/u', $tenantBlock, $m)) {
+            $name = $this->cleanArabicPhrase($m[1] ?? null);
+        }
+
+        return [
+            'name' => $name,
+            'organization_type' => $this->cleanArabicPhrase($this->firstMatch('/نوع\s*المنظمة\s*:?\s*([\p{Arabic}\s]+?)\s*(?:Type\s*Organization|اسم|رقم)/u', $tenantBlock)),
+            'cr_number' => $this->firstMatch('/(?:رقم\s*السجل\s*التجاري|No\s*CR)\s*:?\s*(\d{5,20})/ui', $tenantBlock),
+            'unified_number' => $this->firstMatch('/(?:الرقم\s*الموحد|Number\s*Unified)\s*:?\s*(\d{5,20})/ui', $tenantBlock),
+        ];
+    }
+
+    private function extractTenantNameFallback(string $block): ?string
     {
         $patterns = [
             '/(?:الاسم|االسم|الإسم|اإلسم)\s*:?\s*([\p{Arabic}\s]{3,80}?)(?:\s*Name|\n|الجنس|Nationality|نوع\s*الهوية|رقم\s*الهوية)/u',
@@ -235,7 +325,7 @@ class ContractFileController extends Controller
         ];
 
         foreach ($patterns as $pattern) {
-            if (preg_match($pattern, $tenantBlock, $matches)) {
+            if (preg_match($pattern, $block, $matches)) {
                 $candidate = $this->cleanArabicName($matches[1] ?? '');
                 if ($candidate) {
                     return $candidate;
@@ -246,7 +336,7 @@ class ContractFileController extends Controller
         return null;
     }
 
-    private function extractTenantNationalityFallback(string $tenantBlock): ?string
+    private function extractTenantNationalityFallback(string $block): ?string
     {
         $patterns = [
             '/(?:الجنسية|الجنسّية|الجنسَّية|الجنس\s*ية)\s*:?\s*([\p{Arabic}\s]{3,80}?)(?:\s*Nationality|\n|نوع\s*الهوية|Type\s*ID|رقم\s*الهوية)/u',
@@ -255,12 +345,32 @@ class ContractFileController extends Controller
         ];
 
         foreach ($patterns as $pattern) {
-            if (preg_match($pattern, $tenantBlock, $matches)) {
+            if (preg_match($pattern, $block, $matches)) {
                 $candidate = $this->cleanArabicPhrase($matches[1] ?? '');
                 if ($candidate) {
                     return $candidate;
                 }
             }
+        }
+
+        return null;
+    }
+
+    private function extractIdNumber(string $block): ?string
+    {
+        return $this->firstMatch('/(?:رقم\s*الهوية|No\s*ID|ID\s*No\.?)\s*:?\s*(\d{6,20})/ui', $block);
+    }
+
+    private function extractMobileNumber(string $block): ?string
+    {
+        return $this->firstMatch('/(?:رقم\s*الجوال|Mobile\s*No\.?)\s*:?\s*(\+?\d[\d\s]{7,20})/ui', $block);
+    }
+
+    private function firstMatch(string $pattern, string $text): ?string
+    {
+        if (preg_match($pattern, $text, $matches)) {
+            $value = trim($matches[1] ?? '');
+            return $value !== '' ? preg_replace('/\s+/u', ' ', $value) : null;
         }
 
         return null;
