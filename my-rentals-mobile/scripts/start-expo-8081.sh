@@ -7,7 +7,7 @@ TMP_DIR="/home/pmsa/apps/.tmp"
 PORT="8083"
 HOSTNAME="my.pm.sa"
 API_BASE_URL="https://rental.pm.sa/api"
-DEPLOY_STAMP="2026-05-10-fix-delete-confirm-string-v10"
+DEPLOY_STAMP="2026-05-10-inline-confirm-delete-linked-property-unit-v11"
 
 choose_app_dir() {
   for candidate in \
@@ -39,8 +39,7 @@ touch "$LOG_FILE"
   echo "DATE=$(date '+%Y-%m-%d %H:%M:%S')"
   echo "IMPORTANT: not restoring EntityDetailsScreen.fixed.tsx"
   echo "IMPORTANT: owner asset summary cards are removed"
-  echo "IMPORTANT: delete property/unit previews related records and requires confirmation"
-  echo "IMPORTANT: fixed literal newline in edit-delete-center delete confirmation"
+  echo "IMPORTANT: delete property/unit previews related records and requires confirmation in both details and edit center"
 } >> "$LOG_FILE"
 
 python3 - <<'PY' | tee -a "/home/pmsa/apps/my-rentals-expo.log"
@@ -193,6 +192,97 @@ if edit_center.exists():
     print(f'EDIT_DELETE_CENTER_CONFIRM_LINKED_DELETE_PATCH={"ok" if n else "not_found"}')
 else:
     print('EDIT_DELETE_CENTER_CONFIRM_LINKED_DELETE_PATCH=not_found')
+
+inline = Path('src/components/InlineEditDeleteActions.tsx')
+if inline.exists():
+    inline_text = inline.read_text()
+    inline_replacement = r'''async function deleteRecord() {
+    if (!stringId) {
+      Alert.alert("تنبيه", "لا يوجد رقم للعنصر");
+      return;
+    }
+
+    if (resource === "owners") {
+      Alert.alert(
+        "حذف المالك",
+        "سيتم حذف المالك وجميع العقارات والوحدات التابعة له. هل تريد المتابعة؟",
+        [
+          { text: "إلغاء", style: "cancel" },
+          {
+            text: "حذف الكل",
+            style: "destructive",
+            onPress: async () => {
+              try {
+                await apiPostAny([
+                  `/relation-manager/delete-owner-cascade/${stringId}`,
+                  `/my/relation-manager/delete-owner-cascade/${stringId}`,
+                ], {});
+                Alert.alert("تم", "تم حذف المالك وجميع عقاراته");
+                setModalVisible(false);
+                if (onChanged) await onChanged();
+              } catch (e) {
+                Alert.alert("تعذر الحذف", errorMessage(e));
+              }
+            },
+          },
+        ]
+      );
+      return;
+    }
+
+    const endpoints = [
+      `/edit-delete-center/${resource}/${stringId}/delete`,
+      `/my/edit-delete-center/${resource}/${stringId}/delete`,
+    ];
+
+    const runDelete = async (force = false) => {
+      try {
+        const result = await apiPostAny(endpoints, force ? { force: true } : {});
+        Alert.alert("تم", result?.message || "تم الحذف بنجاح");
+        setModalVisible(false);
+        if (onChanged) await onChanged();
+      } catch (e) {
+        Alert.alert("تعذر الحذف", errorMessage(e));
+      }
+    };
+
+    const confirmDelete = (message: string, force = false) => {
+      Alert.alert("تأكيد الحذف", message, [
+        { text: "إلغاء", style: "cancel" },
+        { text: "حذف", style: "destructive", onPress: () => runDelete(force) },
+      ]);
+    };
+
+    if (resource === "properties" || resource === "units") {
+      try {
+        const preview = await apiPostAny(endpoints, { preview_only: true });
+        const blockers = Array.isArray(preview?.blockers) ? preview.blockers : [];
+        const relationDetails = blockers.length ? blockers.map((item: string) => `• ${item}`).join("\\n") : "لا توجد ارتباطات مسجلة.";
+
+        if (blockers.length) {
+          confirmDelete(
+            `هذا العنصر مرتبط بالبيانات التالية:\\n${relationDetails}\\n\\nهل تريد حذف العنصر وكل ما هو مرتبط به؟`,
+            true,
+          );
+        } else {
+          confirmDelete("هل تريد حذف هذا العنصر؟", false);
+        }
+      } catch (e) {
+        confirmDelete("تعذر فحص الارتباطات قبل الحذف. هل تريد المتابعة؟", false);
+      }
+      return;
+    }
+
+    confirmDelete("هل تريد حذف هذا العنصر؟ إذا كانت له سجلات تابعة سيتم منع الحذف تلقائيًا.", false);
+  }
+'''
+    inline_pattern = r'async function deleteRecord\(\) \{.*?\n  \}\n\n  useEffect\(\(\) => \{'
+    inline_patched, inline_n = re.subn(inline_pattern, lambda m: inline_replacement + '\n  useEffect(() => {', inline_text, count=1, flags=re.S)
+    if inline_n:
+        inline.write_text(inline_patched)
+    print(f'INLINE_DELETE_CONFIRM_LINKED_DELETE_PATCH={"ok" if inline_n else "not_found"}')
+else:
+    print('INLINE_DELETE_CONFIRM_LINKED_DELETE_PATCH=not_found')
 PY
 
 rm -rf .expo .expo-shared .metro-cache node_modules/.cache || true
