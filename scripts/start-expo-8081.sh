@@ -31,10 +31,8 @@ text = text.replace(
     'const [openDetailSections, setOpenDetailSections] = useState<Record<string, boolean>>({ primary: false, extra: false });'
 )
 
-# إلغاء عدد الحقول في القوائم المنسدلة
 text = re.sub(r'\n\s*<Text style=\{styles\.accordionSubtitle\}>\{count\} حقل</Text>', '', text)
 
-# إخفاء عنوان الصفحة العلوي في تفاصيل الوحدة فقط
 text = re.sub(
     r'\n\s*<View style=\{styles\.topBar\}>\n\s*<View style=\{styles\.topTitleBlock\}>\n\s*<Text style=\{styles\.topTitle\}>\{entityTitle\[normalizedEntity\] \|\| "التفاصيل"\}</Text>\n\s*<Text style=\{styles\.topSubtitle\}>تفاصيل السجل والخدمات المرتبطة</Text>\n\s*</View>\n(?:\s*\{normalizedEntity === "unit" \? \(.*?\) : null\}\n)?\s*</View>',
     '''\n        {normalizedEntity !== "unit" ? (\n          <View style={styles.topBar}>\n            <View style={styles.topTitleBlock}>\n              <Text style={styles.topTitle}>{entityTitle[normalizedEntity] || "التفاصيل"}</Text>\n              <Text style={styles.topSubtitle}>تفاصيل السجل والخدمات المرتبطة</Text>\n            </View>\n          </View>\n        ) : null}''',
@@ -42,34 +40,23 @@ text = re.sub(
     flags=re.S,
 )
 
-# تثبيت بطاقة تفاصيل الوحدة مع خدمات الوحدة داخلها
+# بطاقة مرتبة: الخدمات تظهر كشبكة داخل نفس البطاقة وليس كنصوص عمودية.
 header_pattern = r'\n\s*<View style=\{styles\.headerCard\}>.*?\n\s*</View>\n\n\s*\{normalizedEntity !== "unit" \? \('
-new_header = '''\n        <View style={styles.headerCard}>\n          <View style={styles.unitCardTopRow}>\n            {normalizedEntity === "unit" ? (\n              <View style={styles.unitCardActions}>\n                <InlineEditDeleteActions resource={resourceForEntity(String(entity))} id={id} hideDetails compact iconOnly onChanged={() => load(false)} />\n              </View>\n            ) : <View />}\n            <Text style={styles.entityLabel}>{data?.entity_title || entityTitle[normalizedEntity] || "تفاصيل"}</Text>\n          </View>\n          <Text numberOfLines={2} style={styles.title}>{data?.title || "جاري التحميل..."}</Text>\n          <View style={styles.headerStatsRow}>\n            <Text style={styles.statPill}>{relatedLabel}: {relatedCount}</Text>\n          </View>\n          {normalizedEntity === "unit" ? (\n            <View style={styles.headerServicesWrap}>\n              <Text style={styles.headerServicesTitle}>خدمات الوحدة</Text>\n              <View style={styles.headerServicesGrid}>\n                <ServiceChip icon="documents-outline" label="العقود" onPress={() => openUnitService("/contracts")} />\n                <ServiceChip icon="create-outline" label="إنشاء عقد" onPress={() => openUnitService("/create-contract")} />\n                <ServiceChip icon="cloud-upload-outline" label="رفع عقد" onPress={() => openUnitService("/upload-contract")} />\n                <ServiceChip icon="images-outline" label="الوسائط" onPress={() => openUnitService("/files", "mode=media")} />\n              </View>\n            </View>\n          ) : null}\n        </View>\n\n        {normalizedEntity !== "unit" ? ('''
+new_header = '''\n        <View style={styles.headerCard}>\n          <View style={styles.unitCardTopRow}>\n            {normalizedEntity === "unit" ? (\n              <View style={styles.unitCardActions}>\n                <InlineEditDeleteActions resource={resourceForEntity(String(entity))} id={id} hideDetails compact iconOnly onChanged={() => load(false)} />\n              </View>\n            ) : <View />}\n            <Text style={styles.entityLabel}>{data?.entity_title || entityTitle[normalizedEntity] || "تفاصيل"}</Text>\n          </View>\n          <Text numberOfLines={2} style={styles.title}>{data?.title || "جاري التحميل..."}</Text>\n          <View style={styles.headerStatsRow}>\n            <Text style={styles.statPill}>{relatedLabel}: {relatedCount}</Text>\n          </View>\n          {normalizedEntity === "unit" ? (\n            <View style={styles.headerServicesWrap}>\n              <View style={styles.headerServicesHeader}>\n                <Text style={styles.headerServicesTitle}>خدمات الوحدة</Text>\n                <Ionicons name="grid-outline" size={16} color="#6b7280" />\n              </View>\n              <View style={styles.headerServicesGrid}>\n                <ServiceChip icon="documents-outline" label="العقود" onPress={() => openUnitService("/contracts")} />\n                <ServiceChip icon="create-outline" label="إنشاء عقد" onPress={() => openUnitService("/create-contract")} />\n                <ServiceChip icon="cloud-upload-outline" label="رفع عقد" onPress={() => openUnitService("/upload-contract")} />\n                <ServiceChip icon="images-outline" label="الوسائط" onPress={() => openUnitService("/files", "mode=media")} />\n              </View>\n            </View>\n          ) : null}\n        </View>\n\n        {normalizedEntity !== "unit" ? ('''
 text = re.sub(header_pattern, new_header, text, count=1, flags=re.S)
 
-# ضمان ظهور خدمات الوحدة حتى لو لم ينجح استبدال البطاقة لأي سبب
-services_block = '''
-        {normalizedEntity === "unit" ? (
-          <View style={styles.servicesCard}>
-            <Text style={styles.sectionTitle}>خدمات الوحدة</Text>
-            <View style={styles.servicesGrid}>
-              <ServiceChip icon="documents-outline" label="العقود" onPress={() => openUnitService("/contracts")} />
-              <ServiceChip icon="create-outline" label="إنشاء عقد" onPress={() => openUnitService("/create-contract")} />
-              <ServiceChip icon="cloud-upload-outline" label="رفع عقد" onPress={() => openUnitService("/upload-contract")} />
-              <ServiceChip icon="images-outline" label="الوسائط" onPress={() => openUnitService("/files", "mode=media")} />
-            </View>
-          </View>
-        ) : null}
-'''
-if 'label="العقود"' not in text:
-    text = text.replace('\n        <SegmentedTabs active={activeTab}', services_block + '\n        <SegmentedTabs active={activeTab}', 1)
+# لا تضف صندوق خدمات منفصل؛ الخدمات داخل البطاقة فقط.
+text = re.sub(
+    r'\n\s*\{normalizedEntity === "unit" \? \(\n\s*<View style=\{styles\.servicesCard\}>.*?\n\s*\) : null\}\n',
+    '\n',
+    text,
+    flags=re.S,
+)
 
-# إزالة رقم السجل وأي زر إضافة متبقٍ
 text = text.replace('''                <HeaderIconButton icon="add" label="إضافة وحدة" onPress={openAddUnit} />\n''', '')
 text = text.replace('''            <Text style={styles.statPill}>رقم السجل: {valueOrDash(id)}</Text>\n''', '')
 text = re.sub(r'\n\s*<Text style=\{styles\.statPill\}>رقم السجل: \{valueOrDash\(id\)\}</Text>', '', text)
 
-# تصميم البطاقة والخدمات
 text = re.sub(r'headerCard:\s*\{.*?\n\s*\},', '''headerCard: {
     backgroundColor: "#ffffff",
     borderRadius: 26,
@@ -114,40 +101,42 @@ text = re.sub(r'statPill:\s*\{.*?\n\s*\},', '''statPill: {
   },''', text, flags=re.S)
 text = re.sub(r'serviceChip:\s*\{.*?\n\s*\},', '''serviceChip: {
     width: "48.5%",
-    minHeight: 44,
+    minHeight: 46,
     borderRadius: 16,
-    backgroundColor: "#ffffff",
+    backgroundColor: "#F8FAFC",
     borderWidth: 1,
     borderColor: "#E5E7EB",
     flexDirection: "row-reverse",
     alignItems: "center",
     justifyContent: "flex-start",
     gap: 8,
-    paddingHorizontal: 9,
-    paddingVertical: 7,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
   },''', text, flags=re.S)
-text = re.sub(r'serviceIconWrap:\s*\{.*?\n\s*\},', '''serviceIconWrap: { width: 28, height: 28, borderRadius: 14, backgroundColor: "#F7F6F4", alignItems: "center", justifyContent: "center" },''', text, flags=re.S)
+text = re.sub(r'serviceIconWrap:\s*\{.*?\n\s*\},', '''serviceIconWrap: { width: 30, height: 30, borderRadius: 15, backgroundColor: "#ffffff", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#EEF2F7" },''', text, flags=re.S)
+text = re.sub(r'serviceText:\s*\{.*?\n\s*\},', '''serviceText: { flex: 1, color: "#111827", fontSize: 12, fontWeight: "900", textAlign: "right" },''', text, flags=re.S)
 
 style_anchor = '  topTitleBlock: { flex: 1, alignItems: "flex-end" },'
 style_insert = '''  topTitleBlock: { flex: 1, alignItems: "flex-end" },
   unitCardTopRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 6 },
   unitCardActions: { flexDirection: "row-reverse", alignItems: "center", justifyContent: "flex-start", gap: 6 },
   headerServicesWrap: { marginTop: 12, paddingTop: 10, borderTopWidth: 1, borderTopColor: "#E5E7EB" },
-  headerServicesTitle: { color: "#374151", fontSize: 12, fontWeight: "900", textAlign: "right", marginBottom: 8 },
+  headerServicesHeader: { flexDirection: "row-reverse", alignItems: "center", justifyContent: "space-between", marginBottom: 8 },
+  headerServicesTitle: { color: "#374151", fontSize: 12, fontWeight: "900", textAlign: "right" },
   headerServicesGrid: { flexDirection: "row-reverse", flexWrap: "wrap", gap: 7 },'''
 text = text.replace(style_anchor, style_insert)
 for key, value in {
     'unitCardTopRow': 'unitCardTopRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 6 },',
     'unitCardActions': 'unitCardActions: { flexDirection: "row-reverse", alignItems: "center", justifyContent: "flex-start", gap: 6 },',
     'headerServicesWrap': 'headerServicesWrap: { marginTop: 12, paddingTop: 10, borderTopWidth: 1, borderTopColor: "#E5E7EB" },',
-    'headerServicesTitle': 'headerServicesTitle: { color: "#374151", fontSize: 12, fontWeight: "900", textAlign: "right", marginBottom: 8 },',
+    'headerServicesHeader': 'headerServicesHeader: { flexDirection: "row-reverse", alignItems: "center", justifyContent: "space-between", marginBottom: 8 },',
+    'headerServicesTitle': 'headerServicesTitle: { color: "#374151", fontSize: 12, fontWeight: "900", textAlign: "right" },',
     'headerServicesGrid': 'headerServicesGrid: { flexDirection: "row-reverse", flexWrap: "wrap", gap: 7 },',
 }.items():
     text = re.sub(rf'{key}: \{{[^\n]+\}},', value, text)
 
 text = re.sub(r'\n\s*(?:unitHeroRow|unitHeroTitleBlock|unitTitleBadgeRow|contractBadge): \{[^\n]+\},', '', text)
-
-for line in set(re.findall(r'\n\s*(?:unitCardTopRow|unitCardActions|headerServicesWrap|headerServicesTitle|headerServicesGrid): \{[^\n]+\},', text)):
+for line in set(re.findall(r'\n\s*(?:unitCardTopRow|unitCardActions|headerServicesWrap|headerServicesHeader|headerServicesTitle|headerServicesGrid): \{[^\n]+\},', text)):
     first = text.find(line)
     if first != -1:
         before = text[:first+len(line)]
