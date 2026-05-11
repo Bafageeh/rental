@@ -219,6 +219,7 @@ export default function PropertyDetailScreen() {
     );
   }
 
+  const isApartmentProperty = String(data.property_type || '') === 'apartment';
   const units = data.units || [];
   const rented = units.filter((unit) => unit.status === 'rented').length;
   const available = units.filter((unit) => unit.status === 'available').length;
@@ -298,10 +299,6 @@ export default function PropertyDetailScreen() {
               <Ionicons name="create-outline" size={19} color="#fff" />
               <Text style={styles.heroActionText}>تعديل العقار</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.heroActionButton, styles.repositoryButton]} activeOpacity={0.86} onPress={openRepository}>
-              <Ionicons name="folder-open-outline" size={19} color="#0F766E" />
-              <Text style={[styles.heroActionText, styles.repositoryButtonText]}>المستودع</Text>
-            </TouchableOpacity>
             <TouchableOpacity style={[styles.heroActionButton, styles.deleteButton]} activeOpacity={0.86} onPress={confirmDeleteProperty}>
               <Ionicons name="trash-outline" size={19} color="#991B1B" />
               <Text style={[styles.heroActionText, styles.deleteButtonText]}>حذف</Text>
@@ -309,15 +306,17 @@ export default function PropertyDetailScreen() {
           </View>
         </View>
 
-        <View style={styles.statsRow}>
-          <View style={styles.statCard}><Text style={styles.statValue}>{units.length.toLocaleString('ar-SA')}</Text><Text style={styles.statLabel}>وحدة</Text></View>
-          <View style={styles.statCard}><Text style={styles.statValue}>{rented.toLocaleString('ar-SA')}</Text><Text style={styles.statLabel}>مؤجرة</Text></View>
-          <View style={styles.statCard}><Text style={styles.statValue}>{available.toLocaleString('ar-SA')}</Text><Text style={styles.statLabel}>شاغرة</Text></View>
-        </View>
+        {!isApartmentProperty ? (
+          <View style={styles.statsRow}>
+            <View style={styles.statCard}><Text style={styles.statValue}>{units.length.toLocaleString('ar-SA')}</Text><Text style={styles.statLabel}>وحدة</Text></View>
+            <View style={styles.statCard}><Text style={styles.statValue}>{rented.toLocaleString('ar-SA')}</Text><Text style={styles.statLabel}>مؤجرة</Text></View>
+            <View style={styles.statCard}><Text style={styles.statValue}>{available.toLocaleString('ar-SA')}</Text><Text style={styles.statLabel}>شاغرة</Text></View>
+          </View>
+        ) : null}
 
         <Section title="خدمات العقار">
           <View style={styles.servicesGrid}>
-            <TouchableOpacity style={styles.serviceButton} onPress={openAddUnit}><Ionicons name="add-circle-outline" size={23} color="#0F766E" /><Text style={styles.serviceText}>إضافة وحدة</Text></TouchableOpacity>
+            {!isApartmentProperty ? <TouchableOpacity style={styles.serviceButton} onPress={openAddUnit}><Ionicons name="add-circle-outline" size={23} color="#0F766E" /><Text style={styles.serviceText}>إضافة وحدة</Text></TouchableOpacity> : null}
             <TouchableOpacity style={styles.serviceButton} onPress={() => openPropertyService('/expenses')}><MaterialCommunityIcons name="cash-minus" size={23} color="#0F766E" /><Text style={styles.serviceText}>المصروفات</Text></TouchableOpacity>
             <TouchableOpacity style={styles.serviceButton} onPress={() => openPropertyService('/contracts')}><MaterialCommunityIcons name="file-document-outline" size={23} color="#0F766E" /><Text style={styles.serviceText}>العقود</Text></TouchableOpacity>
             {canCreateContract ? <TouchableOpacity style={styles.serviceButton} onPress={openCreateContract}><MaterialCommunityIcons name="file-sign" size={23} color="#0F766E" /><Text style={styles.serviceText}>إنشاء / رفع عقد</Text></TouchableOpacity> : null}
@@ -387,7 +386,7 @@ export default function PropertyDetailScreen() {
 
         <BoundaryRows data={data} />
 
-        {units.length > 0 ? (
+        {!isApartmentProperty && units.length > 0 ? (
           <Section title="الوحدات">
             {units.map((unit) => {
               const hasContract = unitContractsCount(unit) > 0;
@@ -435,8 +434,6 @@ const styles = StyleSheet.create({
   heroActions: { flexDirection: 'row-reverse', gap: 8, marginTop: 14 },
   heroActionButton: { flex: 1, minHeight: 45, borderRadius: 16, backgroundColor: '#0F766E', alignItems: 'center', justifyContent: 'center', flexDirection: 'row-reverse', gap: 6 },
   heroActionText: { color: '#fff', fontWeight: '900', fontSize: 12 },
-  repositoryButton: { backgroundColor: '#ECFDF5', borderWidth: 1, borderColor: '#A7F3D0' },
-  repositoryButtonText: { color: '#0F766E' },
   deleteButton: { backgroundColor: '#FEF2F2', borderWidth: 1, borderColor: '#FECACA' },
   deleteButtonText: { color: '#991B1B' },
   statsRow: { flexDirection: 'row-reverse', gap: 8, marginBottom: 12 },
