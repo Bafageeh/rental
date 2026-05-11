@@ -14,9 +14,19 @@ if (!function_exists('mr_payment_auto_status_value')) {
             return 'paid';
         }
 
-        if (!empty($payment->due_date)) {
+        $lateReferenceDate = null;
+
+        if (Schema::hasColumn('payments', 'payment_deadline') && !empty($payment->payment_deadline)) {
+            $lateReferenceDate = $payment->payment_deadline;
+        } elseif (!empty($payment->notes) && preg_match('/نهاية\s+مهلة\s+السداد\s*:?\s*(\d{4}-\d{2}-\d{2})/u', (string) $payment->notes, $matches)) {
+            $lateReferenceDate = $matches[1];
+        } elseif (!empty($payment->due_date)) {
+            $lateReferenceDate = $payment->due_date;
+        }
+
+        if ($lateReferenceDate) {
             try {
-                if (Carbon::parse($payment->due_date)->startOfDay()->lt(Carbon::today())) {
+                if (Carbon::parse($lateReferenceDate)->startOfDay()->lt(Carbon::today())) {
                     return 'overdue';
                 }
             } catch (Throwable $e) {
@@ -50,7 +60,7 @@ if (!function_exists('mr_payment_normalize_edit_value')) {
             return null;
         }
 
-        if (in_array($field, ['due_date', 'paid_date'], true)) {
+        if (in_array($field, ['due_date', 'paid_date', 'payment_deadline'], true)) {
             if ($value === null) {
                 return null;
             }
@@ -66,7 +76,7 @@ if (!function_exists('mr_payment_normalize_edit_value')) {
             return $value === null ? null : (float) str_replace(',', '', (string) $value);
         }
 
-        if ($field === 'contract_id') {
+        if (in_array($field, ['contract_id', 'sequence', 'rental_period_days'], true)) {
             return $value === null ? null : (int) $value;
         }
 
@@ -92,6 +102,7 @@ if (!function_exists('mr_payment_edit_payload')) {
         $titleParts = array_filter([
             $payment->amount !== null ? number_format((float) $payment->amount, 2, '.', '') : null,
             $payment->due_date,
+            Schema::hasColumn('payments', 'payment_deadline') ? ($payment->payment_deadline ?? null) : null,
             $payment->status,
         ], fn ($value) => $value !== null && $value !== '');
 
@@ -115,8 +126,8 @@ if (!function_exists('mr_payment_edit_config')) {
             'label' => 'الدفعات',
             'model' => Payment::class,
             'table' => 'payments',
-            // الحالة لا تُعرض ولا تُحفظ يدويًا؛ تُحتسب آليًا من تاريخ السداد وتاريخ الاستحقاق.
-            'editable' => ['contract_id', 'amount', 'due_date', 'paid_date', 'notes'],
+            // الحالة لا تُعرض ولا تُحفظ يدويًا؛ تُحتسب آليًا من تاريخ السداد ونهاية مهلة السداد الرسمية إن وجدت.
+            'editable' => ['contract_id', 'sequence', 'amount', 'due_date', 'payment_deadline', 'due_date_hijri', 'payment_deadline_hijri', 'rental_period_days', 'paid_date', 'notes'],
             'scope' => 'payment',
         ];
     }
