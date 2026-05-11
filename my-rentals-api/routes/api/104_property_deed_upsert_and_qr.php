@@ -318,7 +318,12 @@ if (!function_exists('deed_up_handle')) {
         $doc = $payload['document_number'] ?? $payload['deed_number'] ?? null;
         $property = $doc ? Property::where('document_number',$doc)->orWhere('deed_number',$doc)->first() : null;
         $updated = (bool)$property;
-        if ($property) $property->fill($data)->save(); else $property = Property::create($data);
+        if ($property) {
+            unset($data['owner_id']);
+            $property->fill($data)->save();
+        } else {
+            $property = Property::create($data);
+        }
         $path = $uploaded->store('property-deeds','public');
         $file = PropertyFile::create(['property_id'=>$property->id,'file_name'=>$uploaded->getClientOriginalName(),'file_path'=>$path,'file_type'=>$uploaded->getClientMimeType(),'file_size'=>$uploaded->getSize(),'category'=>'deed','notes'=>'صك ملكية محفوظ ضمن مستندات العقار ويمكن للمالك تنزيله مستقبلًا.']);
         return response()->json(['status'=>'ok','message'=>$updated?'تم تحديث العقار الموجود بنفس رقم الصك وحفظ الصك ضمن مستنداته.':'تم إنشاء العقار من الصك وحفظ الصك ضمن مستندات العقار.','mode'=>$updated?'updated':'created','extracted_data'=>['property'=>$payload],'property'=>$property->fresh()->load('owner'),'file'=>$file], $updated?200:201);
