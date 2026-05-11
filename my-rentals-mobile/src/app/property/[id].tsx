@@ -1,6 +1,6 @@
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useEffect, useState } from 'react';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams, useNavigation } from 'expo-router';
 import {
   Alert,
   ActivityIndicator,
@@ -190,6 +190,7 @@ function BoundaryRows({ data }: { data: PropertyDetail }) {
 
 export default function PropertyDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const navigation = useNavigation();
   const { data, loading, error, reload } = useDetail<PropertyDetail>({ endpoint: `/properties/${id}` });
 
   const shouldReturnAfterDelete = !!error && /No query results|not found|غير موجود/i.test(String(error));
@@ -199,6 +200,13 @@ export default function PropertyDetailScreen() {
     const timer = setTimeout(() => smartBack(), 250);
     return () => clearTimeout(timer);
   }, [shouldReturnAfterDelete]);
+
+  useEffect(() => {
+    if (!data) return;
+    navigation.setOptions({
+      title: String(data.property_type || '') === 'apartment' ? 'تفاصيل الشقة' : 'تفاصيل العقار',
+    });
+  }, [data?.property_type, navigation]);
 
   if (loading || shouldReturnAfterDelete) {
     return (
