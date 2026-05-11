@@ -18,6 +18,8 @@ Route::get('/profile/properties', function (Request $request) {
 
     $ownerIds = collect();
 
+    // شاشة عقاراتي تعرض عقارات مالك الحساب الحالي فقط.
+    // حتى لو كان المستخدم أدمن، لا نستخدم أي تخمين بالاسم ولا نعرض عقارات كل الملاك.
     if (!empty($user->owner_id)) {
         $ownerIds->push((int) $user->owner_id);
     }
@@ -26,11 +28,6 @@ Route::get('/profile/properties', function (Request $request) {
         $owners = DB::table('owners');
         $owners->where(function ($ownerQuery) use ($user) {
             $hasCondition = false;
-
-            if (!empty($user->email) && Schema::hasColumn('owners', 'email')) {
-                $ownerQuery->orWhere('email', $user->email);
-                $hasCondition = true;
-            }
 
             if (!empty($user->id)) {
                 if (Schema::hasColumn('owners', 'user_id')) {
@@ -44,46 +41,12 @@ Route::get('/profile/properties', function (Request $request) {
                 }
             }
 
-            if (!empty($user->name) && Schema::hasColumn('owners', 'name')) {
-                $ownerQuery->orWhere('name', $user->name);
-                $hasCondition = true;
-            }
-
             if (!$hasCondition) {
                 $ownerQuery->whereRaw('1 = 0');
             }
         });
 
         $ownerIds = $ownerIds->merge($owners->pluck('id'));
-
-        $role = method_exists($user, 'effectiveRole') ? $user->effectiveRole() : (string) ($user->role ?? '');
-        $isAdmin = in_array($role, ['admin', 'manager', 'super_admin'], true);
-
-        if ($isAdmin && $ownerIds->isEmpty()) {
-            $selfOwners = DB::table('owners')->where(function ($ownerQuery) {
-                $hasCondition = false;
-
-                if (Schema::hasColumn('owners', 'type')) {
-                    $ownerQuery->orWhere('type', 'self');
-                    $hasCondition = true;
-                }
-
-                if (Schema::hasColumn('owners', 'name')) {
-                    $ownerQuery
-                        ->orWhere('name', 'like', '%احمد%')
-                        ->orWhere('name', 'like', '%أحمد%')
-                        ->orWhere('name', 'like', '%املاكي%')
-                        ->orWhere('name', 'like', '%أملاكي%');
-                    $hasCondition = true;
-                }
-
-                if (!$hasCondition) {
-                    $ownerQuery->whereRaw('1 = 0');
-                }
-            });
-
-            $ownerIds = $ownerIds->merge($selfOwners->pluck('id'));
-        }
     }
 
     $ownerIds = $ownerIds
