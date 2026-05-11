@@ -1,7 +1,7 @@
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Alert, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Alert, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuth } from "../context/AuthContext";
 import { apiGet, apiPost } from "../lib/api";
@@ -74,6 +74,7 @@ export default function MyPropertiesScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [showAddChooser, setShowAddChooser] = useState(false);
 
   async function load(refresh = false) {
     try {
@@ -114,13 +115,26 @@ export default function MyPropertiesScreen() {
   const totalUnits = useMemo(() => properties.reduce((sum, item) => sum + n(item.units_count), 0), [properties]);
   const rentedUnits = useMemo(() => properties.reduce((sum, item) => sum + n(item.rented_units_count), 0), [properties]);
 
+  function ownerQuery() {
+    return accountOwnerId ? `?owner_id=${encodeURIComponent(accountOwnerId)}` : "";
+  }
+
   function openAddProperty() {
-    const ownerQuery = accountOwnerId ? `?owner_id=${encodeURIComponent(accountOwnerId)}` : "";
-    router.push(`/upload-property-deed${ownerQuery}` as never);
+    setShowAddChooser(true);
+  }
+
+  function openPdfAdd() {
+    setShowAddChooser(false);
+    router.push(`/upload-property-deed${ownerQuery()}` as never);
+  }
+
+  function openManualAdd() {
+    setShowAddChooser(false);
+    router.push(`/property-form${ownerQuery()}` as never);
   }
 
   function openEditProperty(property: PropertyItem) {
-    router.push(`/edit-record?resource=properties&id=${property.id}` as never);
+    router.push(`/property-form?id=${property.id}` as never);
   }
 
   function confirmDeleteProperty(property: PropertyItem) {
@@ -242,6 +256,36 @@ export default function MyPropertiesScreen() {
           );
         })}
       </ScrollView>
+
+      <Modal visible={showAddChooser} transparent animationType="fade" onRequestClose={() => setShowAddChooser(false)}>
+        <Pressable style={styles.modalOverlay} onPress={() => setShowAddChooser(false)}>
+          <Pressable style={styles.chooserCard}>
+            <View style={styles.chooserHandle} />
+            <Text style={styles.chooserTitle}>طريقة إضافة العقار</Text>
+            <Text style={styles.chooserSubtitle}>اختر الإدخال اليدوي أو رفع صك PDF، وعند رفع الصك سيتم تحديث العقار الموجود إذا تطابق رقم الصك.</Text>
+
+            <TouchableOpacity style={styles.chooserOption} activeOpacity={0.88} onPress={openPdfAdd}>
+              <View style={styles.chooserIconBox}><Ionicons name="document-text-outline" size={25} color="#0F766E" /></View>
+              <View style={styles.chooserTextBox}>
+                <Text style={styles.chooserOptionTitle}>رفع صك PDF</Text>
+                <Text style={styles.chooserOptionText}>قراءة بيانات الصك تلقائيًا ومقارنة رقم الصك للتحديث أو الإنشاء.</Text>
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.chooserOption} activeOpacity={0.88} onPress={openManualAdd}>
+              <View style={styles.chooserIconBox}><Ionicons name="create-outline" size={25} color="#0F766E" /></View>
+              <View style={styles.chooserTextBox}>
+                <Text style={styles.chooserOptionTitle}>إدخال يدوي</Text>
+                <Text style={styles.chooserOptionText}>فتح شاشة جديدة لإدخال بيانات العقار يدويًا.</Text>
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.cancelChooserButton} activeOpacity={0.88} onPress={() => setShowAddChooser(false)}>
+              <Text style={styles.cancelChooserText}>إلغاء</Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -287,4 +331,16 @@ const styles = StyleSheet.create({
   openRow: { marginTop: 12, flexDirection: "row-reverse", alignItems: "center", justifyContent: "space-between", backgroundColor: "#111827", borderRadius: 18, paddingHorizontal: 12, paddingVertical: 10 },
   openHint: { color: "#E5E7EB", fontWeight: "900", fontSize: 12 },
   openCircle: { width: 30, height: 30, borderRadius: 15, backgroundColor: "#0F766E", alignItems: "center", justifyContent: "center" },
+  modalOverlay: { flex: 1, backgroundColor: "rgba(15,23,42,0.50)", justifyContent: "flex-end", padding: 14 },
+  chooserCard: { backgroundColor: "#fff", borderRadius: 28, padding: 16, borderWidth: 1, borderColor: "#E5E7EB" },
+  chooserHandle: { width: 48, height: 5, borderRadius: 999, backgroundColor: "#CBD5E1", alignSelf: "center", marginBottom: 12 },
+  chooserTitle: { color: "#111827", fontSize: 21, fontWeight: "900", textAlign: "right" },
+  chooserSubtitle: { color: "#64748B", fontWeight: "800", textAlign: "right", marginTop: 7, lineHeight: 22, marginBottom: 12 },
+  chooserOption: { backgroundColor: "#F8FAFC", borderRadius: 20, padding: 13, flexDirection: "row-reverse", alignItems: "center", gap: 11, marginBottom: 9, borderWidth: 1, borderColor: "#E2E8F0" },
+  chooserIconBox: { width: 48, height: 48, borderRadius: 18, backgroundColor: "#ECFDF5", alignItems: "center", justifyContent: "center" },
+  chooserTextBox: { flex: 1, alignItems: "flex-end" },
+  chooserOptionTitle: { color: "#111827", fontWeight: "900", fontSize: 16, textAlign: "right" },
+  chooserOptionText: { color: "#64748B", fontWeight: "800", fontSize: 12, textAlign: "right", lineHeight: 19, marginTop: 3 },
+  cancelChooserButton: { backgroundColor: "#F1F5F9", borderRadius: 17, padding: 13, alignItems: "center", marginTop: 4 },
+  cancelChooserText: { color: "#334155", fontWeight: "900" },
 });
