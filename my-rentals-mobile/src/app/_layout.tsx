@@ -1,3 +1,4 @@
+// Force mobile deploy after rebuilding bottom tabs
 import { Tabs, router, useGlobalSearchParams, usePathname } from "expo-router";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useEffect } from "react";
