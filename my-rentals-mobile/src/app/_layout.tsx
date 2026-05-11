@@ -129,6 +129,7 @@ function AppTabs() {
       <Tabs.Screen name="relations-manager" options={{ ...hidden, title: "إدارة" }} />
       <Tabs.Screen name="record-details" options={{ ...hidden, title: "تفاصيل" }} />
       <Tabs.Screen name="inquiry-center" options={{ ...hidden, title: "مركز الاستفسارات" }} />
+      <Tabs.Screen name="scheduled-messages" options={{ ...hidden, title: "الرسائل المجدولة" }} />
       <Tabs.Screen name="communication-center" options={{ ...hidden, title: "التواصل" }} />
       <Tabs.Screen name="owner-properties" options={{ ...hidden, title: "عقارات المالك" }} />
       <Tabs.Screen name="edit-record" options={{ ...hidden, title: "تعديل" }} />
