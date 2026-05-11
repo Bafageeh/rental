@@ -1,0 +1,164 @@
+name: Patch rental owner property filter
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/patch-rental-owner-property-filter.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Apply owner-scoped property chooser patch
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          mobile_path = Path('my-rentals-mobile/src/components/InlineEditDeleteActions.tsx')
+          mobile = mobile_path.read_text(encoding='utf-8')
+
+          old = '''function isCompactPropertyOptionField(resource: string | null | undefined, field: string) {
+            return isPropertyResource(resource) && field === "usage_type";
+          }
+          '''
+          new = '''function isCompactPropertyOptionField(resource: string | null | undefined, field: string) {
+            return isPropertyResource(resource) && field === "usage_type";
+          }
+
+          function relationOptionOwnerId(option: LookupOption | null | undefined) {
+            const raw = option?.owner_id ?? option?.ownerId;
+            return raw === null || raw === undefined || raw === "" ? "" : String(raw);
+          }
+
+          function filterRelationOptionsForCurrentOwner(
+            field: string,
+            options: LookupOption[],
+            form: Record<string, string>,
+            lookups: Lookups,
+          ) {
+            if (field !== "property_id") {
+              return options;
+            }
+
+            const selectedProperty = (lookups.properties || []).find(
+              (option) => String(option.id) === String(form.property_id || ""),
+            );
+            const selectedOwnerId = form.owner_id || relationOptionOwnerId(selectedProperty);
+
+            if (!selectedOwnerId) {
+              return options;
+            }
+
+            const filtered = options.filter((option) => relationOptionOwnerId(option) === selectedOwnerId);
+            if (filtered.length > 0) {
+              return filtered;
+            }
+
+            return options.filter((option) => String(option.id) === String(form.property_id || ""));
+          }
+          '''
+          if old not in mobile:
+              raise SystemExit('Expected compact property helper block was not found')
+          mobile = mobile.replace(old, new, 1)
+
+          old = '''  async function loadLookups() {
+            try {
+              const data = await apiGetScoped("/edit-delete-center/lookups", "/my/edit-delete-center/lookups");
+              setLookups(data || {});
+            } catch {
+              setLookups({});
+            }
+          }
+          '''
+          new = '''  async function loadLookups() {
+            try {
+              const lookupQuery = `?resource=${encodeURIComponent(resource)}${stringId ? `&id=${encodeURIComponent(stringId)}` : ""}`;
+              const data = await apiGetScoped(`/edit-delete-center/lookups${lookupQuery}`, `/my/edit-delete-center/lookups${lookupQuery}`);
+              setLookups(data || {});
+            } catch {
+              setLookups({});
+            }
+          }
+          '''
+          if old not in mobile:
+              raise SystemExit('Expected loadLookups block was not found')
+          mobile = mobile.replace(old, new, 1)
+
+          old = '''  function setField(field: string, value: string) {
+            const nextValue = field === "national_short_address" ? value.replace(/[^A-Za-z0-9]/g, "").slice(0, 8).toUpperCase() : value;
+            setForm((prev) => ({ ...prev, [field]: nextValue }));
+          }
+          '''
+          new = '''  function setField(field: string, value: string) {
+            const nextValue = field === "national_short_address" ? value.replace(/[^A-Za-z0-9]/g, "").slice(0, 8).toUpperCase() : value;
+            setForm((prev) => {
+              const next = { ...prev, [field]: nextValue };
+
+              if (field === "owner_id" && prev.property_id) {
+                const selectedProperty = (lookups.properties || []).find(
+                  (option) => String(option.id) === String(prev.property_id),
+                );
+                const propertyOwnerId = relationOptionOwnerId(selectedProperty);
+
+                if (propertyOwnerId && propertyOwnerId !== nextValue) {
+                  next.property_id = "";
+                }
+              }
+
+              return next;
+            });
+          }
+          '''
+          if old not in mobile:
+              raise SystemExit('Expected setField block was not found')
+          mobile = mobile.replace(old, new, 1)
+
+          old = '''    const relationKey = relationKeyForField(field);
+              const relationOptions = relationKey ? (lookups[relationKey] || []) : [];
+          '''
+          new = '''    const relationKey = relationKeyForField(field);
+              const rawRelationOptions = relationKey ? (lookups[relationKey] || []) : [];
+              const relationOptions = filterRelationOptionsForCurrentOwner(field, rawRelationOptions, form, lookups);
+          '''
+          if old not in mobile:
+              raise SystemExit('Expected relation options block was not found')
+          mobile = mobile.replace(old, new, 1)
+
+          mobile_path.write_text(mobile, encoding='utf-8')
+
+          backend_path = Path('my-rentals-api/routes/api/20_edit_delete_center_stable.php')
+          backend = backend_path.read_text(encoding='utf-8')
+          old = "'properties' => $properties->orderBy('id')->limit(500)->get()->map(fn ($item) => my_rentals_ed_lookup_option($item->id, ($item->name ?? $item->title ?? ('عقار #' . $item->id))))->values(),"
+          new = "'properties' => $properties->orderBy('id')->limit(500)->get()->map(fn ($item) => my_rentals_ed_lookup_option($item->id, ($item->name ?? $item->title ?? ('عقار #' . $item->id)), ['owner_id' => $item->owner_id]))->values(),"
+          if old not in backend:
+              raise SystemExit('Expected properties lookup line was not found')
+          backend = backend.replace(old, new, 1)
+          backend_path.write_text(backend, encoding='utf-8')
+          PY
+
+      - name: Validate patch markers
+        run: |
+          grep -n "filterRelationOptionsForCurrentOwner" my-rentals-mobile/src/components/InlineEditDeleteActions.tsx
+          grep -n "owner_id' => \$item->owner_id" my-rentals-api/routes/api/20_edit_delete_center_stable.php
+          php -l my-rentals-api/routes/api/20_edit_delete_center_stable.php
+
+      - name: Commit patch and remove one-time workflow
+        run: |
+          rm -f .github/workflows/patch-rental-owner-property-filter.yml
+          if git diff --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add my-rentals-mobile/src/components/InlineEditDeleteActions.tsx my-rentals-api/routes/api/20_edit_delete_center_stable.php .github/workflows/patch-rental-owner-property-filter.yml
+          git commit -m "Filter property choices by selected owner"
+          git push
