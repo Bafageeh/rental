@@ -4,6 +4,8 @@ namespace App\Providers;
 
 use App\Models\WebhookEvent;
 use App\Observers\WebhookEventObserver;
+use App\Services\EnhancedGovernmentContractPdfExtractor;
+use App\Services\GovernmentContractPdfExtractor;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -13,7 +15,7 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        $this->app->bind(GovernmentContractPdfExtractor::class, EnhancedGovernmentContractPdfExtractor::class);
     }
 
     /**
