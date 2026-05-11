@@ -1,1 +1,1 @@
-Trigger rental deployment after DEPLOY_KEY secret was added.
+Retry rental deployment after DEPLOY_KEY update.
