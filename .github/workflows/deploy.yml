@@ -121,6 +121,22 @@ jobs:
             php artisan route:list | grep -E 'webhook-events|scheduled-messages|dashboard' || true
           "
 
+      - name: Install Laravel scheduler cron
+        env:
+          SSH_HOST: ${{ secrets.RENTAL_SSH_HOST || secrets.SSH_HOST || secrets.AMAL_SSH_HOST || 'rental.pm.sa' }}
+          SSH_PORT: ${{ secrets.RENTAL_SSH_PORT || secrets.SSH_PORT || secrets.AMAL_SSH_PORT || '22' }}
+        run: |
+          set -euo pipefail
+          SSH_PORT="${SSH_PORT:-22}"
+          KEY_FILE="$HOME/.ssh/rental_github_actions"
+          SSH_OPTS="-o BatchMode=yes -o IdentitiesOnly=yes -o ConnectTimeout=10 -i $KEY_FILE -p $SSH_PORT"
+          ssh $SSH_OPTS "$DEPLOY_USER@$SSH_HOST" "set -e
+            CRON_LINE='* * * * * cd '$PROJECT_PATH'/my-rentals-api && php artisan schedule:run >> /dev/null 2>&1'
+            (crontab -l 2>/dev/null | grep -v 'my-rentals-api.*schedule:run' || true; echo \"\$CRON_LINE\") | crontab -
+            cd '$PROJECT_PATH/my-rentals-api'
+            php artisan scheduled-messages:run-due || true
+          "
+
       - name: Restart Expo Metro if mobile folder exists
         continue-on-error: true
         env:
