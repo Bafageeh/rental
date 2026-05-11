@@ -500,7 +500,7 @@ export default function InlineEditDeleteActions({ resource, id, onChanged, hideD
           </ScrollView>
         ) : null}
 
-        {!relationField && optionList.length === 0 ? (
+        {!relationField && !isBoolean && optionList.length === 0 ? (
           <TextInput
             style={[
               styles.input,
