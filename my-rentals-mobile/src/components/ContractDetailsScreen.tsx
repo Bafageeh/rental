@@ -1,8 +1,8 @@
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
+import { router } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, RefreshControl, SafeAreaView, ScrollView, StyleSheet, Text, View } from "react-native";
-import { apiGet } from "../lib/api";
-import InlineEditDeleteActions from "./InlineEditDeleteActions";
+import { ActivityIndicator, RefreshControl, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { apiGet, apiPost } from "../lib/api";
 import ContractPaymentCard from "./ContractPaymentCard";
 
 type PaymentItem = {
@@ -120,6 +120,14 @@ export default function ContractDetailsScreen({ id }: { id: string | number }) {
     load(false);
   }, [id]);
 
+  function openEdit() {
+    router.push({ pathname: "/contract-edit/[id]", params: { id: String(id), return_to: `/contract/${id}` } } as never);
+  }
+
+  function deleteContract() {
+    router.push(`/edit-delete-center?resource=contracts&id=${id}` as never);
+  }
+
   const payments = (data?.sections || []).flatMap((section) => section.items || []).filter(isPayment);
   const tenantName = display(contract?.tenant?.name, cleanTitleTitle(data?.title) || "المستأجر غير محدد");
   const contractNumber = display(contract?.government_contract_number || contract?.contract_number || id);
@@ -150,7 +158,12 @@ export default function ContractDetailsScreen({ id }: { id: string | number }) {
           <View style={styles.heroGlow} />
           <View style={styles.heroTopRow}>
             <View style={styles.heroActionsBox}>
-              <InlineEditDeleteActions resource="contracts" id={id} hideDetails compact iconOnly onChanged={() => load(true)} />
+              <TouchableOpacity style={[styles.actionCircle, styles.deleteCircle]} onPress={deleteContract} activeOpacity={0.86}>
+                <Text style={styles.actionIconText}>🗑️</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.actionCircle, styles.editCircle]} onPress={openEdit} activeOpacity={0.86}>
+                <Text style={styles.actionIconText}>✏️</Text>
+              </TouchableOpacity>
             </View>
             <View style={styles.heroTextBox}>
               <View style={styles.tenantRow}>
@@ -271,7 +284,11 @@ const styles = StyleSheet.create({
   hero: { backgroundColor: "#111827", borderRadius: 30, padding: 15, marginBottom: 12, overflow: "hidden", shadowColor: "#000", shadowOpacity: 0.12, shadowRadius: 16, elevation: 3 },
   heroGlow: { position: "absolute", left: -34, top: -40, width: 130, height: 130, borderRadius: 65, backgroundColor: "rgba(15,118,110,0.32)" },
   heroTopRow: { flexDirection: "row", alignItems: "center", gap: 10 },
-  heroActionsBox: { minWidth: 96, alignItems: "flex-start" },
+  heroActionsBox: { minWidth: 96, flexDirection: "row", gap: 8, alignItems: "center", justifyContent: "flex-start" },
+  actionCircle: { width: 42, height: 42, borderRadius: 21, alignItems: "center", justifyContent: "center" },
+  editCircle: { backgroundColor: "#0F9B6F" },
+  deleteCircle: { backgroundColor: "#dc2626" },
+  actionIconText: { fontSize: 19 },
   heroTextBox: { flex: 1, alignItems: "flex-end" },
   heroIconColumn: { width: 66, alignItems: "center", gap: 7 },
   heroIconBox: { width: 55, height: 55, borderRadius: 21, backgroundColor: "#ECFDF5", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#A7F3D0" },
