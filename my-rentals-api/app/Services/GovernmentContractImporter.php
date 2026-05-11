@@ -281,12 +281,12 @@ class GovernmentContractImporter
 
         $payload = $this->onlyExistingColumns('contracts', $payload);
 
-        $existingByNumber = $this->findExistingContractByNumber($recordNumber, $displayNumber);
-        if ($existingByNumber) {
-            $existingByNumber->fill($payload);
-            $existingByNumber->save();
+        $existingByNumberAndDates = $this->findExistingContractByNumberAndDates($recordNumber, $displayNumber, $startDate, $endDate);
+        if ($existingByNumberAndDates) {
+            $existingByNumberAndDates->fill($payload);
+            $existingByNumberAndDates->save();
             $this->syncUnitStatus($unit, $status, $financial['rent_amount'] ?? null);
-            return $existingByNumber;
+            return $existingByNumberAndDates;
         }
 
         if ($startDate && $endDate) {
@@ -308,8 +308,12 @@ class GovernmentContractImporter
         return $contract;
     }
 
-    private function findExistingContractByNumber(?string $recordNumber, ?string $displayNumber): ?Contract
+    private function findExistingContractByNumberAndDates(?string $recordNumber, ?string $displayNumber, ?string $startDate, ?string $endDate): ?Contract
     {
+        if (!$startDate || !$endDate) {
+            return null;
+        }
+
         $numbers = collect([$recordNumber, $displayNumber])
             ->filter(fn ($value) => trim((string) $value) !== '')
             ->map(fn ($value) => trim((string) $value))
@@ -321,6 +325,8 @@ class GovernmentContractImporter
         }
 
         return Contract::query()
+            ->whereDate('start_date', $startDate)
+            ->whereDate('end_date', $endDate)
             ->where(function ($query) use ($numbers) {
                 foreach ($numbers as $number) {
                     $query->orWhere('government_contract_number', $number)
