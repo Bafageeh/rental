@@ -50,15 +50,14 @@ const sections: ProfileSection[] = [
     items: [
       { icon: "🔐", title: "تغيير الرقم السري", subtitle: "تحديث الرقم السري للحساب الحالي", path: "/profile-security" },
       { icon: "📊", title: "حسابي", subtitle: "ملخص بيانات وصلاحيات المستخدم", path: "/my-account" },
-      { icon: "🏢", title: "عقاراتي", subtitle: "العقارات المرتبطة بهذا الحساب", path: "/profile-properties" },
+      { icon: "🏢", title: "عقاراتي", subtitle: "الشاشة الرسمية لعقارات الحساب الحالي", path: "/properties" },
       { icon: "🚪", title: "تسجيل الخروج", subtitle: "الخروج من الحساب الحالي", danger: true, action: "logout" },
     ],
   },
   {
     title: "محفظتي",
-    subtitle: "روابط العقارات والوحدات والعقود حسب صلاحية الحساب.",
+    subtitle: "روابط الوحدات والعقود حسب صلاحية الحساب.",
     items: [
-      { icon: "🏢", title: "العقارات", subtitle: "استعراض العقارات وتفاصيلها", path: "/properties" },
       { icon: "🏠", title: "الوحدات", subtitle: "الوحدات المتاحة والمؤجرة", path: "/units" },
       { icon: "📄", title: "العقود", subtitle: "العقود النشطة والمنتهية", path: "/contracts" },
       { icon: "👥", title: "المستأجرون", subtitle: "بيانات المستأجرين وكشوفهم", path: "/tenants" },
