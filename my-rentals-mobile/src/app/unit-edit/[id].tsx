@@ -80,9 +80,16 @@ function numericOnlyValue(field: string, value: string) {
   return value;
 }
 
+function firstParam(value: string | string[] | undefined) {
+  if (Array.isArray(value)) return value[0] || "";
+  return value || "";
+}
+
 export default function UnitEditRoute() {
-  const params = useLocalSearchParams<{ id: string }>();
+  const params = useLocalSearchParams<{ id: string; return_to?: string; delete_return_to?: string }>();
   const id = String(params.id || "");
+  const returnTo = firstParam(params.return_to) || `/unit/${id}`;
+  const deleteReturnTo = firstParam(params.delete_return_to) || returnTo || "/properties";
   const [record, setRecord] = useState<RecordItem | null>(null);
   const [lookups, setLookups] = useState<Lookups>({});
   const [form, setForm] = useState<Record<string, string>>({});
@@ -103,7 +110,7 @@ export default function UnitEditRoute() {
       const item = Array.isArray(recordData?.items) ? recordData.items[0] : null;
       if (!item) {
         Alert.alert("تنبيه", "لم يتم العثور على الوحدة");
-        router.back();
+        router.replace(deleteReturnTo as never);
         return;
       }
 
@@ -142,8 +149,8 @@ export default function UnitEditRoute() {
     setForm((prev) => ({ ...prev, [field]: numericOnlyValue(field, value) }));
   }
 
-  function returnToPreviousScreen() {
-    router.back();
+  function returnToSourceScreen(target = returnTo) {
+    router.replace(target as never);
   }
 
   async function save() {
@@ -154,7 +161,7 @@ export default function UnitEditRoute() {
       delete fieldsToSave.property_id;
       delete fieldsToSave.status;
       await apiPost(`/edit-delete-center/units/${record.id}/update`, { fields: fieldsToSave });
-      returnToPreviousScreen();
+      returnToSourceScreen(returnTo);
     } catch (e) {
       Alert.alert("خطأ", errorMessage(e));
     } finally {
@@ -173,7 +180,7 @@ export default function UnitEditRoute() {
           try {
             setSaving(true);
             await apiPost(`/edit-delete-center/units/${record.id}/delete`, {});
-            returnToPreviousScreen();
+            returnToSourceScreen(deleteReturnTo);
           } catch (e) {
             Alert.alert("تعذر الحذف", errorMessage(e));
           } finally {
@@ -257,7 +264,7 @@ export default function UnitEditRoute() {
           <View style={styles.hero}>
             <View style={styles.heroIcon}><Ionicons name="home-outline" size={28} color="#fff" /></View>
             <View style={styles.heroTextBox}>
-              <Text style={styles.heroKicker}>شاشة مستقلة</Text>
+              <Text style={styles.heroKicker}>مرتبطة بالشاشة السابقة</Text>
               <Text style={styles.heroTitle}>تعديل الوحدة</Text>
               <Text numberOfLines={1} style={styles.heroSubtitle}>{record?.title || "تعديل بيانات الوحدة فقط"}</Text>
             </View>
@@ -276,11 +283,11 @@ export default function UnitEditRoute() {
               <View style={styles.footerActions}>
                 <TouchableOpacity style={styles.saveButton} onPress={save} disabled={saving} activeOpacity={0.9}>
                   <Ionicons name="save-outline" size={20} color="#fff" />
-                  <Text style={styles.saveText}>{saving ? "جاري الحفظ..." : "حفظ تعديل الوحدة"}</Text>
+                  <Text style={styles.saveText}>{saving ? "جاري الحفظ..." : "حفظ والعودة"}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.deleteButton} onPress={deleteUnit} disabled={saving} activeOpacity={0.9}>
                   <Ionicons name="trash-outline" size={20} color="#fff" />
-                  <Text style={styles.saveText}>حذف الوحدة</Text>
+                  <Text style={styles.saveText}>حذف والعودة</Text>
                 </TouchableOpacity>
               </View>
             </>
