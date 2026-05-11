@@ -58,8 +58,12 @@ function relationRoute(item: RelatedItem) {
   return `/record-details?resource=${encodeURIComponent(item.entity)}&id=${encodeURIComponent(String(item.id))}`;
 }
 
+function fieldValue(fields: FieldItem[] | undefined, key: string) {
+  return fields?.find((field) => field.key === key)?.value ?? "";
+}
+
 export default function UnitDetailsRoute() {
-  const params = useLocalSearchParams<{ id: string }>();
+  const params = useLocalSearchParams<{ id: string; source?: string; return_to?: string }>();
   const id = String(params.id || "");
   const [data, setData] = useState<DetailsResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -96,6 +100,11 @@ export default function UnitDetailsRoute() {
   }, [id]);
 
   const title = data?.title || "جاري التحميل...";
+  const propertyId = valueOrDash(fieldValue(data?.fields, "property_id"));
+  const sourceReturnTo = typeof params.return_to === "string" && params.return_to ? params.return_to : "";
+  const detailsReturnTo = `/unit/${id}${sourceReturnTo ? `?return_to=${encodeURIComponent(sourceReturnTo)}` : ""}`;
+  const deleteReturnTo = sourceReturnTo || (propertyId !== "-" ? `/property/${propertyId}` : "/properties");
+
   const primaryFields = useMemo(() => {
     const preferred = ["property_id", "owner_id", "unit_number", "floor", "type", "status", "rent_amount"];
     const fields = data?.fields || [];
@@ -111,7 +120,14 @@ export default function UnitDetailsRoute() {
   );
 
   function openEditScreen() {
-    router.push(`/unit-edit/${id}` as never);
+    router.push({
+      pathname: "/unit-edit/[id]",
+      params: {
+        id,
+        return_to: detailsReturnTo,
+        delete_return_to: deleteReturnTo,
+      },
+    } as never);
   }
 
   function openUnitService(path: string, extraQuery = "") {
@@ -129,8 +145,7 @@ export default function UnitDetailsRoute() {
         onPress: async () => {
           try {
             await apiPost(`/edit-delete-center/units/${id}/delete`, {});
-            Alert.alert("تم", "تم حذف الوحدة");
-            router.back();
+            router.replace(deleteReturnTo as never);
           } catch (e) {
             Alert.alert("تعذر الحذف", e instanceof Error ? e.message : "فشل حذف الوحدة");
           }
