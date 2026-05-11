@@ -93,18 +93,19 @@ export default function InquiryCenterScreen() {
   const [events, setEvents] = useState<WebhookEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [warning, setWarning] = useState<string | null>(null);
   const [query, setQuery] = useState('');
 
   const loadEvents = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
-    setError(null);
+    setWarning(null);
 
     try {
       const response = await apiGet('/webhook-events?provider=whatsapp&per_page=60');
       setEvents(unwrapEvents(response));
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'تعذر تحميل مركز الاستفسارات');
+      setEvents([]);
+      setWarning('تعذر تحميل رسائل واتساب من الخادم، وتم إبقاء مركز الاستفسارات مفتوحًا بدون تعطيل.');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -244,7 +245,9 @@ export default function InquiryCenterScreen() {
 
         <SearchBar value={query} onChangeText={setQuery} placeholder="بحث باسم المستأجر أو الرقم أو نص الرسالة..." />
 
-        {error ? <Notice tone="danger" title="تعذر التحميل" message={error} style={{ marginBottom: spacing.md }} /> : null}
+        {warning ? (
+          <Notice tone="warning" title="تنبيه مؤقت" message={warning} style={{ marginBottom: spacing.md }} />
+        ) : null}
 
         {filteredEvents.length === 0 ? (
           <Notice
