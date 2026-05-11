@@ -212,6 +212,21 @@ export default function InquiryCenterScreen() {
           tone="primary"
         />
 
+        <TouchableOpacity
+          style={styles.scheduledMessagesCard}
+          activeOpacity={0.88}
+          onPress={() => router.push('/scheduled-messages' as any)}
+        >
+          <View style={styles.scheduledIconCircle}>
+            <Ionicons name="calendar-outline" size={24} color={colors.primaryDark} />
+          </View>
+          <View style={styles.scheduledTextWrap}>
+            <Text style={styles.scheduledTitle}>الرسائل المجدولة</Text>
+            <Text style={styles.scheduledSubtitle}>تقرير المتأخرين اليومي وأي رسائل واتساب دورية مستقبلًا</Text>
+          </View>
+          <Ionicons name="chevron-back" size={22} color={colors.textTertiary} />
+        </TouchableOpacity>
+
         <View style={styles.statsRow}>
           <View style={styles.statCard}>
             <Text style={styles.statValue}>{events.length}</Text>
@@ -307,6 +322,30 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   primaryButtonText: { ...typography.bodyBold, color: colors.textInverse },
+  scheduledMessagesCard: {
+    minHeight: 82,
+    borderRadius: radii.xl,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+    padding: spacing.md,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: spacing.md,
+    marginBottom: spacing.md,
+    ...shadows.sm,
+  },
+  scheduledIconCircle: {
+    width: 52,
+    height: 52,
+    borderRadius: 18,
+    backgroundColor: colors.primaryLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  scheduledTextWrap: { flex: 1, alignItems: 'flex-end' },
+  scheduledTitle: { ...typography.bodyBold, color: colors.text, fontSize: 17, textAlign: 'right' },
+  scheduledSubtitle: { ...typography.caption, color: colors.textSecondary, marginTop: 4, textAlign: 'right', lineHeight: 19 },
   statsRow: { flexDirection: 'row-reverse', gap: spacing.sm, marginBottom: spacing.md },
   statCard: {
     flex: 1,
