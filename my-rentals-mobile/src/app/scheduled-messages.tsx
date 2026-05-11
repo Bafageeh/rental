@@ -3,10 +3,13 @@ import { useFocusEffect } from 'expo-router';
 import React, { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
+  TouchableOpacity,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -14,10 +17,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Notice, ScreenHero } from '../components/ui/phase3';
 import { colors, radii, shadows, spacing, typography } from '../constants/theme';
 import { useAuth } from '../context/AuthContext';
-import { apiGet } from '../lib/api';
+import { apiGet, apiPost } from '../lib/api';
 
 type ScheduledMessage = {
   id: string;
+  key?: string;
   title: string;
   description?: string;
   channel?: string;
@@ -33,6 +37,8 @@ type ScheduledMessage = {
   };
   status?: string;
   status_label?: string;
+  last_sent_date?: string | null;
+  last_sent_at?: string | null;
 };
 
 function unwrapItems(response: any): ScheduledMessage[] {
@@ -50,9 +56,21 @@ function statusStyle(status?: string) {
   return styles.neutralBadge;
 }
 
+function normalizeTimeInput(value: string) {
+  const digits = value.replace(/[^0-9]/g, '').slice(0, 4);
+  if (digits.length <= 2) return digits;
+  return `${digits.slice(0, 2)}:${digits.slice(2)}`;
+}
+
+function isValidTime(value: string) {
+  return /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
+}
+
 export default function ScheduledMessagesScreen() {
   const { loggedIn, isAdmin, loading: authLoading } = useAuth();
   const [items, setItems] = useState<ScheduledMessage[]>([]);
+  const [timeValues, setTimeValues] = useState<Record<string, string>>({});
+  const [savingKey, setSavingKey] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -63,7 +81,13 @@ export default function ScheduledMessagesScreen() {
 
     try {
       const response = await apiGet('/scheduled-messages');
-      setItems(unwrapItems(response));
+      const nextItems = unwrapItems(response);
+      setItems(nextItems);
+      setTimeValues(
+        Object.fromEntries(
+          nextItems.map((item) => [item.key || item.id, item.schedule?.time || '18:25']),
+        ),
+      );
     } catch (e) {
       setError(e instanceof Error ? e.message : 'تعذر تحميل الرسائل المجدولة');
     } finally {
@@ -85,6 +109,33 @@ export default function ScheduledMessagesScreen() {
   function onRefresh() {
     setRefreshing(true);
     void loadItems(true);
+  }
+
+  async function saveTime(item: ScheduledMessage) {
+    const key = item.key || item.id;
+    const time = timeValues[key] || '';
+
+    if (!isValidTime(time)) {
+      Alert.alert('وقت غير صحيح', 'اكتب الوقت بصيغة 24 ساعة مثل 18:25 أو 09:05.');
+      return;
+    }
+
+    setSavingKey(key);
+    setError(null);
+
+    try {
+      await apiPost(`/scheduled-messages/${encodeURIComponent(key)}`, {
+        time,
+        status: item.status || 'active',
+        recipient: item.recipient,
+      });
+      await loadItems(true);
+      Alert.alert('تم الحفظ', `تم تحديث وقت الرسالة إلى ${time} وسيتم التنفيذ على الوقت الجديد.`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'تعذر حفظ وقت الرسالة المجدولة');
+    } finally {
+      setSavingKey(null);
+    }
   }
 
   if (authLoading || loading) {
@@ -125,7 +176,7 @@ export default function ScheduledMessagesScreen() {
         <ScreenHero
           eyebrow="واتساب والتنبيهات"
           title="الرسائل المجدولة"
-          subtitle="كل رسالة دورية يتم إرسالها تلقائيًا تظهر هنا، مثل تقرير المتأخرين اليومي وأي رسائل مستقبلية."
+          subtitle="يمكنك تغيير وقت أي رسالة مجدولة من هنا، وسيتم التنفيذ تلقائيًا على الوقت الجديد."
           icon="calendar-outline"
           tone="primary"
         />
@@ -141,47 +192,77 @@ export default function ScheduledMessagesScreen() {
           </View>
         </View>
 
-        {error ? <Notice tone="danger" title="تعذر التحميل" message={error} style={{ marginBottom: spacing.md }} /> : null}
+        {error ? <Notice tone="danger" title="تعذر العملية" message={error} style={{ marginBottom: spacing.md }} /> : null}
 
         {items.length === 0 ? (
           <Notice tone="info" title="لا توجد رسائل" message="لا توجد رسائل مجدولة مسجلة حاليًا." />
         ) : (
           <View style={styles.list}>
-            {items.map((item) => (
-              <View key={item.id} style={styles.card}>
-                <View style={styles.cardHeader}>
-                  <View style={styles.iconCircle}>
-                    <Ionicons name={item.channel === 'whatsapp' ? 'logo-whatsapp' : 'calendar-outline'} size={22} color={colors.primaryDark} />
-                  </View>
-                  <View style={styles.titleWrap}>
-                    <Text style={styles.cardTitle}>{item.title}</Text>
-                    <Text style={styles.cardSubtitle}>{item.description || '-'}</Text>
-                  </View>
-                  <View style={[styles.badge, statusStyle(item.status)]}>
-                    <Text style={styles.badgeText}>{item.status_label || item.status || '-'}</Text>
-                  </View>
-                </View>
+            {items.map((item) => {
+              const key = item.key || item.id;
+              const currentTime = timeValues[key] ?? item.schedule?.time ?? '18:25';
+              const isSaving = savingKey === key;
 
-                <View style={styles.detailsGrid}>
-                  <View style={styles.detailBox}>
-                    <Text style={styles.detailLabel}>القناة</Text>
-                    <Text style={styles.detailValue}>{item.channel_label || item.channel || '-'}</Text>
+              return (
+                <View key={key} style={styles.card}>
+                  <View style={styles.cardHeader}>
+                    <View style={styles.iconCircle}>
+                      <Ionicons name={item.channel === 'whatsapp' ? 'logo-whatsapp' : 'calendar-outline'} size={22} color={colors.primaryDark} />
+                    </View>
+                    <View style={styles.titleWrap}>
+                      <Text style={styles.cardTitle}>{item.title}</Text>
+                      <Text style={styles.cardSubtitle}>{item.description || '-'}</Text>
+                    </View>
+                    <View style={[styles.badge, statusStyle(item.status)]}>
+                      <Text style={styles.badgeText}>{item.status_label || item.status || '-'}</Text>
+                    </View>
                   </View>
-                  <View style={styles.detailBox}>
-                    <Text style={styles.detailLabel}>المستلم</Text>
-                    <Text style={styles.detailValue}>{item.recipient || '-'}</Text>
+
+                  <View style={styles.editBox}>
+                    <Text style={styles.editTitle}>تعديل وقت الإرسال</Text>
+                    <View style={styles.timeRow}>
+                      <TouchableOpacity
+                        style={[styles.saveButton, isSaving ? styles.disabledButton : null]}
+                        disabled={isSaving}
+                        onPress={() => saveTime(item)}
+                        activeOpacity={0.88}
+                      >
+                        {isSaving ? <ActivityIndicator color={colors.textInverse} size="small" /> : <Text style={styles.saveButtonText}>حفظ الوقت</Text>}
+                      </TouchableOpacity>
+                      <TextInput
+                        value={currentTime}
+                        onChangeText={(value) => setTimeValues((prev) => ({ ...prev, [key]: normalizeTimeInput(value) }))}
+                        keyboardType="number-pad"
+                        maxLength={5}
+                        placeholder="18:25"
+                        style={styles.timeInput}
+                        textAlign="center"
+                      />
+                    </View>
+                    <Text style={styles.editHint}>اكتب الوقت بصيغة 24 ساعة. مثال: 18:25 تعني 6:25 مساءً.</Text>
                   </View>
-                  <View style={styles.detailBoxWide}>
-                    <Text style={styles.detailLabel}>الجدولة</Text>
-                    <Text style={styles.detailValue}>{item.schedule?.human || '-'}</Text>
-                  </View>
-                  <View style={styles.detailBoxWide}>
-                    <Text style={styles.detailLabel}>أمر التشغيل</Text>
-                    <Text style={styles.commandText}>{item.command || '-'}</Text>
+
+                  <View style={styles.detailsGrid}>
+                    <View style={styles.detailBox}>
+                      <Text style={styles.detailLabel}>القناة</Text>
+                      <Text style={styles.detailValue}>{item.channel_label || item.channel || '-'}</Text>
+                    </View>
+                    <View style={styles.detailBox}>
+                      <Text style={styles.detailLabel}>المستلم</Text>
+                      <Text style={styles.detailValue}>{item.recipient || '-'}</Text>
+                    </View>
+                    <View style={styles.detailBoxWide}>
+                      <Text style={styles.detailLabel}>الجدولة الحالية</Text>
+                      <Text style={styles.detailValue}>{item.schedule?.human || '-'}</Text>
+                    </View>
+                    <View style={styles.detailBoxWide}>
+                      <Text style={styles.detailLabel}>آخر تنفيذ</Text>
+                      <Text style={styles.detailValue}>{item.last_sent_at || item.last_sent_date || 'لم يتم التنفيذ بعد'}</Text>
+                    </View>
                   </View>
                 </View>
-              </View>
-            ))}
+              );
+            })}
           </View>
         )}
 
@@ -235,6 +316,38 @@ const styles = StyleSheet.create({
   pausedBadge: { backgroundColor: colors.warningBg },
   neutralBadge: { backgroundColor: colors.surfaceSubtle },
   badgeText: { ...typography.small, color: colors.text, fontWeight: '900' },
+  editBox: {
+    marginTop: spacing.md,
+    backgroundColor: colors.primaryLight,
+    borderRadius: radii.lg,
+    padding: spacing.md,
+  },
+  editTitle: { ...typography.bodyBold, color: colors.primaryDark, textAlign: 'right', marginBottom: spacing.sm },
+  timeRow: { flexDirection: 'row-reverse', gap: spacing.sm, alignItems: 'center' },
+  timeInput: {
+    flex: 1,
+    minHeight: 48,
+    borderRadius: radii.md,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+    color: colors.text,
+    fontSize: 20,
+    fontWeight: '900',
+    letterSpacing: 1,
+  },
+  saveButton: {
+    minWidth: 110,
+    minHeight: 48,
+    borderRadius: radii.md,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.md,
+  },
+  disabledButton: { opacity: 0.65 },
+  saveButtonText: { ...typography.bodyBold, color: colors.textInverse },
+  editHint: { ...typography.small, color: colors.textSecondary, textAlign: 'right', marginTop: spacing.sm, lineHeight: 18 },
   detailsGrid: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.md },
   detailBox: {
     flexBasis: '48%',
@@ -251,5 +364,4 @@ const styles = StyleSheet.create({
   },
   detailLabel: { ...typography.small, color: colors.textTertiary, textAlign: 'right', marginBottom: 4 },
   detailValue: { ...typography.caption, color: colors.text, fontWeight: '800', textAlign: 'right', lineHeight: 20 },
-  commandText: { ...typography.small, color: colors.textSecondary, fontWeight: '800', textAlign: 'right' },
 });
