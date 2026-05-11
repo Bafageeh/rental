@@ -46,7 +46,9 @@ const fieldOrder = [
   "notes",
 ];
 const booleanFields = new Set(["has_living_room", "is_rooftop", "has_kitchen", "is_kitchen_installed"]);
-const numericFields = new Set(["rent_amount", "rooms_count", "bathrooms_count", "floor"]);
+const decimalFields = new Set(["rent_amount"]);
+const integerOnlyFields = new Set(["rooms_count", "bathrooms_count", "floor"]);
+const blockedTypeOptionText = new Set(["مالك", "مدير", "owner", "admin", "manager"]);
 
 function valueToString(value: unknown) {
   if (value === null || value === undefined) return "";
@@ -61,6 +63,27 @@ function errorMessage(e: unknown) {
 function relationOptions(field: string, lookups: Lookups) {
   if (field === "property_id") return lookups.properties || [];
   return [];
+}
+
+function fieldLabel(field: string) {
+  if (field === "floor") return "الوحدة في الدور";
+  return labelForResource("units", field);
+}
+
+function filterTypeOptions(options: Record<string, string>) {
+  return Object.fromEntries(
+    Object.entries(options).filter(([value, label]) => {
+      const v = String(value || "").trim().toLowerCase();
+      const l = String(label || "").trim().toLowerCase();
+      return !blockedTypeOptionText.has(v) && !blockedTypeOptionText.has(l);
+    }),
+  );
+}
+
+function numericOnlyValue(field: string, value: string) {
+  if (integerOnlyFields.has(field)) return value.replace(/[^0-9]/g, "");
+  if (decimalFields.has(field)) return value.replace(/[^0-9.]/g, "").replace(/(\..*)\./g, "$1");
+  return value;
 }
 
 export default function UnitEditRoute() {
@@ -122,14 +145,16 @@ export default function UnitEditRoute() {
   }, [id]);
 
   function setField(field: string, value: string) {
-    setForm((prev) => ({ ...prev, [field]: value }));
+    setForm((prev) => ({ ...prev, [field]: numericOnlyValue(field, value) }));
   }
 
   async function save() {
     if (!record) return;
     try {
       setSaving(true);
-      await apiPost(`/edit-delete-center/units/${record.id}/update`, { fields: form });
+      const fieldsToSave = { ...form };
+      delete fieldsToSave.property_id;
+      await apiPost(`/edit-delete-center/units/${record.id}/update`, { fields: fieldsToSave });
       Alert.alert("تم", "تم حفظ تعديل الوحدة", [
         { text: "حسنًا", onPress: () => router.back() },
       ]);
@@ -141,9 +166,10 @@ export default function UnitEditRoute() {
   }
 
   function renderChoiceField(field: string, options: Record<string, string>) {
+    const cleanOptions = field === "type" ? filterTypeOptions(options) : options;
     return (
       <View style={styles.choiceRow}>
-        {Object.entries(options).map(([value, label]) => {
+        {Object.entries(cleanOptions).map(([value, label]) => {
           const active = form[field] === value;
           return (
             <TouchableOpacity key={value} style={[styles.choiceChip, active ? styles.choiceChipActive : null]} onPress={() => setField(field, value)}>
@@ -168,32 +194,26 @@ export default function UnitEditRoute() {
     );
   }
 
-  function renderRelationField(field: string) {
-    const options = relationOptions(field, lookups);
+  function renderLockedPropertyField(field: string) {
     return (
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.choiceRow}>
-        {options.map((option) => {
-          const active = String(option.id) === String(form[field] || "");
-          return (
-            <TouchableOpacity key={String(option.id)} style={[styles.choiceChip, active ? styles.choiceChipActive : null]} onPress={() => setField(field, String(option.id))}>
-              <Text style={[styles.choiceText, active ? styles.choiceTextActive : null]}>{option.label}</Text>
-            </TouchableOpacity>
-          );
-        })}
-      </ScrollView>
+      <View style={styles.lockedBox}>
+        <Ionicons name="lock-closed-outline" size={17} color="#64748B" />
+        <Text style={styles.lockedText}>{translateValue(field, form[field], lookups)}</Text>
+      </View>
     );
   }
 
   function renderField(field: string) {
-    const optionMap = editableOptionFields()[field] || {};
+    const rawOptionMap = editableOptionFields()[field] || {};
+    const optionMap = field === "type" ? filterTypeOptions(rawOptionMap) : rawOptionMap;
     const hasOptions = Object.keys(optionMap).length > 0;
     const isRelation = field === "property_id";
-    const label = labelForResource("units", field);
+    const label = fieldLabel(field);
 
     return (
       <View key={field} style={styles.fieldCard}>
         <Text style={styles.fieldLabel}>{label}</Text>
-        {isRelation ? renderRelationField(field) : null}
+        {isRelation ? renderLockedPropertyField(field) : null}
         {booleanFields.has(field) ? renderBooleanField(field) : null}
         {hasOptions && !booleanFields.has(field) && !isRelation ? renderChoiceField(field, optionMap) : null}
         {!isRelation && !booleanFields.has(field) && !hasOptions ? (
@@ -204,10 +224,9 @@ export default function UnitEditRoute() {
             placeholder={label}
             textAlign="right"
             multiline={field === "notes"}
-            keyboardType={numericFields.has(field) ? "decimal-pad" : "default"}
+            keyboardType={integerOnlyFields.has(field) || decimalFields.has(field) ? "numeric" : "default"}
           />
         ) : null}
-        {isRelation ? <Text style={styles.currentText}>الحالي: {translateValue(field, form[field], lookups)}</Text> : null}
       </View>
     );
   }
@@ -263,12 +282,13 @@ const styles = StyleSheet.create({
   fieldLabel: { color: "#111827", fontSize: 14, fontWeight: "900", textAlign: "right", marginBottom: 9 },
   input: { minHeight: 46, borderRadius: 14, backgroundColor: "#F8FAFC", borderWidth: 1, borderColor: "#E5E7EB", paddingHorizontal: 12, color: "#111827", fontWeight: "800" },
   multilineInput: { minHeight: 90, textAlignVertical: "top", paddingTop: 12 },
+  lockedBox: { minHeight: 48, borderRadius: 14, backgroundColor: "#F1F5F9", borderWidth: 1, borderColor: "#E2E8F0", paddingHorizontal: 12, flexDirection: "row-reverse", alignItems: "center", gap: 8 },
+  lockedText: { flex: 1, color: "#334155", fontWeight: "900", textAlign: "right" },
   choiceRow: { flexDirection: "row-reverse", flexWrap: "wrap", gap: 8 },
   choiceChip: { borderRadius: 999, paddingHorizontal: 13, paddingVertical: 9, backgroundColor: "#F8FAFC", borderWidth: 1, borderColor: "#E5E7EB" },
   choiceChipActive: { backgroundColor: "#0F766E", borderColor: "#0F766E" },
   choiceText: { color: "#475569", fontWeight: "900", fontSize: 12 },
   choiceTextActive: { color: "#fff" },
-  currentText: { color: "#64748B", fontWeight: "800", textAlign: "right", marginTop: 8, fontSize: 12 },
   saveButton: { minHeight: 54, borderRadius: 18, backgroundColor: "#0F766E", flexDirection: "row-reverse", alignItems: "center", justifyContent: "center", gap: 8, marginTop: 6 },
   saveText: { color: "#fff", fontWeight: "900", fontSize: 15 },
 });
