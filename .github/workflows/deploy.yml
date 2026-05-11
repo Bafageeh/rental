@@ -49,7 +49,7 @@ jobs:
             ssh-keygen -y -f "$KEY_FILE" >/dev/null 2>&1 && KEY_OK=1 || true
           fi
           if [ "$KEY_OK" != "1" ]; then
-            echo "::error::No usable SSH private key found. Checked RENTAL_SSH_KEY, SSH_PRIVATE_KEY, DEPLOY_KEY, SSH_KEY, AMAL_SSH_PRIVATE_KEY, and B64 variants."
+            echo "::error::No usable SSH private key found."
             exit 1
           fi
           ssh-keyscan -p "$SSH_PORT" -H "$SSH_HOST" >> "$HOME/.ssh/known_hosts"
@@ -109,7 +109,9 @@ jobs:
           ssh $SSH_OPTS "$DEPLOY_USER@$SSH_HOST" "set -e
             cd '$PROJECT_PATH'
             git config --global --add safe.directory '$PROJECT_PATH' || true
-            git pull --ff-only origin main
+            git fetch origin main
+            git reset --hard origin/main
+            git clean -fd
             cd '$PROJECT_PATH/my-rentals-api'
             php artisan migrate --force
             php artisan optimize:clear
