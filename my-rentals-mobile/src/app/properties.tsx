@@ -137,6 +137,15 @@ export default function MyPropertiesScreen() {
     router.push(`/property-form?id=${property.id}` as never);
   }
 
+  function openPropertyRepository(property: PropertyItem) {
+    const params = new URLSearchParams();
+    params.set("property_id", String(property.id));
+    params.set("property_name", property.name || `عقار #${property.id}`);
+    if (property.owner_id || property.owner?.id) params.set("owner_id", String(property.owner_id || property.owner?.id));
+    if (property.owner?.name) params.set("owner_name", property.owner.name);
+    router.push(`/files?${params.toString()}` as never);
+  }
+
   function confirmDeleteProperty(property: PropertyItem) {
     Alert.alert(
       "حذف العقار",
@@ -217,6 +226,9 @@ export default function MyPropertiesScreen() {
                   <TouchableOpacity style={styles.iconButton} activeOpacity={0.82} onPress={() => openEditProperty(property)}>
                     <Ionicons name="pencil" size={17} color="#4B5563" />
                   </TouchableOpacity>
+                  <TouchableOpacity style={[styles.iconButton, styles.mediaIconButton]} activeOpacity={0.82} onPress={() => openPropertyRepository(property)}>
+                    <Ionicons name="folder-open" size={18} color="#0F766E" />
+                  </TouchableOpacity>
                   <TouchableOpacity style={[styles.iconButton, styles.deleteIconButton, isDeleting ? styles.disabledAction : null]} activeOpacity={0.82} disabled={isDeleting} onPress={() => confirmDeleteProperty(property)}>
                     {isDeleting ? <ActivityIndicator size="small" color="#991B1B" /> : <Ionicons name="trash" size={17} color="#991B1B" />}
                   </TouchableOpacity>
@@ -247,6 +259,14 @@ export default function MyPropertiesScreen() {
                   <Text style={styles.metricLabel}>عقود</Text>
                 </View>
               </View>
+
+              <TouchableOpacity style={styles.repositoryRow} activeOpacity={0.86} onPress={() => openPropertyRepository(property)}>
+                <View style={styles.repositoryIcon}><Ionicons name="images-outline" size={18} color="#0F766E" /></View>
+                <View style={styles.repositoryTextBox}>
+                  <Text style={styles.repositoryTitle}>مستودع الوسائط والملفات</Text>
+                  <Text style={styles.repositorySubtitle}>الصكوك، الصور، الملفات الرسمية حسب التصنيف</Text>
+                </View>
+              </TouchableOpacity>
 
               <View style={styles.openRow}>
                 <Text style={styles.openHint}>اضغط لفتح تفاصيل العقار</Text>
@@ -317,6 +337,7 @@ const styles = StyleSheet.create({
   cardHeader: { flexDirection: "row", alignItems: "flex-start", gap: 10 },
   cardActions: { flexDirection: "row", gap: 7, paddingTop: 2 },
   iconButton: { width: 38, height: 38, borderRadius: 14, backgroundColor: "#F3F4F6", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#E5E7EB" },
+  mediaIconButton: { backgroundColor: "#ECFDF5", borderColor: "#A7F3D0" },
   deleteIconButton: { backgroundColor: "#FEF2F2", borderColor: "#FECACA" },
   disabledAction: { opacity: 0.55 },
   cardTitleBox: { flex: 1, alignItems: "flex-end" },
@@ -328,6 +349,11 @@ const styles = StyleSheet.create({
   metricBox: { flex: 1, backgroundColor: "#F8FAFC", borderRadius: 18, paddingVertical: 10, paddingHorizontal: 8, alignItems: "center", borderWidth: 1, borderColor: "#EEF2F7" },
   metricValue: { color: "#111827", fontWeight: "900", fontSize: 16, marginTop: 3 },
   metricLabel: { color: "#64748B", fontWeight: "800", fontSize: 11, marginTop: 2 },
+  repositoryRow: { marginTop: 12, backgroundColor: "#F0FDFA", borderRadius: 18, padding: 11, flexDirection: "row-reverse", alignItems: "center", gap: 10, borderWidth: 1, borderColor: "#CCFBF1" },
+  repositoryIcon: { width: 38, height: 38, borderRadius: 15, backgroundColor: "#FFFFFF", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#A7F3D0" },
+  repositoryTextBox: { flex: 1, alignItems: "flex-end" },
+  repositoryTitle: { color: "#0F172A", fontWeight: "900", textAlign: "right" },
+  repositorySubtitle: { color: "#0F766E", fontWeight: "800", fontSize: 11, marginTop: 3, textAlign: "right" },
   openRow: { marginTop: 12, flexDirection: "row-reverse", alignItems: "center", justifyContent: "space-between", backgroundColor: "#111827", borderRadius: 18, paddingHorizontal: 12, paddingVertical: 10 },
   openHint: { color: "#E5E7EB", fontWeight: "900", fontSize: 12 },
   openCircle: { width: 30, height: 30, borderRadius: 15, backgroundColor: "#0F766E", alignItems: "center", justifyContent: "center" },
