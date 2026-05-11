@@ -45,17 +45,6 @@ export function HeaderQuickActions() {
       >
         <Ionicons name="notifications-outline" size={22} color={colors.text} />
       </TouchableOpacity>
-
-      <TouchableOpacity
-        style={styles.headerActionButton}
-        onPress={() => router.push("/search" as any)}
-        activeOpacity={0.75}
-        accessibilityRole="button"
-        accessibilityLabel="البحث"
-        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-      >
-        <Ionicons name="search-outline" size={22} color={colors.text} />
-      </TouchableOpacity>
     </View>
   );
 }
