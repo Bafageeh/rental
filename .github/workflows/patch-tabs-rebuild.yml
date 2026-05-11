@@ -1,0 +1,47 @@
+name: Patch tabs rebuild
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/patch-tabs-rebuild.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rebuild bottom tabs
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          p = Path('my-rentals-mobile/src/app/_layout.tsx')
+          s = p.read_text(encoding='utf-8')
+          s = s.replace('title: "الرئيسية", tabBarIcon: ({ color, size }) => <TabIcon name="home"', 'title: "إحصائيات", tabBarIcon: ({ color, size }) => <TabIcon name="stats-chart"', 1)
+          s = s.replace('tabBarAccessibilityLabel: "الرئيسية"', 'tabBarAccessibilityLabel: "إحصائيات"', 1)
+          s = s.replace('title: "العقارات", tabBarIcon: ({ color, size }) => <TabIcon name="business"', 'title: "عقاراتي", tabBarIcon: ({ color, size }) => <TabIcon name="business"', 1)
+          s = s.replace('tabBarAccessibilityLabel: "العقارات"', 'tabBarAccessibilityLabel: "عقاراتي"', 1)
+          s = s.replace('title: "المزيد"', 'title: "مزيد"', 1)
+          s = s.replace('tabBarAccessibilityLabel: "المزيد"', 'tabBarAccessibilityLabel: "مزيد"', 1)
+          old_payments = '      <Tabs.Screen name="payments" options={{ title: "الدفعات", tabBarIcon: ({ color, size }) => <TabIcon name="cash" color={color} size={size} lib="mci" />, tabBarAccessibilityLabel: "الدفعات" }} />\n'
+          new_payments = '      <Tabs.Screen name="payments" options={{ href: null, title: "الدفعات" }} />\n'
+          s = s.replace(old_payments, new_payments, 1)
+          anchor = '      <Tabs.Screen name="communication-center" options={{ href: null, title: "التواصل" }} />\n'
+          extra = '      <Tabs.Screen name="owner-properties" options={{ href: null, title: "عقارات المالك" }} />\n      <Tabs.Screen name="edit-record" options={{ href: null, title: "تعديل" }} />\n'
+          if 'name="owner-properties"' not in s and anchor in s:
+              s = s.replace(anchor, anchor + extra, 1)
+          p.write_text(s, encoding='utf-8')
+          PY
+      - name: Commit patch and remove workflow
+        run: |
+          rm -f .github/workflows/patch-tabs-rebuild.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add my-rentals-mobile/src/app/_layout.tsx .github/workflows/patch-tabs-rebuild.yml
+          git commit -m "Rebuild bottom tabs" || exit 0
+          git push
