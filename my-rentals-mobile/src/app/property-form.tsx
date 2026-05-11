@@ -1,0 +1,338 @@
+import { Ionicons } from "@expo/vector-icons";
+import { router, useLocalSearchParams } from "expo-router";
+import { useEffect, useMemo, useState } from "react";
+import {
+  ActivityIndicator,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { apiGet, apiPost } from "../lib/api";
+
+type PropertyForm = {
+  owner_id: string;
+  name: string;
+  deed_number: string;
+  city: string;
+  district: string;
+  address: string;
+  national_short_address: string;
+  property_area: string;
+  property_type: string;
+  usage_type: string;
+  management_type: string;
+  floors_count: string;
+  parking_spots_count: string;
+  elevators_count: string;
+  notes: string;
+};
+
+const propertyTypes = [
+  { value: "building", label: "عمارة", icon: "business-outline" },
+  { value: "apartment", label: "شقة", icon: "home-outline" },
+  { value: "villa", label: "فيلا", icon: "storefront-outline" },
+  { value: "land", label: "أرض", icon: "map-outline" },
+  { value: "commercial", label: "تجاري", icon: "briefcase-outline" },
+];
+
+const usageTypes = [
+  { value: "residential", label: "سكني" },
+  { value: "commercial", label: "تجاري" },
+  { value: "mixed", label: "مختلط" },
+];
+
+const managementTypes = [
+  { value: "owned", label: "مملوك" },
+  { value: "managed", label: "إدارة للغير" },
+];
+
+function firstParam(value: string | string[] | undefined): string {
+  if (Array.isArray(value)) return value[0] || "";
+  return value || "";
+}
+
+function emptyForm(ownerId = ""): PropertyForm {
+  return {
+    owner_id: ownerId,
+    name: "",
+    deed_number: "",
+    city: "",
+    district: "",
+    address: "",
+    national_short_address: "",
+    property_area: "",
+    property_type: "building",
+    usage_type: "residential",
+    management_type: "owned",
+    floors_count: "",
+    parking_spots_count: "",
+    elevators_count: "",
+    notes: "",
+  };
+}
+
+function valueToString(value: unknown) {
+  if (value === null || value === undefined) return "";
+  return String(value);
+}
+
+function cleanPayload(form: PropertyForm, isEdit: boolean) {
+  const payload: Record<string, string | number | null> = {};
+  Object.entries(form).forEach(([key, value]) => {
+    const text = String(value ?? "").trim();
+    if (text === "") {
+      if (isEdit) payload[key] = "";
+      return;
+    }
+    if (["owner_id", "floors_count", "parking_spots_count", "elevators_count"].includes(key)) {
+      payload[key] = Number(text);
+      return;
+    }
+    if (key === "property_area") {
+      payload[key] = Number(text.replace(/,/g, ""));
+      return;
+    }
+    payload[key] = text;
+  });
+  return payload;
+}
+
+function Section({ title, icon, children }: { title: string; icon: keyof typeof Ionicons.glyphMap; children: React.ReactNode }) {
+  return (
+    <View style={styles.sectionCard}>
+      <View style={styles.sectionHeader}>
+        <View style={styles.sectionIconBox}><Ionicons name={icon} size={19} color="#0F766E" /></View>
+        <Text style={styles.sectionTitle}>{title}</Text>
+      </View>
+      {children}
+    </View>
+  );
+}
+
+function Field({ label, value, onChangeText, placeholder, keyboardType = "default", multiline = false }: {
+  label: string;
+  value: string;
+  onChangeText: (value: string) => void;
+  placeholder?: string;
+  keyboardType?: "default" | "number-pad" | "decimal-pad";
+  multiline?: boolean;
+}) {
+  return (
+    <View style={styles.fieldBox}>
+      <Text style={styles.fieldLabel}>{label}</Text>
+      <TextInput
+        style={[styles.input, multiline ? styles.textArea : null]}
+        value={value}
+        onChangeText={onChangeText}
+        placeholder={placeholder || label}
+        placeholderTextColor="#94A3B8"
+        keyboardType={keyboardType}
+        textAlign="right"
+        multiline={multiline}
+      />
+    </View>
+  );
+}
+
+function ChoiceGroup({ options, value, onChange }: {
+  options: Array<{ value: string; label: string; icon?: keyof typeof Ionicons.glyphMap }>;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <View style={styles.choiceRow}>
+      {options.map((option) => {
+        const selected = value === option.value;
+        return (
+          <TouchableOpacity key={option.value} style={[styles.choiceChip, selected ? styles.choiceChipActive : null]} activeOpacity={0.86} onPress={() => onChange(option.value)}>
+            {option.icon ? <Ionicons name={option.icon} size={16} color={selected ? "#fff" : "#475569"} /> : null}
+            <Text style={[styles.choiceText, selected ? styles.choiceTextActive : null]}>{option.label}</Text>
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  );
+}
+
+export default function PropertyFormScreen() {
+  const params = useLocalSearchParams<{ id?: string; owner_id?: string }>();
+  const id = firstParam(params.id);
+  const initialOwnerId = firstParam(params.owner_id);
+  const isEdit = Boolean(id);
+  const [form, setForm] = useState<PropertyForm>(() => emptyForm(initialOwnerId));
+  const [loading, setLoading] = useState(isEdit);
+  const [saving, setSaving] = useState(false);
+
+  const title = useMemo(() => isEdit ? "تعديل العقار" : "إضافة عقار يدويًا", [isEdit]);
+
+  function setField<K extends keyof PropertyForm>(key: K, value: PropertyForm[K]) {
+    setForm((previous) => ({
+      ...previous,
+      [key]: key === "national_short_address" ? String(value).replace(/[^A-Za-z0-9]/g, "").slice(0, 8).toUpperCase() : value,
+    }));
+  }
+
+  async function loadProperty() {
+    if (!id) return;
+    try {
+      setLoading(true);
+      const property = await apiGet(`/properties/${encodeURIComponent(id)}`);
+      setForm({
+        owner_id: valueToString(property?.owner_id || property?.owner?.id || initialOwnerId),
+        name: valueToString(property?.name),
+        deed_number: valueToString(property?.deed_number || property?.document_number),
+        city: valueToString(property?.city),
+        district: valueToString(property?.district),
+        address: valueToString(property?.address),
+        national_short_address: valueToString(property?.national_short_address),
+        property_area: valueToString(property?.property_area),
+        property_type: valueToString(property?.property_type || "building"),
+        usage_type: valueToString(property?.usage_type || "residential"),
+        management_type: valueToString(property?.management_type || "owned"),
+        floors_count: valueToString(property?.floors_count),
+        parking_spots_count: valueToString(property?.parking_spots_count),
+        elevators_count: valueToString(property?.elevators_count),
+        notes: valueToString(property?.notes),
+      });
+    } catch (e) {
+      Alert.alert("تعذر التحميل", e instanceof Error ? e.message : "حدث خطأ غير متوقع", [
+        { text: "حسنًا", onPress: () => router.back() },
+      ]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadProperty();
+  }, [id]);
+
+  async function save() {
+    if (!form.name.trim()) {
+      Alert.alert("تنبيه", "اسم العقار مطلوب.");
+      return;
+    }
+
+    try {
+      setSaving(true);
+      if (isEdit) {
+        const fields = cleanPayload(form, true);
+        delete fields.owner_id;
+        await apiPost(`/edit-delete-center/properties/${id}/update`, { fields });
+        Alert.alert("تم", "تم تحديث بيانات العقار.", [
+          { text: "عرض العقار", onPress: () => router.replace(`/property/${id}` as never) },
+          { text: "رجوع", onPress: () => router.back() },
+        ]);
+      } else {
+        const payload = cleanPayload(form, false);
+        const json = await apiPost("/properties", payload);
+        const propertyId = Number(json?.property?.id || 0);
+        Alert.alert("تم", "تم إنشاء العقار يدويًا.", [
+          { text: "عرض العقار", onPress: () => propertyId ? router.replace(`/property/${propertyId}` as never) : router.replace("/properties" as never) },
+          { text: "إضافة آخر", onPress: () => setForm(emptyForm(initialOwnerId)) },
+        ]);
+      }
+    } catch (e) {
+      Alert.alert("تعذر الحفظ", e instanceof Error ? e.message : "حدث خطأ غير متوقع");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <SafeAreaView style={styles.safe} edges={["bottom"]}>
+      <KeyboardAvoidingView style={styles.safe} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+          <View style={styles.hero}>
+            <TouchableOpacity style={styles.backButton} activeOpacity={0.86} onPress={() => router.back()}>
+              <Ionicons name="chevron-forward" size={20} color="#fff" />
+            </TouchableOpacity>
+            <View style={styles.heroTextBox}>
+              <Text style={styles.heroKicker}>{isEdit ? "تحديث البيانات" : "إدخال مباشر"}</Text>
+              <Text style={styles.heroTitle}>{title}</Text>
+              <Text style={styles.heroSubtitle}>{isEdit ? "نفس شاشة الإضافة تستخدم للتعديل حتى تكون البيانات مرتبة وواضحة." : "أدخل بيانات العقار يدويًا، أو ارجع واختر رفع الصك PDF من شاشة عقاراتي."}</Text>
+            </View>
+            <View style={styles.heroIconBox}><Ionicons name={isEdit ? "create-outline" : "add-circle-outline"} size={30} color="#0F766E" /></View>
+          </View>
+
+          {loading ? (
+            <View style={styles.loadingCard}><ActivityIndicator /><Text style={styles.loadingText}>جاري تحميل بيانات العقار...</Text></View>
+          ) : (
+            <>
+              <Section title="البيانات الأساسية" icon="business-outline">
+                <Field label="اسم العقار" value={form.name} onChangeText={(value) => setField("name", value)} placeholder="مثال: عمارة الصفا" />
+                <Field label="رقم الصك" value={form.deed_number} onChangeText={(value) => setField("deed_number", value)} placeholder="رقم الصك إن وجد" keyboardType="number-pad" />
+                <Text style={styles.fieldLabel}>نوع العقار</Text>
+                <ChoiceGroup options={propertyTypes} value={form.property_type} onChange={(value) => setField("property_type", value)} />
+              </Section>
+
+              <Section title="الموقع" icon="location-outline">
+                <Field label="المدينة" value={form.city} onChangeText={(value) => setField("city", value)} />
+                <Field label="الحي" value={form.district} onChangeText={(value) => setField("district", value)} />
+                <Field label="العنوان" value={form.address} onChangeText={(value) => setField("address", value)} multiline />
+                <Field label="العنوان الوطني المختصر" value={form.national_short_address} onChangeText={(value) => setField("national_short_address", value)} placeholder="مثال: JEDA1234" />
+              </Section>
+
+              <Section title="المواصفات" icon="options-outline">
+                <Field label="المساحة" value={form.property_area} onChangeText={(value) => setField("property_area", value)} keyboardType="decimal-pad" />
+                <Field label="عدد الأدوار" value={form.floors_count} onChangeText={(value) => setField("floors_count", value)} keyboardType="number-pad" />
+                <Field label="عدد المواقف" value={form.parking_spots_count} onChangeText={(value) => setField("parking_spots_count", value)} keyboardType="number-pad" />
+                <Field label="عدد المصاعد" value={form.elevators_count} onChangeText={(value) => setField("elevators_count", value)} keyboardType="number-pad" />
+              </Section>
+
+              <Section title="الإدارة والاستخدام" icon="shield-checkmark-outline">
+                <Text style={styles.fieldLabel}>نوع الاستخدام</Text>
+                <ChoiceGroup options={usageTypes} value={form.usage_type} onChange={(value) => setField("usage_type", value)} />
+                <Text style={styles.fieldLabel}>طريقة الإدارة</Text>
+                <ChoiceGroup options={managementTypes} value={form.management_type} onChange={(value) => setField("management_type", value)} />
+                <Field label="ملاحظات" value={form.notes} onChangeText={(value) => setField("notes", value)} multiline />
+              </Section>
+
+              <TouchableOpacity style={[styles.saveButton, saving ? styles.disabled : null]} activeOpacity={0.88} disabled={saving} onPress={save}>
+                {saving ? <ActivityIndicator color="#fff" /> : <Ionicons name="save-outline" size={20} color="#fff" />}
+                <Text style={styles.saveText}>{saving ? "جاري الحفظ..." : isEdit ? "حفظ التعديل" : "حفظ العقار"}</Text>
+              </TouchableOpacity>
+            </>
+          )}
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  safe: { flex: 1, backgroundColor: "#F7F6F4" },
+  content: { padding: 14, paddingBottom: 48 },
+  hero: { backgroundColor: "#111827", borderRadius: 28, padding: 15, marginBottom: 13, flexDirection: "row", alignItems: "center", gap: 12 },
+  backButton: { width: 38, height: 38, borderRadius: 15, backgroundColor: "#374151", alignItems: "center", justifyContent: "center" },
+  heroTextBox: { flex: 1, alignItems: "flex-end" },
+  heroKicker: { color: "#5EEAD4", fontWeight: "900", fontSize: 12, textAlign: "right" },
+  heroTitle: { color: "#fff", fontSize: 24, fontWeight: "900", textAlign: "right", marginTop: 3 },
+  heroSubtitle: { color: "#CBD5E1", fontWeight: "800", lineHeight: 21, textAlign: "right", marginTop: 6, fontSize: 12 },
+  heroIconBox: { width: 56, height: 56, borderRadius: 22, backgroundColor: "#ECFDF5", alignItems: "center", justifyContent: "center" },
+  loadingCard: { backgroundColor: "#fff", borderRadius: 22, padding: 18, alignItems: "center" },
+  loadingText: { color: "#64748B", fontWeight: "800", marginTop: 8 },
+  sectionCard: { backgroundColor: "#fff", borderRadius: 24, padding: 14, marginBottom: 12, borderWidth: 1, borderColor: "#ECEFF3", shadowColor: "#000", shadowOpacity: 0.05, shadowRadius: 10, elevation: 1 },
+  sectionHeader: { flexDirection: "row-reverse", alignItems: "center", gap: 8, marginBottom: 12 },
+  sectionIconBox: { width: 34, height: 34, borderRadius: 14, backgroundColor: "#ECFDF5", alignItems: "center", justifyContent: "center" },
+  sectionTitle: { color: "#111827", fontWeight: "900", fontSize: 17, textAlign: "right" },
+  fieldBox: { marginBottom: 10 },
+  fieldLabel: { color: "#334155", fontWeight: "900", textAlign: "right", marginBottom: 7 },
+  input: { backgroundColor: "#F8FAFC", borderWidth: 1, borderColor: "#E2E8F0", borderRadius: 16, minHeight: 48, paddingHorizontal: 12, color: "#111827", fontWeight: "800" },
+  textArea: { minHeight: 88, textAlignVertical: "top", paddingTop: 11 },
+  choiceRow: { flexDirection: "row-reverse", flexWrap: "wrap", gap: 8, marginBottom: 10 },
+  choiceChip: { backgroundColor: "#F1F5F9", borderRadius: 999, paddingHorizontal: 12, paddingVertical: 9, flexDirection: "row-reverse", alignItems: "center", gap: 5, borderWidth: 1, borderColor: "#E2E8F0" },
+  choiceChipActive: { backgroundColor: "#0F766E", borderColor: "#0F766E" },
+  choiceText: { color: "#475569", fontWeight: "900", fontSize: 12 },
+  choiceTextActive: { color: "#fff" },
+  saveButton: { backgroundColor: "#111827", borderRadius: 20, padding: 16, alignItems: "center", justifyContent: "center", flexDirection: "row-reverse", gap: 8, marginTop: 4 },
+  saveText: { color: "#fff", fontWeight: "900", fontSize: 16 },
+  disabled: { opacity: 0.65 },
+});
