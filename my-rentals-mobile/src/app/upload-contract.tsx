@@ -76,52 +76,108 @@ function mostlyNumericOrDate(value: string) {
   return numericLike.length === 0;
 }
 
-function normalizeExtractedArabic(value: any) {
-  const raw = stripBidi(displayRaw(value, ''));
-  if (!raw) return '';
-  if (!hasArabic(raw) || mostlyNumericOrDate(raw)) return raw;
+function arabicWords(value: string) {
+  return stripBidi(value).split(/[^\u0600-\u06FF]+/).filter(Boolean);
+}
 
-  const reversedMarkers = [
-    'دنه',
-    'هيجو',
-    'زيمق',
-    'زيمقل',
-    'ةدج',
-    'دقع',
-    'دوقع',
-    'ةقش',
-    'يراجيإ',
-    'يعبر',
-    'يرهش',
-    'يونس',
-  ];
+function rtlScore(value: string) {
+  const raw = stripBidi(value);
+  const words = arabicWords(raw);
+  let score = 0;
+
   const forwardMarkers = [
+    'ال',
+    'بن',
+    'عبد',
+    'الله',
+    'محمد',
+    'احمد',
+    'أحمد',
     'مهند',
     'وجيه',
     'القميز',
     'جدة',
-    'عقد',
+    'مكة',
+    'الرياض',
     'شقة',
+    'عقد',
+    'إيجار',
+    'ايجار',
     'شهري',
     'سنوي',
     'ربع',
-    'إيجار',
   ];
 
-  const hasReversedMarker = reversedMarkers.some((marker) => raw.includes(marker));
-  const hasForwardMarker = forwardMarkers.some((marker) => raw.includes(marker));
+  const reversedMarkers = [
+    'دنه',
+    'دنهم',
+    'هيجو',
+    'زيمق',
+    'زيمقلا',
+    'زيمقلا',
+    'ةدج',
+    'ةكم',
+    'ضايرلا',
+    'دقع',
+    'دوقع',
+    'ةقش',
+    'يراجيإ',
+    'راجيا',
+    'يعبر',
+    'يرهش',
+    'يونس',
+    'دمحم',
+    'دمحأ',
+    'دبع',
+    'هللا',
+  ];
 
-  if (hasReversedMarker && !hasForwardMarker) return stripBidi(reverseText(raw));
+  forwardMarkers.forEach((marker) => {
+    if (raw.includes(marker)) score += 3;
+  });
 
+  reversedMarkers.forEach((marker) => {
+    if (raw.includes(marker)) score -= 4;
+  });
+
+  words.forEach((word) => {
+    if (word.startsWith('ال')) score += 2;
+    if (word.endsWith('لا') || word.endsWith('لأ') || word.endsWith('لإ') || word.endsWith('لآ')) score -= 3;
+    if (/^[ةه][\u0600-\u06FF]{2,}/.test(word)) score -= 1;
+    if (/[\u0600-\u06FF]{2,}[ةه]$/.test(word)) score += 1;
+  });
+
+  return score;
+}
+
+function shouldReverseArabic(value: string) {
+  const raw = stripBidi(value);
+  if (!hasArabic(raw) || mostlyNumericOrDate(raw)) return false;
+
+  const words = arabicWords(raw);
   const arabicLetters = raw.match(/[\u0600-\u06FF]/g)?.length || 0;
   const latinLetters = raw.match(/[A-Za-z]/g)?.length || 0;
   const digitCount = raw.match(/[0-9٠-٩]/g)?.length || 0;
 
-  if (arabicLetters >= 3 && latinLetters === 0 && digitCount === 0 && !hasForwardMarker) {
-    return stripBidi(reverseText(raw));
-  }
+  if (arabicLetters < 3 || latinLetters > 0 || digitCount > 0) return false;
 
-  return raw;
+  const currentScore = rtlScore(raw);
+  const reversedScore = rtlScore(reverseText(raw));
+
+  if (currentScore < 0 && reversedScore > currentScore) return true;
+  if (reversedScore - currentScore >= 4) return true;
+
+  const reversedAlWords = words.filter((word) => word.endsWith('لا') || word.endsWith('لأ') || word.endsWith('لإ') || word.endsWith('لآ')).length;
+  if (words.length >= 2 && reversedAlWords >= 1 && reversedScore >= currentScore) return true;
+
+  return false;
+}
+
+function normalizeExtractedArabic(value: any) {
+  const raw = stripBidi(displayRaw(value, ''));
+  if (!raw) return '';
+  if (!hasArabic(raw) || mostlyNumericOrDate(raw)) return raw;
+  return shouldReverseArabic(raw) ? stripBidi(reverseText(raw)) : raw;
 }
 
 function displayRaw(value: any, fallback = '-') {
