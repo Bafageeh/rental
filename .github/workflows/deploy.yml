@@ -122,6 +122,7 @@ jobs:
           "
 
       - name: Restart Expo Metro if mobile folder exists
+        continue-on-error: true
         env:
           SSH_HOST: ${{ secrets.RENTAL_SSH_HOST || secrets.SSH_HOST || secrets.AMAL_SSH_HOST || 'rental.pm.sa' }}
           SSH_PORT: ${{ secrets.RENTAL_SSH_PORT || secrets.SSH_PORT || secrets.AMAL_SSH_PORT || '22' }}
@@ -132,7 +133,6 @@ jobs:
           SSH_OPTS="-o BatchMode=yes -o IdentitiesOnly=yes -o ConnectTimeout=10 -i $KEY_FILE -p $SSH_PORT"
           ssh $SSH_OPTS "$DEPLOY_USER@$SSH_HOST" "set -e
             if [ -d '$PROJECT_PATH/my-rentals-mobile' ]; then
-              pkill -f 'expo|metro|node.*8081' || true
               if command -v lsof >/dev/null 2>&1; then lsof -ti:8081 | xargs -r kill -9 || true; fi
               cd '$PROJECT_PATH/my-rentals-mobile'
               rm -rf .expo node_modules/.cache /home/pmsa/apps/.cache/metro /home/pmsa/apps/.cache/expo
