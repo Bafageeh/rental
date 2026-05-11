@@ -19,9 +19,10 @@ use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
 
 Route::post('/auth/logout', [AuthController::class, 'logout']);
-    Route::get('/auth/me', [AuthController::class, 'me']);
+Route::get('/auth/me', [AuthController::class, 'me']);
 
 Route::get('/dashboard', [DashboardController::class, 'index']);
+Route::get('/my/dashboard', [DashboardController::class, 'index']);
 
 Route::post('/contract-files/extract', [ContractFileController::class, 'extract']);
 Route::get('/contract-files/{contractFile}', [ContractFileController::class, 'show']);
