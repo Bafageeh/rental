@@ -58,22 +58,12 @@ function responseList(payload: any) {
   return Array.isArray(payload?.data) ? payload.data : Array.isArray(payload) ? payload : [];
 }
 
-function normalized(value?: string | null) {
-  return String(value || "").trim().toLowerCase().replace(/[أإآ]/g, "ا").replace(/ى/g, "ي");
-}
-
 function directOwnerId(account: AccountPayload | null, fallback: AccountPayload | null) {
   return String(account?.owner_id || account?.owner?.id || fallback?.owner_id || fallback?.owner?.id || "");
 }
 
-function isAhmedOwnedProperty(property: PropertyItem) {
-  const ownerName = normalized(property.owner?.name);
-  const deedOwnerName = normalized(property.deed_owner_name);
-  const propertyName = normalized(property.name);
-  const ownerType = normalized(property.owner?.type);
-  const managementType = normalized(property.management_type);
-  const haystack = `${ownerName} ${deedOwnerName} ${propertyName}`;
-  return ownerType === "self" || managementType === "owned" || haystack.includes("احمد") || haystack.includes("ahmed") || haystack.includes("املاكي") || haystack.includes("املاك");
+function propertyOwnerId(property: PropertyItem) {
+  return String(property.owner_id || property.owner?.id || "");
 }
 
 export default function MyPropertiesScreen() {
@@ -94,19 +84,16 @@ export default function MyPropertiesScreen() {
       const ownerId = directOwnerId(me, fallback);
       setAccountOwnerId(ownerId);
 
-      let list: PropertyItem[] = [];
       const profileResult = await apiGet("/profile/properties").catch(() => []);
-      list = responseList(profileResult) as PropertyItem[];
+      let list = responseList(profileResult) as PropertyItem[];
 
-      if (auth.isAdmin) {
-        if (ownerId) {
-          list = list.filter((property) => String(property.owner_id || property.owner?.id || "") === ownerId);
-        } else {
-          const all = await apiGet("/properties").catch(() => []);
-          list = (responseList(all) as PropertyItem[]).filter(isAhmedOwnedProperty);
-        }
-      } else if (ownerId) {
-        list = list.filter((property) => String(property.owner_id || property.owner?.id || "") === ownerId);
+      // شاشة عقاراتي لا تستخدم المسار العام /properties إطلاقًا حتى لا تظهر عقارات ملاك آخرين.
+      // إن كان الحساب مرتبطًا بمالك محدد، نثبت الفلترة على owner_id في الواجهة أيضًا كطبقة أمان إضافية.
+      if (ownerId) {
+        list = list.filter((property) => propertyOwnerId(property) === ownerId);
+      } else if (!auth.isAdmin) {
+        // حساب المالك غير المرتبط بمالك لا يجب أن يرى أي عقارات بالخطأ.
+        list = [];
       }
 
       setProperties(list);
@@ -135,7 +122,7 @@ export default function MyPropertiesScreen() {
         <View style={styles.hero}>
           <Text style={styles.heroIcon}>🏢</Text>
           <Text style={styles.heroTitle}>عقاراتي</Text>
-          <Text style={styles.heroSubtitle}>{auth.isAdmin ? "تعرض عقارات حساب المدير فقط، ولا تعرض عقارات الملاك الآخرين." : "تعرض العقارات التابعة لمالك الحساب الحالي فقط."}</Text>
+          <Text style={styles.heroSubtitle}>{auth.isAdmin ? "تعرض عقارات المدير فقط، ولا تعرض عقارات بقية الملاك." : "تعرض العقارات التابعة لمالك الحساب الحالي فقط."}</Text>
         </View>
 
         <View style={styles.summaryRow}>
@@ -151,7 +138,7 @@ export default function MyPropertiesScreen() {
         {!loading && properties.length === 0 ? (
           <View style={styles.emptyCard}>
             <Text style={styles.emptyTitle}>لا توجد عقارات</Text>
-            <Text style={styles.emptyText}>{accountOwnerId ? "لا توجد عقارات مرتبطة مباشرة بهذا الحساب." : "لم يتم العثور على عقارات خاصة بهذا الحساب."}</Text>
+            <Text style={styles.emptyText}>{accountOwnerId || auth.isAdmin ? "لا توجد عقارات مرتبطة مباشرة بهذا الحساب." : "لم يتم العثور على عقارات خاصة بهذا الحساب."}</Text>
           </View>
         ) : null}
 
