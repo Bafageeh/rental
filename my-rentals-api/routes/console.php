@@ -8,8 +8,10 @@ Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
 
-Schedule::command('rent:send-overdue-whatsapp-report')
-    ->dailyAt('18:25')
+// يتم فحص الرسائل المجدولة كل دقيقة، والوقت الفعلي محفوظ في قاعدة البيانات
+// حتى يمكن تغييره من شاشة الرسائل المجدولة بدون تعديل الكود.
+Schedule::command('scheduled-messages:run-due')
+    ->everyMinute()
     ->timezone('Asia/Riyadh')
     ->withoutOverlapping()
     ->onOneServer();
