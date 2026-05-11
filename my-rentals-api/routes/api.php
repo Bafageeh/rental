@@ -88,9 +88,9 @@ Route::middleware(['auth.api', 'api.scope'])->group(function () {
         __DIR__ . '/api/019_payment_status_auto_edit_override.php',
         // يجب تحميل إلغاء السداد قبل مركز الحذف العام حتى لا يحذف القسط فعليًا.
         __DIR__ . '/api/019b_payment_cancel_instead_of_delete.php',
-        __DIR__ . '/api/20_edit_delete_center_stable.php',
-        // يجب تحميل فلترة اختيارات التعديل حسب سياق المالك بعد مركز التعديل العام حتى تكون هي المسار المعتمد.
+        // يجب تحميل فلترة اختيارات التعديل حسب سياق المالك قبل مركز التعديل العام لأن Laravel يستخدم أول مسار مطابق.
         __DIR__ . '/api/019c_owner_scoped_edit_lookups.php',
+        __DIR__ . '/api/20_edit_delete_center_stable.php',
         __DIR__ . '/api/19_receipts.php',
         __DIR__ . '/api/21_phase3_compat_overrides.php',
         __DIR__ . '/api/99_owner_direct_units_hotfix.php',
