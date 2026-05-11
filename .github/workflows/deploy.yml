@@ -1,0 +1,48 @@
+name: Deploy Rental
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Deploy API and clear Laravel cache
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.RENTAL_SSH_HOST || secrets.SSH_HOST }}
+          username: ${{ secrets.RENTAL_SSH_USER || secrets.SSH_USER }}
+          key: ${{ secrets.RENTAL_SSH_KEY || secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.RENTAL_SSH_PORT || secrets.SSH_PORT || 22 }}
+          script: |
+            set -e
+
+            PROJECT_PATH="${{ secrets.RENTAL_PROJECT_PATH }}"
+            if [ -z "$PROJECT_PATH" ]; then
+              if [ -d /home/pmsa/apps/rental ]; then
+                PROJECT_PATH=/home/pmsa/apps/rental
+              elif [ -d /mnt/home-storage/home/pmsa/apps/rental ]; then
+                PROJECT_PATH=/mnt/home-storage/home/pmsa/apps/rental
+              else
+                PROJECT_PATH=/home/pmsa/apps/rental
+              fi
+            fi
+
+            cd "$PROJECT_PATH"
+            git config --global --add safe.directory "$PROJECT_PATH" || true
+            git pull --ff-only origin main
+
+            cd "$PROJECT_PATH/my-rentals-api"
+            php artisan migrate --force
+            php artisan optimize:clear
+            php artisan route:clear
+            php artisan config:clear
+            php artisan cache:clear
+            php artisan route:list | grep -E "webhook-events|scheduled-messages|dashboard" || true
+
+            echo "Deployment finished successfully."
