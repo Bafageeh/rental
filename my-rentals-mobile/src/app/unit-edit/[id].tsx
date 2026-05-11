@@ -27,13 +27,12 @@ type RecordItem = {
 type LookupOption = { id: number | string; label: string };
 type Lookups = Record<string, LookupOption[]>;
 
-const hiddenFields = new Set(["parent_unit_id", "is_subdivided", "unit_scope"]);
+const hiddenFields = new Set(["parent_unit_id", "is_subdivided", "unit_scope", "status"]);
 const fieldOrder = [
   "property_id",
   "unit_number",
   "floor",
   "type",
-  "status",
   "rent_amount",
   "rooms_count",
   "bathrooms_count",
@@ -58,11 +57,6 @@ function valueToString(value: unknown) {
 
 function errorMessage(e: unknown) {
   return e instanceof Error ? e.message : "حدث خطأ غير متوقع";
-}
-
-function relationOptions(field: string, lookups: Lookups) {
-  if (field === "property_id") return lookups.properties || [];
-  return [];
 }
 
 function fieldLabel(field: string) {
@@ -148,21 +142,46 @@ export default function UnitEditRoute() {
     setForm((prev) => ({ ...prev, [field]: numericOnlyValue(field, value) }));
   }
 
+  function returnToPreviousScreen() {
+    router.back();
+  }
+
   async function save() {
     if (!record) return;
     try {
       setSaving(true);
       const fieldsToSave = { ...form };
       delete fieldsToSave.property_id;
+      delete fieldsToSave.status;
       await apiPost(`/edit-delete-center/units/${record.id}/update`, { fields: fieldsToSave });
-      Alert.alert("تم", "تم حفظ تعديل الوحدة", [
-        { text: "حسنًا", onPress: () => router.back() },
-      ]);
+      returnToPreviousScreen();
     } catch (e) {
       Alert.alert("خطأ", errorMessage(e));
     } finally {
       setSaving(false);
     }
+  }
+
+  function deleteUnit() {
+    if (!record) return;
+    Alert.alert("حذف الوحدة", "هل تريد حذف هذه الوحدة؟ إذا كانت مرتبطة بعقود سيتم منع الحذف تلقائيًا.", [
+      { text: "إلغاء", style: "cancel" },
+      {
+        text: "حذف",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            setSaving(true);
+            await apiPost(`/edit-delete-center/units/${record.id}/delete`, {});
+            returnToPreviousScreen();
+          } catch (e) {
+            Alert.alert("تعذر الحذف", errorMessage(e));
+          } finally {
+            setSaving(false);
+          }
+        },
+      },
+    ]);
   }
 
   function renderChoiceField(field: string, options: Record<string, string>) {
@@ -254,10 +273,16 @@ export default function UnitEditRoute() {
           {!loading && record ? (
             <>
               {record.editable_fields.map((field) => renderField(field))}
-              <TouchableOpacity style={styles.saveButton} onPress={save} disabled={saving} activeOpacity={0.9}>
-                <Ionicons name="save-outline" size={20} color="#fff" />
-                <Text style={styles.saveText}>{saving ? "جاري الحفظ..." : "حفظ تعديل الوحدة"}</Text>
-              </TouchableOpacity>
+              <View style={styles.footerActions}>
+                <TouchableOpacity style={styles.saveButton} onPress={save} disabled={saving} activeOpacity={0.9}>
+                  <Ionicons name="save-outline" size={20} color="#fff" />
+                  <Text style={styles.saveText}>{saving ? "جاري الحفظ..." : "حفظ تعديل الوحدة"}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.deleteButton} onPress={deleteUnit} disabled={saving} activeOpacity={0.9}>
+                  <Ionicons name="trash-outline" size={20} color="#fff" />
+                  <Text style={styles.saveText}>حذف الوحدة</Text>
+                </TouchableOpacity>
+              </View>
             </>
           ) : null}
         </ScrollView>
@@ -289,6 +314,8 @@ const styles = StyleSheet.create({
   choiceChipActive: { backgroundColor: "#0F766E", borderColor: "#0F766E" },
   choiceText: { color: "#475569", fontWeight: "900", fontSize: 12 },
   choiceTextActive: { color: "#fff" },
-  saveButton: { minHeight: 54, borderRadius: 18, backgroundColor: "#0F766E", flexDirection: "row-reverse", alignItems: "center", justifyContent: "center", gap: 8, marginTop: 6 },
+  footerActions: { gap: 10, marginTop: 6 },
+  saveButton: { minHeight: 54, borderRadius: 18, backgroundColor: "#0F766E", flexDirection: "row-reverse", alignItems: "center", justifyContent: "center", gap: 8 },
+  deleteButton: { minHeight: 52, borderRadius: 18, backgroundColor: "#dc2626", flexDirection: "row-reverse", alignItems: "center", justifyContent: "center", gap: 8 },
   saveText: { color: "#fff", fontWeight: "900", fontSize: 15 },
 });
