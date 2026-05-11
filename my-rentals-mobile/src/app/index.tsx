@@ -28,6 +28,27 @@ type DashboardPayload = {
   recent_due_payments?: Array<any>;
 };
 
+const EMPTY_DASHBOARD: DashboardPayload = {
+  summary: {
+    properties_count: 0,
+    units_count: 0,
+    rented_units_count: 0,
+    vacant_units_count: 0,
+    available_units_count: 0,
+    occupancy_rate: 0,
+    active_contracts_count: 0,
+    tenants_count: 0,
+    paid_income: 0,
+    due_income: 0,
+    overdue_income: 0,
+    expenses: 0,
+    net_income: 0,
+    open_followups_count: 0,
+    critical_alerts_count: 0,
+  },
+  recent_due_payments: [],
+};
+
 function numberValue(value: unknown) {
   const n = Number(value ?? 0);
   return Number.isFinite(n) ? n : 0;
@@ -60,17 +81,18 @@ export default function StatisticsScreen() {
   const [data, setData] = useState<DashboardPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState("");
+  const [warning, setWarning] = useState("");
 
   async function load(refresh = false) {
     try {
       if (refresh) setRefreshing(true);
       else setLoading(true);
-      setError("");
+      setWarning("");
       const result = await apiGetScoped("/dashboard", "/my/dashboard");
       setData((result?.data ?? result) as DashboardPayload);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "تعذر تحميل الإحصائيات");
+      setData(EMPTY_DASHBOARD);
+      setWarning(e instanceof Error ? e.message : "تعذر تحميل الإحصائيات من الخادم، تم عرض قيم مؤقتة.");
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -105,15 +127,15 @@ export default function StatisticsScreen() {
           </View>
         ) : null}
 
-        {error ? (
-          <View style={styles.errorCard}>
-            <Text style={styles.errorTitle}>تعذر التحميل</Text>
-            <Text style={styles.errorText}>{error}</Text>
-            <TouchableOpacity style={styles.retryButton} onPress={() => load(false)}><Text style={styles.retryText}>إعادة المحاولة</Text></TouchableOpacity>
+        {warning && !loading ? (
+          <View style={styles.warningBanner}>
+            <Text style={styles.warningTitle}>تنبيه مؤقت</Text>
+            <Text style={styles.warningText}>تعذر تحميل البيانات الحية من الخادم، وتم عرض قيم مؤقتة بدل تعطيل الشاشة.</Text>
+            <TouchableOpacity style={styles.warningButton} onPress={() => load(false)}><Text style={styles.warningButtonText}>إعادة التحميل</Text></TouchableOpacity>
           </View>
         ) : null}
 
-        {!loading && !error ? (
+        {!loading ? (
           <>
             <View style={styles.grid}>
               <StatCard title="العقارات" value={count(s.properties_count)} subtitle={isAdmin ? "عقارات حساب المدير فقط في عقاراتي" : "عقاراتك الخاصة"} tone="dark" />
@@ -160,11 +182,11 @@ const styles = StyleSheet.create({
   heroSubtitle: { color: "#CBD5E1", marginTop: 8, fontWeight: "800", textAlign: "right", lineHeight: 22 },
   stateCard: { backgroundColor: "#fff", borderRadius: 22, padding: 18, alignItems: "center" },
   stateText: { color: "#64748B", fontWeight: "800", marginTop: 8 },
-  errorCard: { backgroundColor: "#FEE2E2", borderRadius: 20, padding: 14 },
-  errorTitle: { color: "#991B1B", fontWeight: "900", textAlign: "right", fontSize: 16 },
-  errorText: { color: "#991B1B", marginTop: 6, textAlign: "right" },
-  retryButton: { backgroundColor: "#991B1B", borderRadius: 14, padding: 12, alignItems: "center", marginTop: 10 },
-  retryText: { color: "#fff", fontWeight: "900" },
+  warningBanner: { backgroundColor: "#FFFBEB", borderRadius: 20, padding: 14, marginBottom: 12, borderWidth: 1, borderColor: "#FED7AA" },
+  warningTitle: { color: "#92400E", fontWeight: "900", textAlign: "right", fontSize: 16 },
+  warningText: { color: "#92400E", marginTop: 6, textAlign: "right", lineHeight: 20 },
+  warningButton: { backgroundColor: "#92400E", borderRadius: 14, padding: 12, alignItems: "center", marginTop: 10 },
+  warningButtonText: { color: "#fff", fontWeight: "900" },
   grid: { flexDirection: "row-reverse", flexWrap: "wrap", gap: 10 },
   statCard: { width: "48.5%", backgroundColor: "#fff", borderRadius: 22, padding: 14, minHeight: 118, borderWidth: 1, borderColor: "#ECEFF3", justifyContent: "center" },
   successCard: { backgroundColor: "#ECFDF5", borderColor: "#BBF7D0" },
