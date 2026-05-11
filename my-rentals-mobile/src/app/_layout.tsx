@@ -94,6 +94,7 @@ function AppTabs() {
       <Tabs.Screen name="create-contract" options={{ ...hidden, title: "عقد جديد" }} />
       <Tabs.Screen name="upload-contract" options={{ ...hidden, title: "رفع عقد" }} />
       <Tabs.Screen name="upload-property-deed" options={{ ...hidden, title: "رفع صك" }} />
+      <Tabs.Screen name="property-form" options={{ ...hidden, title: "بيانات العقار" }} />
       <Tabs.Screen name="contract-renewals" options={{ ...hidden, title: "تجديد العقود" }} />
       <Tabs.Screen name="alerts" options={{ ...hidden, title: "التنبيهات" }} />
       <Tabs.Screen name="smart-alerts" options={{ ...hidden, title: "تنبيهات ذكية" }} />
