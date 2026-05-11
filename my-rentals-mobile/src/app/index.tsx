@@ -1,33 +1,16 @@
-import { router } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
-import {
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { apiGetScoped } from '../lib/api';
-import { useAuth } from '../context/AuthContext';
-import {
-  colors,
-  spacing,
-  radii,
-  shadows,
-  typography,
-  moneyCompact,
-  formatDate,
-} from '../constants/theme';
-import { Skeleton, SkeletonCard } from '../components/ui/shared';
+import { router } from "expo-router";
+import { useEffect, useState } from "react";
+import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { useAuth } from "../context/AuthContext";
+import { apiGetScoped } from "../lib/api";
 
-// ─── Types ───────────────────────────────────────────────
 type Summary = {
   properties_count?: number;
   units_count?: number;
   rented_units_count?: number;
   vacant_units_count?: number;
+  available_units_count?: number;
   occupancy_rate?: number;
   active_contracts_count?: number;
   tenants_count?: number;
@@ -40,549 +23,160 @@ type Summary = {
   critical_alerts_count?: number;
 };
 
-type DashData = {
+type DashboardPayload = {
   summary?: Summary;
-  recent_due_payments?: any[];
+  recent_due_payments?: Array<any>;
 };
 
-// ─── Helpers ─────────────────────────────────────────────
-function go(path: string) {
-  router.push(path as any);
+function numberValue(value: unknown) {
+  const n = Number(value ?? 0);
+  return Number.isFinite(n) ? n : 0;
 }
 
-function getOccupancyColor(rate: number): string {
-  if (rate >= 75) return colors.success;
-  if (rate >= 50) return colors.warning;
-  return colors.danger;
+function count(value: unknown) {
+  return Math.round(numberValue(value)).toLocaleString("ar-SA");
 }
 
-function getStatusInfo(status?: string | null) {
-  switch (status) {
-    case 'overdue':
-      return { color: colors.overdue, bg: colors.overdueBg, label: 'متأخرة' };
-    case 'paid':
-      return { color: colors.paid, bg: colors.paidBg, label: 'مدفوعة' };
-    case 'due':
-    default:
-      return { color: colors.due, bg: colors.dueBg, label: 'مستحقة' };
-  }
+function money(value: unknown) {
+  return `${Math.round(numberValue(value)).toLocaleString("ar-SA")} ريال`;
 }
 
-// ─── Sub-components ──────────────────────────────────────
-
-function StatBox({
-  label,
-  value,
-  color,
-  onPress,
-}: {
-  label: string;
-  value: string | number;
-  color?: string;
-  onPress?: () => void;
-}) {
-  const content = (
-    <View style={styles.statBox}>
-      <Text style={[styles.statValue, color ? { color } : null]} numberOfLines={1}>
-        {value}
-      </Text>
-      <Text style={styles.statLabel} numberOfLines={1}>
-        {label}
-      </Text>
-    </View>
-  );
-  return onPress ? (
-    <TouchableOpacity
-      onPress={onPress}
-      activeOpacity={0.7}
-      style={{ flex: 1 }}
-      accessibilityRole="button"
-      accessibilityLabel={`${label}: ${value}`}
-    >
-      {content}
-    </TouchableOpacity>
-  ) : (
-    <View style={{ flex: 1 }}>{content}</View>
-  );
+function pct(value: unknown) {
+  return `${Math.round(numberValue(value)).toLocaleString("ar-SA")}%`;
 }
 
-function QuickAction({ icon, label, path }: { icon: string; label: string; path: string }) {
+function StatCard({ title, value, subtitle, tone = "default" }: { title: string; value: string; subtitle?: string; tone?: "default" | "success" | "warning" | "danger" | "dark" }) {
   return (
-    <TouchableOpacity
-      style={styles.quickAction}
-      onPress={() => go(path)}
-      activeOpacity={0.7}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-    >
-      <Text style={styles.quickIcon}>{icon}</Text>
-      <Text style={styles.quickLabel}>{label}</Text>
-    </TouchableOpacity>
-  );
-}
-
-function PaymentRow({ p }: { p: any }) {
-  const status = getStatusInfo(p.status);
-
-  return (
-    <TouchableOpacity
-      style={styles.paymentRow}
-      onPress={() => go(`/contract/${p.contract_id ?? p.id}`)}
-      activeOpacity={0.7}
-      accessibilityRole="button"
-    >
-      <View style={styles.paymentLeft}>
-        <Text style={styles.paymentTenant} numberOfLines={1}>
-          {p.tenant_name ?? p.contract?.tenant?.name ?? 'مستأجر'}
-        </Text>
-        <Text style={styles.paymentProp} numberOfLines={1}>
-          {p.property_name ?? p.contract?.unit?.property?.name ?? '-'}
-          {(p.unit_number ?? p.contract?.unit?.unit_number)
-            ? ` — ${p.unit_number ?? p.contract?.unit?.unit_number}`
-            : ''}
-        </Text>
-      </View>
-      <View style={styles.paymentRight}>
-        <Text style={[styles.paymentAmount, { color: status.color }]}>
-          {moneyCompact(p.amount)}
-        </Text>
-        <View style={[styles.statusPill, { backgroundColor: status.bg }]}>
-          <Text style={[styles.statusPillText, { color: status.color }]}>{status.label}</Text>
-        </View>
-      </View>
-    </TouchableOpacity>
-  );
-}
-
-// ─── Skeleton Loader for Dashboard ───────────────────────
-
-function DashboardSkeleton() {
-  return (
-    <View style={{ paddingHorizontal: spacing.lg, paddingTop: spacing.sm, gap: spacing.md }}>
-      {/* Header skeleton */}
-      <View style={styles.header}>
-        <View style={{ gap: 6 }}>
-          <Skeleton width={160} height={22} />
-          <Skeleton width={100} height={13} />
-        </View>
-      </View>
-
-      {/* Occupancy card skeleton */}
-      <View style={[styles.card, { padding: spacing.lg }]}>
-        <View style={styles.occupancyRow}>
-          <Skeleton width={90} height={90} radius={45} />
-          <View style={{ flex: 1, gap: 8 }}>
-            <Skeleton width="80%" height={20} />
-            <Skeleton width="60%" height={14} />
-            <Skeleton width="40%" height={14} />
-          </View>
-        </View>
-      </View>
-
-      {/* Section title skeleton */}
-      <Skeleton width={100} height={16} style={{ marginTop: spacing.md }} />
-      <View style={{ flexDirection: 'row', gap: 10 }}>
-        <View style={{ flex: 1 }}>
-          <SkeletonCard />
-        </View>
-        <View style={{ flex: 1 }}>
-          <SkeletonCard />
-        </View>
-      </View>
-      <View style={{ flexDirection: 'row', gap: 10 }}>
-        <View style={{ flex: 1 }}>
-          <SkeletonCard />
-        </View>
-        <View style={{ flex: 1 }}>
-          <SkeletonCard />
-        </View>
-      </View>
+    <View style={[styles.statCard, tone === "success" ? styles.successCard : null, tone === "warning" ? styles.warningCard : null, tone === "danger" ? styles.dangerCard : null, tone === "dark" ? styles.darkCard : null]}>
+      <Text style={[styles.statValue, tone === "dark" ? styles.darkText : null]} numberOfLines={1}>{value}</Text>
+      <Text style={[styles.statTitle, tone === "dark" ? styles.darkSubText : null]}>{title}</Text>
+      {subtitle ? <Text style={[styles.statSubtitle, tone === "dark" ? styles.darkSubText : null]}>{subtitle}</Text> : null}
     </View>
   );
 }
 
-// ─── Main Screen ─────────────────────────────────────────
-
-export default function DashboardScreen() {
-  const { user, loggedIn, isAdmin } = useAuth();
-  const [data, setData] = useState<DashData | null>(null);
+export default function StatisticsScreen() {
+  const { user, isAdmin } = useAuth();
+  const [data, setData] = useState<DashboardPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [hasError, setHasError] = useState(false);
+  const [error, setError] = useState("");
 
-  const load = useCallback(async (isRefresh = false) => {
+  async function load(refresh = false) {
     try {
-      if (isRefresh) setRefreshing(true);
+      if (refresh) setRefreshing(true);
       else setLoading(true);
-      setHasError(false);
-
-      const result = await apiGetScoped('/dashboard', '/my/dashboard');
-      setData(result?.data ?? result);
-    } catch {
-      setHasError(true);
+      setError("");
+      const result = await apiGetScoped("/dashboard", "/my/dashboard");
+      setData((result?.data ?? result) as DashboardPayload);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "تعذر تحميل الإحصائيات");
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
-
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  const s = data?.summary;
-  const occupancy = Math.round(s?.occupancy_rate ?? 0);
-  const occupancyColor = getOccupancyColor(occupancy);
-  const firstName = user?.name?.split(' ')[0]?.trim() || 'مدير';
-  const greeting = loggedIn ? `اهلا، ${firstName} 👋` : 'إيجاراتي 🏢';
-  const subGreeting = loggedIn
-    ? isAdmin
-      ? 'لوحة المدير'
-      : 'لوحة المالك'
-    : 'سجّل دخولك لعرض كامل البيانات';
-
-  // Show skeleton on first load
-  if (loading && !data) {
-    return (
-      <SafeAreaView style={styles.safe} edges={['top']}>
-        <DashboardSkeleton />
-      </SafeAreaView>
-    );
   }
 
+  useEffect(() => {
+    load(false);
+  }, []);
+
+  const s = data?.summary || {};
+  const vacant = s.vacant_units_count ?? s.available_units_count ?? 0;
+  const firstName = user?.name?.split(" ")?.[0] || (isAdmin ? "المدير" : "المالك");
+
   return (
-    <SafeAreaView style={styles.safe} edges={['top']}>
+    <SafeAreaView style={styles.safe} edges={["top"]}>
       <ScrollView
-        contentContainerStyle={styles.scroll}
+        contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={() => load(true)}
-            tintColor={colors.primary}
-            colors={[colors.primary]}
-          />
-        }
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor="#0f766e" />}
       >
-        {/* ─── Header ─── */}
-        <View style={styles.header}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.greeting} numberOfLines={1}>
-              {greeting}
-            </Text>
-            <Text style={styles.headerSub} numberOfLines={1}>
-              {subGreeting}
-            </Text>
-          </View>
-          <View style={styles.headerRight}>
-            {(s?.critical_alerts_count ?? 0) > 0 && (
-              <TouchableOpacity
-                style={styles.alertBtn}
-                onPress={() => go('/alerts')}
-                activeOpacity={0.75}
-                accessibilityRole="button"
-                accessibilityLabel={`${s!.critical_alerts_count} تنبيه`}
-              >
-                <Text style={styles.alertBtnText}>🔔 {s!.critical_alerts_count}</Text>
-              </TouchableOpacity>
-            )}
-            {!loggedIn && (
-              <TouchableOpacity
-                style={styles.loginBtn}
-                onPress={() => go('/login')}
-                activeOpacity={0.85}
-                accessibilityRole="button"
-                accessibilityLabel="تسجيل الدخول"
-              >
-                <Text style={styles.loginBtnText}>دخول</Text>
-              </TouchableOpacity>
-            )}
-          </View>
+        <View style={styles.hero}>
+          <View style={styles.heroBadge}><Text style={styles.heroBadgeText}>{isAdmin ? "لوحة مدير" : "لوحة مالك"}</Text></View>
+          <Text style={styles.heroTitle}>الإحصائيات</Text>
+          <Text style={styles.heroSubtitle}>أهلًا {firstName}، هذه نظرة عامة بحسب صلاحيات الحساب الحالي.</Text>
         </View>
 
-        {/* ─── Error banner (non-blocking) ─── */}
-        {hasError && (
-          <View style={styles.errorBanner}>
-            <Text style={styles.errorText}>⚠️ تعذر تحميل بعض البيانات. اسحب للتحديث.</Text>
+        {loading ? (
+          <View style={styles.stateCard}>
+            <ActivityIndicator />
+            <Text style={styles.stateText}>جاري تحميل الإحصائيات...</Text>
           </View>
-        )}
+        ) : null}
 
-        {/* ─── Guest Banner ─── */}
-        {!loggedIn && (
-          <TouchableOpacity
-            style={styles.guestBanner}
-            onPress={() => go('/login')}
-            activeOpacity={0.85}
-            accessibilityRole="button"
-            accessibilityLabel="تسجيل الدخول للوصول الكامل"
-          >
-            <Text style={styles.guestIcon}>🔐</Text>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.guestTitle}>سجّل دخولك للوصول الكامل</Text>
-              <Text style={styles.guestSub}>رؤية جميع البيانات والتقارير المالية</Text>
-            </View>
-            <Text style={styles.guestArrow}>←</Text>
-          </TouchableOpacity>
-        )}
-
-        {/* ─── Occupancy Ring ─── */}
-        {s && (
-          <View style={styles.card}>
-            <View style={styles.occupancyRow}>
-              <View style={styles.ringWrap}>
-                <View style={[styles.ring, { borderColor: occupancyColor }]}>
-                  <Text style={styles.ringPct}>{occupancy}%</Text>
-                  <Text style={styles.ringLbl}>إشغال</Text>
-                </View>
-              </View>
-              <View style={styles.occupancyStats}>
-                <View style={styles.occStat}>
-                  <Text style={[styles.occNum, { color: colors.primary }]}>
-                    {s.rented_units_count ?? 0}
-                  </Text>
-                  <Text style={styles.occLbl}>مؤجرة</Text>
-                </View>
-                <View style={styles.occDivider} />
-                <View style={styles.occStat}>
-                  <Text style={[styles.occNum, { color: colors.warning }]}>
-                    {s.vacant_units_count ?? 0}
-                  </Text>
-                  <Text style={styles.occLbl}>شاغرة</Text>
-                </View>
-                <View style={styles.occDivider} />
-                <View style={styles.occStat}>
-                  <Text style={styles.occNum}>{s.units_count ?? 0}</Text>
-                  <Text style={styles.occLbl}>الإجمالي</Text>
-                </View>
-              </View>
-            </View>
+        {error ? (
+          <View style={styles.errorCard}>
+            <Text style={styles.errorTitle}>تعذر التحميل</Text>
+            <Text style={styles.errorText}>{error}</Text>
+            <TouchableOpacity style={styles.retryButton} onPress={() => load(false)}><Text style={styles.retryText}>إعادة المحاولة</Text></TouchableOpacity>
           </View>
-        )}
+        ) : null}
 
-        {/* ─── Financial Summary ─── */}
-        {s && loggedIn && (
+        {!loading && !error ? (
           <>
+            <View style={styles.grid}>
+              <StatCard title="العقارات" value={count(s.properties_count)} subtitle={isAdmin ? "عقارات حساب المدير فقط في عقاراتي" : "عقاراتك الخاصة"} tone="dark" />
+              <StatCard title="الوحدات" value={count(s.units_count)} subtitle="إجمالي الوحدات" />
+              <StatCard title="نسبة الإشغال" value={pct(s.occupancy_rate)} subtitle="مؤجر / إجمالي" tone="success" />
+              <StatCard title="وحدات مؤجرة" value={count(s.rented_units_count)} subtitle="نشطة حاليًا" tone="success" />
+              <StatCard title="وحدات شاغرة" value={count(vacant)} subtitle="متاحة للتأجير" tone="warning" />
+              <StatCard title="عقود نشطة" value={count(s.active_contracts_count)} subtitle="العقود الحالية" />
+            </View>
+
             <Text style={styles.sectionTitle}>الملخص المالي</Text>
-            <View style={styles.statsRow}>
-              <StatBox label="محصّل" value={moneyCompact(s.paid_income)} color={colors.success} />
-              <StatBox label="مستحق" value={moneyCompact(s.due_income)} color={colors.warning} />
+            <View style={styles.grid}>
+              <StatCard title="المحصل" value={money(s.paid_income)} tone="success" />
+              <StatCard title="المستحق" value={money(s.due_income)} tone="warning" />
+              <StatCard title="المتأخر" value={money(s.overdue_income)} tone="danger" />
+              <StatCard title="المصروفات" value={money(s.expenses)} />
+              <StatCard title="صافي الدخل" value={money(s.net_income)} tone="dark" />
+              <StatCard title="المستأجرون" value={count(s.tenants_count)} />
             </View>
-            <View style={styles.statsRow}>
-              <StatBox label="متأخر" value={moneyCompact(s.overdue_income)} color={colors.danger} />
-              <StatBox label="صافي الدخل" value={moneyCompact(s.net_income)} color={colors.primary} />
+
+            <Text style={styles.sectionTitle}>تنبيهات ومتابعات</Text>
+            <View style={styles.grid}>
+              <StatCard title="تنبيهات حرجة" value={count(s.critical_alerts_count)} tone="danger" />
+              <StatCard title="متابعات مفتوحة" value={count(s.open_followups_count)} tone="warning" />
             </View>
+
+            <TouchableOpacity style={styles.mainAction} onPress={() => router.push("/properties" as never)}>
+              <Text style={styles.mainActionText}>فتح عقاراتي</Text>
+            </TouchableOpacity>
           </>
-        )}
-
-        {/* ─── Overview Stats ─── */}
-        {s && (
-          <>
-            <Text style={styles.sectionTitle}>نظرة عامة</Text>
-            <View style={styles.statsRow}>
-              <StatBox
-                label="العقارات"
-                value={s.properties_count ?? 0}
-                onPress={() => go('/properties')}
-              />
-              <StatBox
-                label="العقود النشطة"
-                value={s.active_contracts_count ?? 0}
-                onPress={() => go('/contracts')}
-              />
-            </View>
-            <View style={styles.statsRow}>
-              <StatBox
-                label="المستأجرين"
-                value={s.tenants_count ?? 0}
-                onPress={() => go('/tenants')}
-              />
-              <StatBox
-                label="المتابعات"
-                value={s.open_followups_count ?? 0}
-                onPress={() => go('/follow-ups')}
-              />
-            </View>
-          </>
-        )}
-
-        {/* ─── Recent Due Payments ─── */}
-        {(data?.recent_due_payments?.length ?? 0) > 0 && (
-          <>
-            <View style={styles.sectionRow}>
-              <Text style={styles.sectionTitle}>دفعات مستحقة</Text>
-              <TouchableOpacity onPress={() => go('/payments')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                <Text style={styles.sectionLink}>عرض الكل</Text>
-              </TouchableOpacity>
-            </View>
-            <View style={styles.card}>
-              {data!.recent_due_payments!.slice(0, 5).map((p, i, arr) => (
-                <View key={p.id ?? i}>
-                  <PaymentRow p={p} />
-                  {i < arr.length - 1 && i < 4 && <View style={styles.divider} />}
-                </View>
-              ))}
-            </View>
-          </>
-        )}
-
-        {/* ─── Quick Actions ─── */}
-        <Text style={styles.sectionTitle}>إجراءات سريعة</Text>
-        <View style={styles.quickRow}>
-          <QuickAction icon="🏢" label="العقارات" path="/properties" />
-          <QuickAction icon="🚪" label="الوحدات" path="/units" />
-          <QuickAction icon="💰" label="الدفعات" path="/payments" />
-          <QuickAction icon="🔔" label="التنبيهات" path="/alerts" />
-        </View>
-
-        {!loggedIn && (
-          <View style={styles.quickRow}>
-            <QuickAction icon="👤" label="تسجيل الدخول" path="/login" />
-            <View style={{ flex: 3 }} />
-          </View>
-        )}
-
-        <View style={{ height: 40 }} />
+        ) : null}
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-// ─── Styles ──────────────────────────────────────────────
-
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.background },
-  scroll: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm },
-
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: spacing.lg,
-    gap: spacing.md,
-  },
-  greeting: { ...typography.h2, color: colors.text, textAlign: 'right' },
-  headerSub: { ...typography.caption, color: colors.textSecondary, textAlign: 'right', marginTop: 2 },
-  headerRight: { alignItems: 'flex-end', gap: 6 },
-  alertBtn: {
-    backgroundColor: colors.dangerBg,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: radii.full,
-  },
-  alertBtnText: { ...typography.captionBold, color: colors.danger },
-  loginBtn: {
-    backgroundColor: colors.primary,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: radii.full,
-  },
-  loginBtnText: { ...typography.captionBold, color: colors.textInverse },
-
-  errorBanner: {
-    backgroundColor: colors.warningBg,
-    borderRadius: radii.md,
-    padding: spacing.md,
-    marginBottom: spacing.md,
-    borderWidth: 1,
-    borderColor: colors.warning,
-  },
-  errorText: { ...typography.caption, color: colors.warningDark, textAlign: 'right' },
-
-  guestBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    backgroundColor: colors.primary,
-    borderRadius: radii.lg,
-    padding: spacing.lg,
-    marginBottom: spacing.lg,
-    ...shadows.md,
-  },
-  guestIcon: { fontSize: 28 },
-  guestTitle: { ...typography.bodyBold, color: colors.textInverse, textAlign: 'right' },
-  guestSub: { ...typography.caption, color: 'rgba(255,255,255,0.85)', textAlign: 'right', marginTop: 2 },
-  guestArrow: { fontSize: 20, color: 'rgba(255,255,255,0.7)', fontWeight: '600' },
-
-  card: {
-    backgroundColor: colors.surface,
-    borderRadius: radii.lg,
-    borderWidth: 1,
-    borderColor: colors.borderLight,
-    padding: spacing.lg,
-    marginBottom: spacing.md,
-    ...shadows.sm,
-  },
-
-  occupancyRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xl },
-  ringWrap: { alignItems: 'center' },
-  ring: {
-    width: 90,
-    height: 90,
-    borderRadius: 45,
-    borderWidth: 6,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  ringPct: { fontSize: 22, fontWeight: '800', color: colors.text },
-  ringLbl: { ...typography.small, color: colors.textSecondary, marginTop: -2 },
-  occupancyStats: { flex: 1, flexDirection: 'row', justifyContent: 'space-around' },
-  occStat: { alignItems: 'center' },
-  occNum: { ...typography.numberSmall, color: colors.text },
-  occLbl: { ...typography.small, color: colors.textSecondary, marginTop: 2 },
-  occDivider: { width: 1, height: 32, backgroundColor: colors.borderLight },
-
-  sectionRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 },
-  sectionTitle: {
-    ...typography.h4,
-    color: colors.text,
-    textAlign: 'right',
-    marginBottom: 10,
-    marginTop: spacing.lg,
-  },
-  sectionLink: { ...typography.captionBold, color: colors.primary, marginBottom: 10, marginTop: spacing.lg },
-
-  statsRow: { flexDirection: 'row', gap: 10, marginBottom: 10 },
-  statBox: {
-    flex: 1,
-    backgroundColor: colors.surface,
-    borderRadius: radii.md,
-    padding: spacing.md + 2,
-    borderWidth: 1,
-    borderColor: colors.borderLight,
-    alignItems: 'flex-end',
-    ...shadows.sm,
-  },
-  statValue: { ...typography.h4, color: colors.text, marginBottom: 4 },
-  statLabel: { ...typography.caption, color: colors.textSecondary },
-
-  paymentRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 10,
-    gap: spacing.md,
-  },
-  paymentLeft: { flex: 1 },
-  paymentRight: { alignItems: 'flex-end', gap: 4 },
-  paymentTenant: { ...typography.captionBold, color: colors.text, textAlign: 'right' },
-  paymentProp: { ...typography.small, color: colors.textSecondary, textAlign: 'right', marginTop: 2 },
-  paymentAmount: { fontSize: 14, fontWeight: '700' },
-  statusPill: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: radii.full },
-  statusPillText: { fontSize: 11, fontWeight: '600' },
-
-  divider: { height: 1, backgroundColor: colors.surfaceMuted },
-
-  quickRow: { flexDirection: 'row', gap: 10, marginBottom: 10 },
-  quickAction: {
-    flex: 1,
-    backgroundColor: colors.surface,
-    borderRadius: radii.md,
-    paddingVertical: spacing.lg,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: colors.borderLight,
-    ...shadows.sm,
-  },
-  quickIcon: { fontSize: 26, marginBottom: 6 },
-  quickLabel: { ...typography.small, color: colors.text, fontWeight: '600' },
+  safe: { flex: 1, backgroundColor: "#F7F6F4" },
+  content: { padding: 14, paddingBottom: 42 },
+  hero: { backgroundColor: "#111827", borderRadius: 28, padding: 18, marginBottom: 14, alignItems: "flex-end" },
+  heroBadge: { backgroundColor: "#D1FAE5", borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6, marginBottom: 12 },
+  heroBadgeText: { color: "#064E3B", fontWeight: "900" },
+  heroTitle: { color: "#fff", fontSize: 30, fontWeight: "900", textAlign: "right" },
+  heroSubtitle: { color: "#CBD5E1", marginTop: 8, fontWeight: "800", textAlign: "right", lineHeight: 22 },
+  stateCard: { backgroundColor: "#fff", borderRadius: 22, padding: 18, alignItems: "center" },
+  stateText: { color: "#64748B", fontWeight: "800", marginTop: 8 },
+  errorCard: { backgroundColor: "#FEE2E2", borderRadius: 20, padding: 14 },
+  errorTitle: { color: "#991B1B", fontWeight: "900", textAlign: "right", fontSize: 16 },
+  errorText: { color: "#991B1B", marginTop: 6, textAlign: "right" },
+  retryButton: { backgroundColor: "#991B1B", borderRadius: 14, padding: 12, alignItems: "center", marginTop: 10 },
+  retryText: { color: "#fff", fontWeight: "900" },
+  grid: { flexDirection: "row-reverse", flexWrap: "wrap", gap: 10 },
+  statCard: { width: "48.5%", backgroundColor: "#fff", borderRadius: 22, padding: 14, minHeight: 118, borderWidth: 1, borderColor: "#ECEFF3", justifyContent: "center" },
+  successCard: { backgroundColor: "#ECFDF5", borderColor: "#BBF7D0" },
+  warningCard: { backgroundColor: "#FFFBEB", borderColor: "#FED7AA" },
+  dangerCard: { backgroundColor: "#FEF2F2", borderColor: "#FECACA" },
+  darkCard: { backgroundColor: "#0F172A", borderColor: "#0F172A" },
+  statValue: { color: "#111827", fontSize: 22, fontWeight: "900", textAlign: "right" },
+  statTitle: { color: "#334155", fontSize: 14, fontWeight: "900", textAlign: "right", marginTop: 8 },
+  statSubtitle: { color: "#64748B", fontSize: 11, fontWeight: "800", textAlign: "right", marginTop: 5, lineHeight: 17 },
+  darkText: { color: "#fff" },
+  darkSubText: { color: "#CBD5E1" },
+  sectionTitle: { color: "#111827", fontSize: 20, fontWeight: "900", textAlign: "right", marginTop: 20, marginBottom: 10 },
+  mainAction: { backgroundColor: "#0F766E", borderRadius: 20, padding: 16, alignItems: "center", marginTop: 18 },
+  mainActionText: { color: "#fff", fontSize: 16, fontWeight: "900" },
 });
