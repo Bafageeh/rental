@@ -6,49 +6,140 @@ on:
       - main
   workflow_dispatch:
 
+concurrency:
+  group: rental-production-deploy
+  cancel-in-progress: true
+
 jobs:
   deploy:
     name: Deploy API and clear Laravel cache
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
-      - name: Deploy over SSH
-        uses: appleboy/ssh-action@v1.2.0
-        with:
-          host: ${{ secrets.RENTAL_SSH_HOST || secrets.SSH_HOST || 'rental.pm.sa' }}
-          username: ${{ secrets.RENTAL_SSH_USER || secrets.SSH_USER || secrets.DEPLOY_USER || 'root' }}
-          key: ${{ secrets.RENTAL_SSH_KEY || secrets.SSH_PRIVATE_KEY || secrets.DEPLOY_KEY || secrets.SSH_KEY }}
-          password: ${{ secrets.RENTAL_SSH_PASSWORD || secrets.SSH_PASSWORD || secrets.DEPLOY_PASSWORD }}
-          port: ${{ secrets.RENTAL_SSH_PORT || secrets.SSH_PORT || '22' }}
-          script: |
-            set -e
+      - name: Prepare SSH key
+        env:
+          SSH_HOST: ${{ secrets.RENTAL_SSH_HOST || secrets.SSH_HOST || secrets.AMAL_SSH_HOST || 'rental.pm.sa' }}
+          SSH_PRIVATE_KEY: ${{ secrets.RENTAL_SSH_KEY || secrets.SSH_PRIVATE_KEY || secrets.DEPLOY_KEY || secrets.SSH_KEY || secrets.AMAL_SSH_PRIVATE_KEY }}
+          SSH_PRIVATE_KEY_B64: ${{ secrets.RENTAL_SSH_KEY_B64 || secrets.SSH_PRIVATE_KEY_B64 || secrets.AMAL_SSH_PRIVATE_KEY_B64 }}
+          SSH_PORT: ${{ secrets.RENTAL_SSH_PORT || secrets.SSH_PORT || secrets.AMAL_SSH_PORT || '22' }}
+        run: |
+          set -euo pipefail
+          SSH_PORT="${SSH_PORT:-22}"
+          KEY_FILE="$HOME/.ssh/rental_github_actions"
+          if [ -z "${SSH_HOST:-}" ]; then
+            echo "::error::Missing SSH host."
+            exit 1
+          fi
+          mkdir -p "$HOME/.ssh"
+          normalize_key() {
+            python3 -c 'import pathlib, sys; p=pathlib.Path(sys.argv[1]); text=p.read_text(); text=text.replace("\\\\r", "\r").replace("\\\\n", "\n"); text=text.replace("\r\n", "\n").replace("\r", "\n"); p.write_text(text if text.endswith("\n") else text + "\n")' "$1"
+          }
+          KEY_OK=0
+          if [ -n "${SSH_PRIVATE_KEY:-}" ]; then
+            printf '%s' "$SSH_PRIVATE_KEY" > "$KEY_FILE"
+            normalize_key "$KEY_FILE"
+            chmod 600 "$KEY_FILE"
+            ssh-keygen -y -f "$KEY_FILE" >/dev/null 2>&1 && KEY_OK=1 || true
+          fi
+          if [ "$KEY_OK" != "1" ] && [ -n "${SSH_PRIVATE_KEY_B64:-}" ]; then
+            printf '%s' "$SSH_PRIVATE_KEY_B64" | tr -d '\r\n ' | base64 -d > "$KEY_FILE"
+            normalize_key "$KEY_FILE"
+            chmod 600 "$KEY_FILE"
+            ssh-keygen -y -f "$KEY_FILE" >/dev/null 2>&1 && KEY_OK=1 || true
+          fi
+          if [ "$KEY_OK" != "1" ]; then
+            echo "::error::No usable SSH private key found. Checked RENTAL_SSH_KEY, SSH_PRIVATE_KEY, DEPLOY_KEY, SSH_KEY, AMAL_SSH_PRIVATE_KEY, and B64 variants."
+            exit 1
+          fi
+          ssh-keyscan -p "$SSH_PORT" -H "$SSH_HOST" >> "$HOME/.ssh/known_hosts"
 
-            PROJECT_PATH="${{ secrets.RENTAL_PROJECT_PATH }}"
-            if [ -z "$PROJECT_PATH" ]; then
-              if [ -d /home/pmsa/apps/rental ]; then
-                PROJECT_PATH=/home/pmsa/apps/rental
-              elif [ -d /mnt/home-storage/home/pmsa/apps/rental ]; then
-                PROJECT_PATH=/mnt/home-storage/home/pmsa/apps/rental
-              elif [ -d /home/pmsa/apps/my-rentals-api ]; then
-                PROJECT_PATH=/home/pmsa/apps
-              elif [ -d /mnt/home-storage/home/pmsa/apps/my-rentals-api ]; then
-                PROJECT_PATH=/mnt/home-storage/home/pmsa/apps
-              else
-                PROJECT_PATH=/home/pmsa/apps/rental
-              fi
+      - name: Detect server user and project path
+        env:
+          SSH_HOST: ${{ secrets.RENTAL_SSH_HOST || secrets.SSH_HOST || secrets.AMAL_SSH_HOST || 'rental.pm.sa' }}
+          SSH_USER: ${{ secrets.RENTAL_SSH_USER || secrets.SSH_USER || secrets.DEPLOY_USER || secrets.AMAL_SSH_USER }}
+          SSH_PORT: ${{ secrets.RENTAL_SSH_PORT || secrets.SSH_PORT || secrets.AMAL_SSH_PORT || '22' }}
+          PROJECT_PATH_SECRET: ${{ secrets.RENTAL_PROJECT_PATH }}
+        run: |
+          set -euo pipefail
+          SSH_PORT="${SSH_PORT:-22}"
+          KEY_FILE="$HOME/.ssh/rental_github_actions"
+          SSH_OPTS="-o BatchMode=yes -o IdentitiesOnly=yes -o ConnectTimeout=10 -i $KEY_FILE -p $SSH_PORT"
+          PROJECT_PATH="${PROJECT_PATH_SECRET:-}"
+          DEPLOY_USER=""
+          CANDIDATES="${SSH_USER:-} root pmsa"
+          for candidate in $CANDIDATES; do
+            [ -z "$candidate" ] && continue
+            if ssh $SSH_OPTS "$candidate@$SSH_HOST" "echo connected" >/dev/null 2>&1; then
+              DEPLOY_USER="$candidate"
+              break
             fi
+          done
+          if [ -z "$DEPLOY_USER" ]; then
+            echo "::error::SSH authentication failed for all candidate users."
+            exit 1
+          fi
+          if [ -z "$PROJECT_PATH" ]; then
+            PROJECT_PATH=$(ssh $SSH_OPTS "$DEPLOY_USER@$SSH_HOST" 'set -e
+              for path in \
+                /home/pmsa/apps/rental \
+                /mnt/home-storage/home/pmsa/apps/rental \
+                /home/pmsa/apps \
+                /mnt/home-storage/home/pmsa/apps
+              do
+                if [ -d "$path/.git" ] && [ -d "$path/my-rentals-api" ]; then echo "$path"; exit 0; fi
+              done
+              echo /home/pmsa/apps/rental
+            ')
+          fi
+          echo "DEPLOY_USER=$DEPLOY_USER" >> "$GITHUB_ENV"
+          echo "PROJECT_PATH=$PROJECT_PATH" >> "$GITHUB_ENV"
+          echo "Using SSH user: $DEPLOY_USER"
+          echo "Deploying to: $PROJECT_PATH"
 
-            echo "Using project path: $PROJECT_PATH"
-            cd "$PROJECT_PATH"
-            git config --global --add safe.directory "$PROJECT_PATH" || true
+      - name: Pull latest code and run Laravel commands
+        env:
+          SSH_HOST: ${{ secrets.RENTAL_SSH_HOST || secrets.SSH_HOST || secrets.AMAL_SSH_HOST || 'rental.pm.sa' }}
+          SSH_PORT: ${{ secrets.RENTAL_SSH_PORT || secrets.SSH_PORT || secrets.AMAL_SSH_PORT || '22' }}
+        run: |
+          set -euo pipefail
+          SSH_PORT="${SSH_PORT:-22}"
+          KEY_FILE="$HOME/.ssh/rental_github_actions"
+          SSH_OPTS="-o BatchMode=yes -o IdentitiesOnly=yes -o ConnectTimeout=10 -i $KEY_FILE -p $SSH_PORT"
+          ssh $SSH_OPTS "$DEPLOY_USER@$SSH_HOST" "set -e
+            cd '$PROJECT_PATH'
+            git config --global --add safe.directory '$PROJECT_PATH' || true
             git pull --ff-only origin main
-
-            cd "$PROJECT_PATH/my-rentals-api"
+            cd '$PROJECT_PATH/my-rentals-api'
             php artisan migrate --force
             php artisan optimize:clear
             php artisan route:clear
             php artisan config:clear
             php artisan cache:clear
-            php artisan route:list | grep -E "webhook-events|scheduled-messages|dashboard" || true
+            php artisan route:list | grep -E 'webhook-events|scheduled-messages|dashboard' || true
+          "
 
-            echo "Deployment finished successfully."
+      - name: Restart Expo Metro if mobile folder exists
+        env:
+          SSH_HOST: ${{ secrets.RENTAL_SSH_HOST || secrets.SSH_HOST || secrets.AMAL_SSH_HOST || 'rental.pm.sa' }}
+          SSH_PORT: ${{ secrets.RENTAL_SSH_PORT || secrets.SSH_PORT || secrets.AMAL_SSH_PORT || '22' }}
+        run: |
+          set -euo pipefail
+          SSH_PORT="${SSH_PORT:-22}"
+          KEY_FILE="$HOME/.ssh/rental_github_actions"
+          SSH_OPTS="-o BatchMode=yes -o IdentitiesOnly=yes -o ConnectTimeout=10 -i $KEY_FILE -p $SSH_PORT"
+          ssh $SSH_OPTS "$DEPLOY_USER@$SSH_HOST" "set -e
+            if [ -d '$PROJECT_PATH/my-rentals-mobile' ]; then
+              pkill -f 'expo|metro|node.*8081' || true
+              if command -v lsof >/dev/null 2>&1; then lsof -ti:8081 | xargs -r kill -9 || true; fi
+              cd '$PROJECT_PATH/my-rentals-mobile'
+              rm -rf .expo node_modules/.cache /home/pmsa/apps/.cache/metro /home/pmsa/apps/.cache/expo
+              mkdir -p /home/pmsa/apps/.cache /home/pmsa/apps/.tmp
+              nohup env BROWSER=none EXPO_NO_TELEMETRY=1 REACT_NATIVE_PACKAGER_HOSTNAME=my.pm.sa XDG_CACHE_HOME=/home/pmsa/apps/.cache TMPDIR=/home/pmsa/apps/.tmp TMP=/home/pmsa/apps/.tmp TEMP=/home/pmsa/apps/.tmp npx expo start --clear --go --host lan --port 8081 > /home/pmsa/apps/rental-expo-8081.log 2>&1 &
+              sleep 8
+              tail -80 /home/pmsa/apps/rental-expo-8081.log || true
+            fi
+          "
+
+      - name: Done
+        run: echo "Rental deployment finished successfully."
