@@ -52,6 +52,7 @@ Route::middleware(['auth.api', 'api.scope'])->group(function () {
 Route::middleware(['auth.api', 'api.scope'])->group(function () {
     Route::get('/webhook-events', [WebhookController::class, 'index']);
     Route::get('/scheduled-messages', [ScheduledMessageController::class, 'index']);
+    Route::post('/scheduled-messages/{key}', [ScheduledMessageController::class, 'update']);
     Route::put('/scheduled-messages/{key}', [ScheduledMessageController::class, 'update']);
     Route::patch('/scheduled-messages/{key}', [ScheduledMessageController::class, 'update']);
 
