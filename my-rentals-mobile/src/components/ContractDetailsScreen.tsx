@@ -1,5 +1,5 @@
-import { Ionicons } from "@expo/vector-icons";
-import { useEffect, useState } from "react";
+import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
+import { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, RefreshControl, SafeAreaView, ScrollView, StyleSheet, Text, View } from "react-native";
 import { apiGet } from "../lib/api";
 import InlineEditDeleteActions from "./InlineEditDeleteActions";
@@ -31,6 +31,8 @@ type ContractRecord = {
   status?: string | null;
   start_date?: string | null;
   end_date?: string | null;
+  rent_amount?: number | string | null;
+  total_contract_value?: number | string | null;
   tenant?: { id?: number; name?: string | null } | null;
   unit?: { id?: number; unit_number?: string | null; property?: { id?: number; name?: string | null } | null } | null;
 };
@@ -56,12 +58,34 @@ function statusLabel(status?: string | null) {
   return status ? String(status) : "غير محدد";
 }
 
+function paymentStatusLabel(status?: string | null, badge?: string | null) {
+  const text = String(status || badge || "").toLowerCase();
+  if (["paid", "مدفوعة", "مدفوع"].includes(text)) return "paid";
+  if (["overdue", "متأخرة", "متأخر"].includes(text)) return "overdue";
+  if (["due", "مستحقة", "مستحق"].includes(text)) return "due";
+  return text;
+}
+
 function isActiveStatus(status?: string | null) {
   return statusLabel(status) === "نشط";
 }
 
 function cleanTitleTitle(title?: string) {
   return String(title || "").replace(/^عقد\s*/u, "").trim();
+}
+
+function numberValue(value: unknown) {
+  const parsed = Number(String(value ?? 0).replace(/,/g, ""));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function money(value: unknown) {
+  return `${numberValue(value).toLocaleString("ar-SA")} ر.س`;
+}
+
+function prettyDate(value?: string | null, fallback = "-") {
+  const text = String(value || "").slice(0, 10);
+  return text || fallback;
 }
 
 export default function ContractDetailsScreen({ id }: { id: string | number }) {
@@ -99,13 +123,31 @@ export default function ContractDetailsScreen({ id }: { id: string | number }) {
   const payments = (data?.sections || []).flatMap((section) => section.items || []).filter(isPayment);
   const tenantName = display(contract?.tenant?.name, cleanTitleTitle(data?.title) || "المستأجر غير محدد");
   const contractNumber = display(contract?.government_contract_number || contract?.contract_number || id);
-  const dateRange = `${display(contract?.start_date, "بلا بداية")}  ←  ${display(contract?.end_date, "بلا نهاية")}`;
+  const startDate = prettyDate(contract?.start_date, "بلا بداية");
+  const endDate = prettyDate(contract?.end_date, "بلا نهاية");
   const badgeText = statusLabel(contract?.status);
+  const propertyName = contract?.unit?.property?.name || "-";
+  const unitName = contract?.unit?.unit_number || "-";
+
+  const paymentSummary = useMemo(() => {
+    const paid = payments.filter((payment) => paymentStatusLabel(payment.status, payment.badge) === "paid").length;
+    const overdue = payments.filter((payment) => paymentStatusLabel(payment.status, payment.badge) === "overdue").length;
+    const due = payments.filter((payment) => paymentStatusLabel(payment.status, payment.badge) === "due").length;
+    const totalAmount = payments.reduce((sum, payment) => sum + numberValue(payment.amount), 0);
+    const paidAmount = payments
+      .filter((payment) => paymentStatusLabel(payment.status, payment.badge) === "paid")
+      .reduce((sum, payment) => sum + numberValue(payment.amount), 0);
+    const nextPayment = payments
+      .filter((payment) => paymentStatusLabel(payment.status, payment.badge) !== "paid")
+      .sort((a, b) => String(a.due_date || "9999-99-99").localeCompare(String(b.due_date || "9999-99-99")))[0];
+    return { paid, overdue, due, totalAmount, paidAmount, nextPayment };
+  }, [payments]);
 
   return (
     <SafeAreaView style={styles.safe}>
-      <ScrollView contentContainerStyle={styles.container} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} />}>
+      <ScrollView contentContainerStyle={styles.container} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor="#0F766E" />} showsVerticalScrollIndicator={false}>
         <View style={styles.hero}>
+          <View style={styles.heroGlow} />
           <View style={styles.heroTopRow}>
             <View style={styles.heroActionsBox}>
               <InlineEditDeleteActions resource="contracts" id={id} hideDetails compact iconOnly onChanged={() => load(true)} />
@@ -118,25 +160,85 @@ export default function ContractDetailsScreen({ id }: { id: string | number }) {
               <Text style={styles.contractNumber}>رقم العقد: {contractNumber}</Text>
             </View>
             <View style={styles.heroIconBox}>
-              <Ionicons name="document-text-outline" size={28} color="#0F766E" />
+              <Ionicons name="document-text-outline" size={29} color="#0F766E" />
             </View>
           </View>
 
-          <View style={styles.contractDateBox}>
-            <Text style={styles.contractDateLabel}>تاريخ العقد</Text>
-            <Text style={styles.contractDateValue}>{dateRange}</Text>
+          <View style={styles.timelineBox}>
+            <View style={styles.timelineDateBlock}>
+              <Text style={styles.timelineLabel}>إلى</Text>
+              <Text style={styles.timelineDate}>{endDate}</Text>
+            </View>
+            <View style={styles.timelineLineWrap}>
+              <View style={styles.timelineDot} />
+              <View style={styles.timelineLine} />
+              <View style={styles.timelineDot} />
+            </View>
+            <View style={styles.timelineDateBlock}>
+              <Text style={styles.timelineLabel}>من</Text>
+              <Text style={styles.timelineDate}>{startDate}</Text>
+            </View>
           </View>
 
-          <View style={styles.heroPills}>
-            <Text style={styles.heroPill}>الدفعات: {payments.length}</Text>
-            {contract?.unit?.property?.name ? <Text style={styles.heroPill}>العقار: {contract.unit.property.name}</Text> : null}
+          <View style={styles.heroInfoGrid}>
+            <View style={styles.heroInfoCard}>
+              <MaterialCommunityIcons name="home-city-outline" size={18} color="#A7F3D0" />
+              <Text style={styles.heroInfoLabel}>العقار</Text>
+              <Text style={styles.heroInfoValue} numberOfLines={1}>{propertyName}</Text>
+            </View>
+            <View style={styles.heroInfoCard}>
+              <MaterialCommunityIcons name="door-closed" size={18} color="#A7F3D0" />
+              <Text style={styles.heroInfoLabel}>الوحدة</Text>
+              <Text style={styles.heroInfoValue} numberOfLines={1}>{unitName}</Text>
+            </View>
           </View>
         </View>
 
+        <View style={styles.summaryGrid}>
+          <View style={styles.summaryCard}>
+            <Text style={styles.summaryValue}>{payments.length.toLocaleString("ar-SA")}</Text>
+            <Text style={styles.summaryLabel}>الدفعات</Text>
+          </View>
+          <View style={styles.summaryCard}>
+            <Text style={styles.summaryValue}>{paymentSummary.paid.toLocaleString("ar-SA")}</Text>
+            <Text style={styles.summaryLabel}>مدفوعة</Text>
+          </View>
+          <View style={[styles.summaryCard, paymentSummary.overdue > 0 ? styles.summaryDangerCard : null]}>
+            <Text style={[styles.summaryValue, paymentSummary.overdue > 0 ? styles.summaryDangerValue : null]}>{paymentSummary.overdue.toLocaleString("ar-SA")}</Text>
+            <Text style={styles.summaryLabel}>متأخرة</Text>
+          </View>
+        </View>
+
+        <View style={styles.moneyPanel}>
+          <View style={styles.moneyItem}>
+            <Text style={styles.moneyLabel}>إجمالي الدفعات</Text>
+            <Text style={styles.moneyValue}>{money(paymentSummary.totalAmount || contract?.total_contract_value || contract?.rent_amount)}</Text>
+          </View>
+          <View style={styles.moneyDivider} />
+          <View style={styles.moneyItem}>
+            <Text style={styles.moneyLabel}>المسدّد</Text>
+            <Text style={styles.moneyValue}>{money(paymentSummary.paidAmount)}</Text>
+          </View>
+        </View>
+
+        {paymentSummary.nextPayment ? (
+          <View style={styles.nextPaymentCard}>
+            <View style={styles.nextPaymentIcon}><Ionicons name="calendar-outline" size={21} color="#0F766E" /></View>
+            <View style={styles.nextPaymentTextBox}>
+              <Text style={styles.nextPaymentTitle}>الدفعة القادمة</Text>
+              <Text style={styles.nextPaymentMeta}>{paymentSummary.nextPayment.title} • {prettyDate(paymentSummary.nextPayment.due_date)}</Text>
+            </View>
+            <Text style={styles.nextPaymentAmount}>{money(paymentSummary.nextPayment.amount)}</Text>
+          </View>
+        ) : null}
+
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.count}>{payments.length}</Text>
-            <Text style={styles.sectionTitle}>جدول الدفعات</Text>
+            <View style={styles.sectionCountBox}><Text style={styles.count}>{payments.length}</Text></View>
+            <View style={styles.sectionTitleBox}>
+              <Text style={styles.sectionTitle}>جدول الدفعات</Text>
+              <Text style={styles.sectionSubtitle}>اضغط على أي قسط لعرض السداد والملاحظات</Text>
+            </View>
           </View>
 
           {loading ? <View style={styles.state}><ActivityIndicator /><Text style={styles.stateText}>جاري التحميل...</Text></View> : null}
@@ -160,28 +262,55 @@ export default function ContractDetailsScreen({ id }: { id: string | number }) {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: "#f6f7fb" },
-  container: { padding: 14, paddingBottom: 30 },
-  hero: { backgroundColor: "#111827", borderRadius: 26, padding: 14, marginBottom: 12 },
+  safe: { flex: 1, backgroundColor: "#F6F7FB" },
+  container: { padding: 14, paddingBottom: 34 },
+  hero: { backgroundColor: "#111827", borderRadius: 30, padding: 15, marginBottom: 12, overflow: "hidden", shadowColor: "#000", shadowOpacity: 0.12, shadowRadius: 16, elevation: 3 },
+  heroGlow: { position: "absolute", left: -34, top: -40, width: 130, height: 130, borderRadius: 65, backgroundColor: "rgba(15,118,110,0.32)" },
   heroTopRow: { flexDirection: "row", alignItems: "center", gap: 10 },
-  heroActionsBox: { minWidth: 98, alignItems: "flex-start" },
+  heroActionsBox: { minWidth: 96, alignItems: "flex-start" },
   heroTextBox: { flex: 1, alignItems: "flex-end" },
-  heroIconBox: { width: 52, height: 52, borderRadius: 19, backgroundColor: "#ECFDF5", alignItems: "center", justifyContent: "center" },
+  heroIconBox: { width: 55, height: 55, borderRadius: 21, backgroundColor: "#ECFDF5", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#A7F3D0" },
   tenantRow: { flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 8, flexWrap: "wrap" },
-  tenantName: { color: "#fff", fontSize: 22, lineHeight: 30, fontWeight: "900", textAlign: "right" },
+  tenantName: { color: "#fff", fontSize: 23, lineHeight: 31, fontWeight: "900", textAlign: "right" },
   statusBadge: { overflow: "hidden", borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5, fontWeight: "900", fontSize: 12 },
   statusActive: { backgroundColor: "#DCFCE7", color: "#166534" },
   statusEnded: { backgroundColor: "#FEE2E2", color: "#991B1B" },
   contractNumber: { color: "#CBD5E1", fontSize: 12, fontWeight: "900", textAlign: "right", marginTop: 4 },
-  contractDateBox: { marginTop: 13, backgroundColor: "rgba(255,255,255,0.10)", borderRadius: 18, padding: 12, alignItems: "flex-end" },
-  contractDateLabel: { color: "#A7F3D0", fontWeight: "900", fontSize: 12, textAlign: "right" },
-  contractDateValue: { color: "#fff", fontWeight: "900", fontSize: 15, marginTop: 4, textAlign: "right" },
-  heroPills: { flexDirection: "row-reverse", gap: 8, marginTop: 11, flexWrap: "wrap" },
-  heroPill: { overflow: "hidden", backgroundColor: "rgba(255,255,255,0.12)", color: "#fff", borderRadius: 999, paddingHorizontal: 12, paddingVertical: 7, fontWeight: "800", fontSize: 12 },
-  section: { backgroundColor: "#fff", borderRadius: 24, padding: 12, borderWidth: 1, borderColor: "#EDECE9" },
-  sectionHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 },
+  timelineBox: { marginTop: 14, backgroundColor: "rgba(255,255,255,0.10)", borderRadius: 20, padding: 12, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  timelineDateBlock: { flex: 1, alignItems: "center" },
+  timelineLabel: { color: "#A7F3D0", fontWeight: "900", fontSize: 11 },
+  timelineDate: { color: "#fff", fontWeight: "900", marginTop: 4, fontSize: 13 },
+  timelineLineWrap: { width: 86, flexDirection: "row", alignItems: "center", justifyContent: "center" },
+  timelineDot: { width: 9, height: 9, borderRadius: 999, backgroundColor: "#5EEAD4" },
+  timelineLine: { flex: 1, height: 2, backgroundColor: "rgba(94,234,212,0.55)" },
+  heroInfoGrid: { flexDirection: "row-reverse", gap: 8, marginTop: 10 },
+  heroInfoCard: { flex: 1, backgroundColor: "rgba(255,255,255,0.08)", borderRadius: 18, padding: 10, alignItems: "center", borderWidth: 1, borderColor: "rgba(255,255,255,0.08)" },
+  heroInfoLabel: { color: "#CBD5E1", fontWeight: "800", fontSize: 11, marginTop: 4 },
+  heroInfoValue: { color: "#fff", fontWeight: "900", fontSize: 12, marginTop: 3, textAlign: "center" },
+  summaryGrid: { flexDirection: "row-reverse", gap: 8, marginBottom: 10 },
+  summaryCard: { flex: 1, backgroundColor: "#fff", borderRadius: 20, padding: 13, alignItems: "center", borderWidth: 1, borderColor: "#EDECE9" },
+  summaryDangerCard: { backgroundColor: "#FFF1F2", borderColor: "#FECDD3" },
+  summaryValue: { color: "#111827", fontSize: 20, fontWeight: "900" },
+  summaryDangerValue: { color: "#BE123C" },
+  summaryLabel: { color: "#64748B", fontWeight: "900", marginTop: 4, fontSize: 12 },
+  moneyPanel: { backgroundColor: "#fff", borderRadius: 22, padding: 14, marginBottom: 10, borderWidth: 1, borderColor: "#EDECE9", flexDirection: "row-reverse", alignItems: "center" },
+  moneyItem: { flex: 1, alignItems: "center" },
+  moneyDivider: { width: 1, height: 42, backgroundColor: "#E5E7EB" },
+  moneyLabel: { color: "#64748B", fontWeight: "900", fontSize: 12 },
+  moneyValue: { color: "#0F766E", fontWeight: "900", marginTop: 5, fontSize: 16 },
+  nextPaymentCard: { backgroundColor: "#F0FDFA", borderRadius: 22, padding: 12, marginBottom: 10, borderWidth: 1, borderColor: "#CCFBF1", flexDirection: "row-reverse", alignItems: "center", gap: 10 },
+  nextPaymentIcon: { width: 42, height: 42, borderRadius: 16, backgroundColor: "#fff", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#A7F3D0" },
+  nextPaymentTextBox: { flex: 1, alignItems: "flex-end" },
+  nextPaymentTitle: { color: "#0F172A", fontWeight: "900", textAlign: "right" },
+  nextPaymentMeta: { color: "#0F766E", fontWeight: "800", fontSize: 12, marginTop: 3, textAlign: "right" },
+  nextPaymentAmount: { color: "#111827", fontWeight: "900", fontSize: 13 },
+  section: { backgroundColor: "#fff", borderRadius: 26, padding: 12, borderWidth: 1, borderColor: "#EDECE9" },
+  sectionHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 10 },
+  sectionTitleBox: { flex: 1, alignItems: "flex-end" },
   sectionTitle: { color: "#111827", fontSize: 20, fontWeight: "900", textAlign: "right" },
-  count: { overflow: "hidden", backgroundColor: "#eff6ff", color: "#065F44", borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6, fontWeight: "900" },
+  sectionSubtitle: { color: "#64748B", fontSize: 12, fontWeight: "800", textAlign: "right", marginTop: 3 },
+  sectionCountBox: { backgroundColor: "#ECFDF5", borderRadius: 999, paddingHorizontal: 12, paddingVertical: 7, borderWidth: 1, borderColor: "#A7F3D0" },
+  count: { color: "#065F46", fontWeight: "900" },
   state: { alignItems: "center", padding: 20, gap: 8 },
   stateText: { color: "#6b7280", fontWeight: "800" },
   error: { color: "#be123c", backgroundColor: "#fff1f2", padding: 12, borderRadius: 14, textAlign: "right", fontWeight: "800" },
