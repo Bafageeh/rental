@@ -136,6 +136,7 @@ function AppTabs() {
       <Tabs.Screen name="owner/[id]" options={{ ...hidden, title: "تفاصيل الأملاك" }} />
       <Tabs.Screen name="property/[id]" options={{ ...hidden, title: "تفاصيل العقار" }} />
       <Tabs.Screen name="unit/[id]" options={{ ...hidden, title: "تفاصيل الوحدة" }} />
+      <Tabs.Screen name="unit-edit/[id]" options={{ ...hidden, title: "تعديل الوحدة" }} />
       <Tabs.Screen name="tenant/[id]" options={{ ...hidden, title: "تفاصيل المستأجر" }} />
       <Tabs.Screen name="contract/[id]" options={{ ...hidden, title: "تفاصيل العقد" }} />
       <Tabs.Screen name="payment/[id]" options={{ ...hidden, title: "الدفعات" }} />
