@@ -285,8 +285,8 @@ export default function UploadContractScreen() {
   const [lastImportResult, setLastImportResult] = useState<any>(null);
 
   const contextItems = useMemo(() => [
-    { label: 'المالك', value: ownerName || (ownerId ? `مالك #${ownerId}` : 'يتم أخذه من العقد') },
-    { label: 'العقار', value: propertyName || (propertyId ? `عقار #${propertyId}` : 'يتم أخذه من العقد') },
+    ...(ownerName || ownerId ? [{ label: 'المالك', value: ownerName || `مالك #${ownerId}` }] : []),
+    ...(propertyName || propertyId ? [{ label: 'العقار', value: propertyName || `عقار #${propertyId}` }] : []),
     { label: 'نطاق العقد', value: isPropertyContract ? 'العقار كامل' : (unitName || (unitId ? `وحدة #${unitId}` : 'يتم أخذها من العقد')) },
   ], [ownerName, ownerId, propertyName, propertyId, unitName, unitId, isPropertyContract]);
 
@@ -385,11 +385,13 @@ export default function UploadContractScreen() {
 
         <Stepper steps={['اختيار الملف', 'مراجعة البيانات', 'اعتماد وحفظ']} current={currentStep} />
 
-        <View style={styles.contextCard}>
-          {contextItems.map((item) => (
-            <MetaPill key={item.label} label={item.label} value={item.value} />
-          ))}
-        </View>
+        {contextItems.length ? (
+          <View style={styles.contextCard}>
+            {contextItems.map((item) => (
+              <MetaPill key={item.label} label={item.label} value={item.value} />
+            ))}
+          </View>
+        ) : null}
 
         <View style={styles.card}>
           <View style={styles.cardTitleRow}>
