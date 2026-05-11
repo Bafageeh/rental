@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\ContractFileController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\OwnerDashboardController;
+use App\Http\Controllers\Api\ScheduledMessageController;
 use App\Http\Controllers\Api\WebhookController;
 use App\Models\Contract;
 use App\Models\Owner;
@@ -50,6 +51,7 @@ Route::middleware(['auth.api', 'api.scope'])->group(function () {
 // PHASE2_ROUTE_MODULES: api.php was split into routes/api/*.php for maintainability.
 Route::middleware(['auth.api', 'api.scope'])->group(function () {
     Route::get('/webhook-events', [WebhookController::class, 'index']);
+    Route::get('/scheduled-messages', [ScheduledMessageController::class, 'index']);
 
     foreach ([
         // يجب تحميل هذا المسار قبل 00_core.php لأن Laravel يستخدم أول مسار مطابق لرفع العقد.
