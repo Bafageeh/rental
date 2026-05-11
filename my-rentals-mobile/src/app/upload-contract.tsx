@@ -18,6 +18,17 @@ import { smartBack } from '../lib/navigationHistory';
 import { colors, radii, shadows, spacing, typography, money as formatMoney } from '../constants/theme';
 import { MetaPill, Notice, ScreenHero, Stepper } from '../components/ui/phase3';
 
+type PaymentScheduleRow = {
+  sequence?: number | string;
+  due_date?: string | null;
+  payment_deadline?: string | null;
+  due_date_hijri?: string | null;
+  payment_deadline_hijri?: string | null;
+  rental_period_days?: number | string | null;
+  amount?: number | string | null;
+  source?: string | null;
+};
+
 type ExtractedData = {
   contract?: Record<string, any>;
   tenant?: Record<string, any>;
@@ -25,7 +36,9 @@ type ExtractedData = {
   property?: Record<string, any>;
   unit?: Record<string, any>;
   financial?: Record<string, any>;
-  payments?: Array<Record<string, any>>;
+  payments?: PaymentScheduleRow[];
+  payments_source?: string;
+  payments_count_from_schedule?: number;
 };
 
 function firstParam(value: string | string[] | undefined): string {
@@ -47,7 +60,7 @@ function display(value: any, fallback = '-') {
 }
 
 function money(value: any) {
-  const numeric = Number(value || 0);
+  const numeric = Number(String(value ?? '').replace(/,/g, '') || 0);
   if (!Number.isFinite(numeric) || numeric <= 0) return '-';
   return formatMoney(numeric);
 }
@@ -92,6 +105,19 @@ function cycleLabel(value: any) {
   return raw || '-';
 }
 
+function scheduleSourceLabel(source?: string) {
+  if (source === 'official_ejar_schedule') return 'جدول PDF الرسمي';
+  if (!source) return 'غير محدد';
+  return source;
+}
+
+function paymentRowsFromExtracted(extracted: ExtractedData | null): PaymentScheduleRow[] {
+  if (!Array.isArray(extracted?.payments)) return [];
+  return extracted.payments
+    .filter((item) => item && (item.due_date || item.payment_deadline || item.amount))
+    .map((item, index) => ({ ...item, sequence: item.sequence || index + 1 }));
+}
+
 function InfoRow({ label, value, warning = false }: { label: string; value: string; warning?: boolean }) {
   const isMissing = value === '-';
   return (
@@ -111,6 +137,60 @@ function PreviewCard({ title, icon, children }: { title: string; icon: any; chil
       </View>
       {children}
     </View>
+  );
+}
+
+function PaymentScheduleCard({ rows, source }: { rows: PaymentScheduleRow[]; source?: string }) {
+  const total = rows.reduce((sum, row) => {
+    const value = Number(String(row.amount ?? '').replace(/,/g, ''));
+    return sum + (Number.isFinite(value) ? value : 0);
+  }, 0);
+
+  return (
+    <PreviewCard title="جدول الدفعات من ملف PDF" icon="calendar-outline">
+      <Notice
+        tone="info"
+        icon="information-circle-outline"
+        message="سيتم اعتماد تواريخ الاستحقاق ونهاية مهلة السداد كما تظهر هنا في قاعدة البيانات عند الضغط على اعتماد وحفظ."
+        style={styles.scheduleNotice}
+      />
+
+      <View style={styles.scheduleSummaryRow}>
+        <MetaPill label="المصدر" value={scheduleSourceLabel(source || rows[0]?.source || '')} />
+        <MetaPill label="عدد الدفعات" value={`${rows.length}`} />
+        <MetaPill label="الإجمالي" value={money(total)} />
+      </View>
+
+      {rows.length ? (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.scheduleScrollContent}>
+          <View style={styles.scheduleTable}>
+            <View style={[styles.scheduleRow, styles.scheduleHeaderRow]}>
+              <Text style={[styles.scheduleCell, styles.scheduleSeqCell, styles.scheduleHeaderText]}>#</Text>
+              <Text style={[styles.scheduleCell, styles.scheduleDateCell, styles.scheduleHeaderText]}>تاريخ الاستحقاق</Text>
+              <Text style={[styles.scheduleCell, styles.scheduleDateCell, styles.scheduleHeaderText]}>نهاية مهلة السداد</Text>
+              <Text style={[styles.scheduleCell, styles.scheduleHijriCell, styles.scheduleHeaderText]}>الاستحقاق هـ</Text>
+              <Text style={[styles.scheduleCell, styles.scheduleHijriCell, styles.scheduleHeaderText]}>نهاية المهلة هـ</Text>
+              <Text style={[styles.scheduleCell, styles.schedulePeriodCell, styles.scheduleHeaderText]}>الفترة</Text>
+              <Text style={[styles.scheduleCell, styles.scheduleAmountCell, styles.scheduleHeaderText]}>المبلغ</Text>
+            </View>
+
+            {rows.map((row, index) => (
+              <View key={`${row.sequence || index}-${row.due_date || index}`} style={styles.scheduleRow}>
+                <Text style={[styles.scheduleCell, styles.scheduleSeqCell]}>{display(row.sequence || index + 1)}</Text>
+                <Text style={[styles.scheduleCell, styles.scheduleDateCell, styles.strongScheduleCell]}>{display(row.due_date)}</Text>
+                <Text style={[styles.scheduleCell, styles.scheduleDateCell]}>{display(row.payment_deadline)}</Text>
+                <Text style={[styles.scheduleCell, styles.scheduleHijriCell]}>{display(row.due_date_hijri)}</Text>
+                <Text style={[styles.scheduleCell, styles.scheduleHijriCell]}>{display(row.payment_deadline_hijri)}</Text>
+                <Text style={[styles.scheduleCell, styles.schedulePeriodCell]}>{row.rental_period_days ? `${row.rental_period_days} يوم` : '-'}</Text>
+                <Text style={[styles.scheduleCell, styles.scheduleAmountCell, styles.strongScheduleCell]}>{money(row.amount)}</Text>
+              </View>
+            ))}
+          </View>
+        </ScrollView>
+      ) : (
+        <Notice tone="warning" icon="warning-outline" message="لم يتم العثور على جدول الدفعات داخل ملف PDF. لن يتم الاعتماد إلا بعد ظهور الجدول هنا أو ستحتاج مراجعة الدفعات يدويًا." />
+      )}
+    </PreviewCard>
   );
 }
 
@@ -190,6 +270,7 @@ export default function UploadContractScreen() {
 
       const json = await apiPostFormData('/contract-files/extract', formData);
       const extractedData = json.extracted_data || null;
+      const rows = paymentRowsFromExtracted(extractedData);
 
       setExtracted(extractedData);
       setLastImportResult(json.import_result || null);
@@ -198,7 +279,9 @@ export default function UploadContractScreen() {
       if (apply) {
         Alert.alert(
           'تم',
-          json.message || 'تم استخراج العقد وحفظ بياناته',
+          rows.length
+            ? `${json.message || 'تم استخراج العقد وحفظ بياناته'}\n\nتم اعتماد ${rows.length} دفعات من جدول PDF الرسمي وتسجيل تواريخ الاستحقاق كما هي.`
+            : `${json.message || 'تم استخراج العقد وحفظ بياناته'}\n\nتنبيه: لم يظهر جدول دفعات مقروء من PDF، راجع الدفعات يدويًا.`,
           [{ text: 'موافق', onPress: returnToPreviousScreen }],
         );
       }
@@ -213,7 +296,8 @@ export default function UploadContractScreen() {
   const tenant = extracted?.tenant || {};
   const financial = extracted?.financial || {};
   const unit = extracted?.unit || {};
-  const paymentsCount = Array.isArray(extracted?.payments) ? extracted?.payments?.length || 0 : 0;
+  const paymentRows = paymentRowsFromExtracted(extracted);
+  const paymentsCount = paymentRows.length;
   const currentStep = lastImportResult ? 2 : extracted ? 1 : 0;
 
   return (
@@ -326,15 +410,17 @@ export default function UploadContractScreen() {
               <InfoRow label="دفعة الإيجار الأخيرة" value={money(financial.last_payment_amount)} />
               <InfoRow label="عدد دفعات الإيجار" value={display(financial.rent_payments_count)} />
               <InfoRow label="دورة السداد" value={cycleLabel(financial.payment_cycle)} />
-              <InfoRow label="دفعات الجدول المقروءة" value={`${paymentsCount}`} />
+              <InfoRow label="دفعات الجدول المقروءة" value={`${paymentsCount}`} warning={paymentsCount === 0} />
             </PreviewCard>
+
+            <PaymentScheduleCard rows={paymentRows} source={extracted.payments_source} />
 
             {lastImportResult ? (
               <Notice
                 tone="success"
                 icon="checkmark-done-outline"
                 title="تم الحفظ"
-                message={`العقد: #${lastImportResult?.contract?.id || '-'} — المستأجر: ${lastImportResult?.tenant?.name || '-'}`}
+                message={`العقد: #${lastImportResult?.contract?.id || '-'} — المستأجر: ${lastImportResult?.tenant?.name || '-'} — الدفعات المعتمدة من PDF: ${lastImportResult?.payments_count || paymentsCount || 0}`}
               />
             ) : null}
           </View>
@@ -426,4 +512,43 @@ const styles = StyleSheet.create({
   infoLabel: { color: colors.textSecondary, fontSize: 12, fontWeight: '900', minWidth: 112, textAlign: 'right', writingDirection: 'rtl' },
   infoValue: { flex: 1, color: colors.text, fontWeight: '900', textAlign: 'right', writingDirection: 'rtl', lineHeight: 20 },
   infoValueWarning: { color: colors.warningDark },
+  scheduleNotice: { marginBottom: spacing.sm },
+  scheduleSummaryRow: { gap: spacing.sm, marginBottom: spacing.md },
+  scheduleScrollContent: { paddingBottom: 2 },
+  scheduleTable: {
+    minWidth: 860,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+    borderRadius: radii.lg,
+    overflow: 'hidden',
+    backgroundColor: colors.surface,
+  },
+  scheduleRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'stretch',
+    borderTopWidth: 1,
+    borderTopColor: colors.borderLight,
+  },
+  scheduleHeaderRow: {
+    borderTopWidth: 0,
+    backgroundColor: colors.surfaceSubtle,
+  },
+  scheduleCell: {
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    borderLeftWidth: 1,
+    borderLeftColor: colors.borderLight,
+    color: colors.text,
+    fontSize: 12,
+    fontWeight: '800',
+    textAlign: 'center',
+    writingDirection: 'ltr',
+  },
+  scheduleHeaderText: { color: colors.textSecondary, fontSize: 11, fontWeight: '900', writingDirection: 'rtl' },
+  strongScheduleCell: { color: colors.primaryDark, fontWeight: '900' },
+  scheduleSeqCell: { width: 46 },
+  scheduleDateCell: { width: 132 },
+  scheduleHijriCell: { width: 124 },
+  schedulePeriodCell: { width: 90 },
+  scheduleAmountCell: { width: 140 },
 });
