@@ -35,6 +35,19 @@ if (!function_exists('mr_visible_units_query')) {
     }
 }
 
+if (!function_exists('mr_contract_value_for_property_total')) {
+    function mr_contract_value_for_property_total($contract): float
+    {
+        foreach (['total_contract_value', 'rent_amount', 'amount'] as $column) {
+            if (isset($contract->{$column}) && $contract->{$column} !== null && $contract->{$column} !== '') {
+                return (float) $contract->{$column};
+            }
+        }
+
+        return 0.0;
+    }
+}
+
 Route::get('/properties', function (Request $request) {
     $query = Property::with(['owner'])
         ->withCount([
@@ -152,12 +165,7 @@ Route::get('/properties/{property}', function (Property $property) {
         'files',
     ]);
 
-    $property->units->each(function ($unit) {
-        $unit->contracts_count = $unit->relationLoaded('contracts') ? $unit->contracts->count() : 0;
-    });
-
     $visibleUnitIds = $property->units->pluck('id')->all();
-    $unitContractsCount = empty($visibleUnitIds) ? 0 : Contract::whereIn('unit_id', $visibleUnitIds)->count();
 
     $wholeUnitIds = Unit::where('property_id', $property->id)
         ->where(function ($unitQuery) {
@@ -166,6 +174,24 @@ Route::get('/properties/{property}', function (Property $property) {
         ->pluck('id')
         ->all();
 
+    $allPropertyUnitIds = Unit::where('property_id', $property->id)->pluck('id')->all();
+    $contractsForProperty = empty($allPropertyUnitIds)
+        ? collect()
+        : Contract::whereIn('unit_id', $allPropertyUnitIds)->get();
+
+    $contractRentByUnit = $contractsForProperty
+        ->groupBy('unit_id')
+        ->map(fn ($contracts) => (float) $contracts->sum(fn ($contract) => mr_contract_value_for_property_total($contract)));
+
+    $property->units->each(function ($unit) use ($contractRentByUnit) {
+        $unit->contracts_count = $unit->relationLoaded('contracts') ? $unit->contracts->count() : 0;
+        $unitContractRent = (float) ($contractRentByUnit[$unit->id] ?? 0);
+        if ($unitContractRent > 0) {
+            $unit->rent_amount = $unitContractRent;
+        }
+    });
+
+    $unitContractsCount = empty($visibleUnitIds) ? 0 : Contract::whereIn('unit_id', $visibleUnitIds)->count();
     $wholeContractsCount = empty($wholeUnitIds) ? 0 : Contract::whereIn('unit_id', $wholeUnitIds)->count();
 
     $property->units_count = $property->units->count();
@@ -175,6 +201,7 @@ Route::get('/properties/{property}', function (Property $property) {
     $property->can_create_whole_property_contract = $wholeContractsCount === 0 && $unitContractsCount === 0;
     $property->can_create_unit_contract = $wholeContractsCount === 0 && $property->units->contains(fn ($unit) => (int) ($unit->contracts_count ?? 0) === 0);
     $property->can_create_contract = $property->can_create_whole_property_contract || $property->can_create_unit_contract;
+    $property->total_rent_amount = (float) $contractsForProperty->sum(fn ($contract) => mr_contract_value_for_property_total($contract));
 
     return $property;
 });
