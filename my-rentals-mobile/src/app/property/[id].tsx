@@ -171,6 +171,15 @@ export default function PropertyDetailScreen() {
     return () => clearTimeout(timer);
   }, [shouldReturnAfterDelete]);
 
+  useEffect(() => {
+    globalThis.__RENTAL_EDIT_CONTEXT__ = { resource: 'properties', id: id || '', owner_id: data?.owner?.id || '' };
+    return () => {
+      if (globalThis.__RENTAL_EDIT_CONTEXT__?.resource === 'properties' && String(globalThis.__RENTAL_EDIT_CONTEXT__?.id || '') === String(id || '')) {
+        globalThis.__RENTAL_EDIT_CONTEXT__ = undefined;
+      }
+    };
+  }, [id, data?.owner?.id]);
+
   if (loading || shouldReturnAfterDelete) return <LoadingState />;
   if (error || !data) return <ErrorState message={error || 'غير موجود'} onRetry={reload} />;
 
