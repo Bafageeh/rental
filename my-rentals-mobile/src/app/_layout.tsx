@@ -87,11 +87,11 @@ function AppTabs() {
         headerRightContainerStyle: { paddingRight: 12 },
       }}
     >
-      <Tabs.Screen name="index" options={{ title: "الرئيسية", tabBarIcon: ({ color, size }) => <TabIcon name="home" color={color} size={size} />, tabBarAccessibilityLabel: "الرئيسية" }} />
-      <Tabs.Screen name="properties" options={{ title: "العقارات", tabBarIcon: ({ color, size }) => <TabIcon name="business" color={color} size={size} />, tabBarAccessibilityLabel: "العقارات" }} />
-      <Tabs.Screen name="payments" options={{ title: "الدفعات", tabBarIcon: ({ color, size }) => <TabIcon name="cash" color={color} size={size} lib="mci" />, tabBarAccessibilityLabel: "الدفعات" }} />
+      <Tabs.Screen name="index" options={{ title: "إحصائيات", tabBarIcon: ({ color, size }) => <TabIcon name="stats-chart" color={color} size={size} />, tabBarAccessibilityLabel: "إحصائيات" }} />
+      <Tabs.Screen name="properties" options={{ title: "عقاراتي", tabBarIcon: ({ color, size }) => <TabIcon name="business" color={color} size={size} />, tabBarAccessibilityLabel: "عقاراتي" }} />
+      <Tabs.Screen name="payments" options={{ href: null, title: "الدفعات" }} />
       <Tabs.Screen name="owners" options={{ href: isAdmin ? "/owners" : null, title: "الملاك", tabBarIcon: ({ color, size }) => <TabIcon name="people" color={color} size={size} />, tabBarAccessibilityLabel: "الملاك" }} />
-      <Tabs.Screen name="more" options={{ title: "المزيد", tabBarIcon: ({ color, size }) => <TabIcon name="grid" color={color} size={size} />, tabBarAccessibilityLabel: "المزيد" }} />
+      <Tabs.Screen name="more" options={{ title: "مزيد", tabBarIcon: ({ color, size }) => <TabIcon name="grid" color={color} size={size} />, tabBarAccessibilityLabel: "مزيد" }} />
 
       <Tabs.Screen name="statistics" options={{ href: null, title: "التقارير" }} />
       <Tabs.Screen name="settings" options={{ href: null, title: "الإعدادات" }} />
@@ -145,6 +145,8 @@ function AppTabs() {
       <Tabs.Screen name="relations-manager" options={{ href: null, title: "إدارة" }} />
       <Tabs.Screen name="record-details" options={{ href: null, title: "تفاصيل" }} />
       <Tabs.Screen name="communication-center" options={{ href: null, title: "التواصل" }} />
+      <Tabs.Screen name="owner-properties" options={{ href: null, title: "عقارات المالك" }} />
+      <Tabs.Screen name="edit-record" options={{ href: null, title: "تعديل" }} />
       <Tabs.Screen name="owner/[id]" options={{ href: null, title: "تفاصيل الأملاك" }} />
       <Tabs.Screen name="property/[id]" options={{ href: null, title: "تفاصيل العقار" }} />
       <Tabs.Screen name="unit/[id]" options={{ href: null, title: "تفاصيل الوحدة" }} />
