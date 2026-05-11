@@ -1,5 +1,5 @@
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
 import {
   Alert,
@@ -138,6 +138,21 @@ function Section({ title, children }: { title: string; children: React.ReactNode
     <View style={styles.sectionCard}>
       <Text style={styles.sectionTitle}>{title}</Text>
       {children}
+    </View>
+  );
+}
+
+function CollapsibleSection({ title, children }: { title: string; children: React.ReactNode }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <View style={[styles.sectionCard, styles.collapsibleCard]}>
+      <TouchableOpacity style={styles.collapsibleHeader} activeOpacity={0.86} onPress={() => setOpen((value) => !value)}>
+        <View style={[styles.collapseIconBox, open ? styles.collapseIconBoxOpen : null]}>
+          <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={18} color={open ? '#fff' : '#0F766E'} />
+        </View>
+        <Text style={styles.sectionTitle}>{title}</Text>
+      </TouchableOpacity>
+      {open ? <View style={styles.collapsibleBody}>{children}</View> : null}
     </View>
   );
 }
@@ -316,7 +331,7 @@ export default function PropertyDetailScreen() {
           <View style={styles.financeCard}><Text style={styles.financeValue}>{money(totalExpenses)}</Text><Text style={styles.financeLabel}>المصروفات</Text></View>
         </View>
 
-        <Section title="تفاصيل العقار">
+        <CollapsibleSection title="تفاصيل العقار">
           <Row label="النوع" value={typeMap[String(data.property_type || '')] || data.property_type} />
           <Row label="الاستخدام" value={usageMap[String(data.usage_type || '')] || data.usage_type} />
           <Row label="الإدارة" value={mgmtMap[String(data.management_type || '')] || data.management_type} />
@@ -328,9 +343,9 @@ export default function PropertyDetailScreen() {
           <Row label="المصاعد" value={data.elevators_count} />
           <Row label="العنوان" value={data.address} />
           <Row label="ملاحظات" value={data.notes} />
-        </Section>
+        </CollapsibleSection>
 
-        <Section title="بيانات الوثيقة">
+        <CollapsibleSection title="بيانات الوثيقة">
           <Row label="تاريخ الوثيقة" value={data.document_date_hijri} />
           <Row label="التاريخ الميلادي" value={data.document_date_gregorian} />
           <Row label="الحالة" value={data.document_status} />
@@ -338,16 +353,16 @@ export default function PropertyDetailScreen() {
           <Row label="تاريخ الوثيقة السابقة" value={data.previous_document_date_hijri} />
           <Row label="رقم الوثيقة السابقة" value={data.previous_document_number} />
           <Row label="نوع العملية" value={data.operation_type} />
-        </Section>
+        </CollapsibleSection>
 
-        <Section title="بيانات المالك في الصك">
+        <CollapsibleSection title="بيانات المالك في الصك">
           <Row label="رقم الهوية" value={data.deed_owner_identifier} />
           <Row label="الاسم" value={data.deed_owner_name} />
           <Row label="الجنسية" value={data.deed_owner_nationality} />
           <Row label="نسبة التملك" value={hasValue(data.deed_ownership_percentage) ? `${data.deed_ownership_percentage}%` : null} />
-        </Section>
+        </CollapsibleSection>
 
-        <Section title="بيانات الصك العقارية">
+        <CollapsibleSection title="بيانات الصك العقارية">
           <Row label="رقم الهوية العقارية" value={data.real_estate_identity_number} />
           <Row label="نوع العقار في الصك" value={data.deed_property_type_text} />
           <Row label="نوع الاستخدام" value={data.deed_usage_text} />
@@ -357,7 +372,7 @@ export default function PropertyDetailScreen() {
           <Row label="المجاورة / الجزء" value={data.deed_neighboring_part} />
           <Row label="الموقع" value={data.deed_location_text} />
           <Row label="نموذج العقار" value={data.deed_property_model} />
-        </Section>
+        </CollapsibleSection>
 
         {(hasValue(data.deed_mortgage_status) || hasValue(data.deed_mortgagee_name) || hasValue(data.deed_mortgage_amount)) ? (
           <Section title="بيانات الرهن / القيود المالية">
@@ -429,7 +444,12 @@ const styles = StyleSheet.create({
   statValue: { color: '#111827', fontSize: 20, fontWeight: '900' },
   statLabel: { color: '#64748B', fontWeight: '800', marginTop: 4 },
   sectionCard: { backgroundColor: '#fff', borderRadius: 22, padding: 14, marginBottom: 12, borderWidth: 1, borderColor: '#ECEFF3' },
-  sectionTitle: { color: '#111827', fontSize: 18, fontWeight: '900', textAlign: 'right', marginBottom: 10 },
+  sectionTitle: { color: '#111827', fontSize: 18, fontWeight: '900', textAlign: 'right' },
+  collapsibleCard: { padding: 0, overflow: 'hidden' },
+  collapsibleHeader: { minHeight: 58, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingVertical: 12 },
+  collapseIconBox: { width: 34, height: 34, borderRadius: 14, backgroundColor: '#ECFDF5', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#A7F3D0' },
+  collapseIconBoxOpen: { backgroundColor: '#0F766E', borderColor: '#0F766E' },
+  collapsibleBody: { paddingHorizontal: 14, paddingBottom: 12, borderTopWidth: 1, borderTopColor: '#F1F5F9' },
   servicesGrid: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 8 },
   serviceButton: { width: '48%', minHeight: 76, borderRadius: 18, backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#E2E8F0', alignItems: 'center', justifyContent: 'center', padding: 8 },
   serviceText: { color: '#111827', fontWeight: '900', textAlign: 'center', marginTop: 5, fontSize: 12 },
