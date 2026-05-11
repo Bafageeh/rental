@@ -1,7 +1,9 @@
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useEffect } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
 import {
   Alert,
+  ActivityIndicator,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -11,127 +13,142 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useDetail } from '../../hooks/useCrud';
-import {
-  Card,
-  StatusBadge,
-  InfoRow,
-  SectionHeader,
-  StatCard,
-  LoadingState,
-  ErrorState,
-} from '../../components/ui/shared';
-import { colors, typography, spacing, radii, money } from '../../constants/theme';
-import InlineEditDeleteActions from '../../components/InlineEditDeleteActions';
+import { apiPost } from '../../lib/api';
+import { smartBack } from '@/lib/navigationHistory';
 
-import { smartBack } from "@/lib/navigationHistory";
+type PropertyUnit = {
+  id: number;
+  unit_number?: string | null;
+  floor?: string | number | null;
+  type?: string | null;
+  status?: string | null;
+  rent_amount?: number | string | null;
+  contracts_count?: number;
+  contracts?: Array<{ id: number }>;
+};
+
 type PropertyDetail = {
   id: number;
-  name?: string;
-  city?: string;
-  district?: string;
-  address?: string;
-  deed_number?: string;
-  document_number?: string;
-  document_date_hijri?: string;
-  document_date_gregorian?: string;
-  document_status?: string;
-  document_restrictions?: string;
-  previous_document_date_hijri?: string;
-  previous_document_number?: string;
-  operation_type?: string;
-  real_estate_identity_number?: string;
-  plan_number?: string;
-  plot_number?: string;
-  block_number?: string;
-  deed_owner_identifier?: string;
-  deed_owner_name?: string;
-  deed_owner_nationality?: string;
-  deed_ownership_percentage?: string | number;
-  deed_property_type_text?: string;
-  deed_usage_text?: string;
-  deed_neighboring_part?: string;
-  deed_location_text?: string;
-  deed_property_model?: string;
-  deed_mortgage_status?: string;
-  deed_mortgagee_name?: string;
-  deed_mortgagee_entity_number?: string;
-  deed_mortgage_amount?: string | number;
-  deed_mortgage_due_date?: string;
-  deed_mortgage_notes?: string;
-  deed_north_boundary_type?: string;
-  deed_north_boundary_description?: string;
-  deed_north_boundary_length?: string | number;
-  deed_south_boundary_type?: string;
-  deed_south_boundary_description?: string;
-  deed_south_boundary_length?: string | number;
-  deed_east_boundary_type?: string;
-  deed_east_boundary_description?: string;
-  deed_east_boundary_length?: string | number;
-  deed_west_boundary_type?: string;
-  deed_west_boundary_description?: string;
-  deed_west_boundary_length?: string | number;
-  deed_boundaries_description?: string;
-  national_short_address?: string;
-  property_area?: number | string;
-  property_type?: string;
-  usage_type?: string;
-  management_type?: string;
-  floors_count?: number;
-  elevators_count?: number;
-  notes?: string;
-  units_count?: number;
+  name?: string | null;
+  city?: string | null;
+  district?: string | null;
+  address?: string | null;
+  deed_number?: string | null;
+  document_number?: string | null;
+  document_date_hijri?: string | null;
+  document_date_gregorian?: string | null;
+  document_status?: string | null;
+  document_restrictions?: string | null;
+  previous_document_date_hijri?: string | null;
+  previous_document_number?: string | null;
+  operation_type?: string | null;
+  real_estate_identity_number?: string | null;
+  plan_number?: string | null;
+  plot_number?: string | null;
+  block_number?: string | null;
+  deed_owner_identifier?: string | null;
+  deed_owner_name?: string | null;
+  deed_owner_nationality?: string | null;
+  deed_ownership_percentage?: string | number | null;
+  deed_property_type_text?: string | null;
+  deed_usage_text?: string | null;
+  deed_neighboring_part?: string | null;
+  deed_location_text?: string | null;
+  deed_property_model?: string | null;
+  deed_mortgage_status?: string | null;
+  deed_mortgagee_name?: string | null;
+  deed_mortgagee_entity_number?: string | null;
+  deed_mortgage_amount?: string | number | null;
+  deed_mortgage_due_date?: string | null;
+  deed_mortgage_notes?: string | null;
+  deed_north_boundary_type?: string | null;
+  deed_north_boundary_description?: string | null;
+  deed_north_boundary_length?: string | number | null;
+  deed_south_boundary_type?: string | null;
+  deed_south_boundary_description?: string | null;
+  deed_south_boundary_length?: string | number | null;
+  deed_east_boundary_type?: string | null;
+  deed_east_boundary_description?: string | null;
+  deed_east_boundary_length?: string | number | null;
+  deed_west_boundary_type?: string | null;
+  deed_west_boundary_description?: string | null;
+  deed_west_boundary_length?: string | number | null;
+  deed_boundaries_description?: string | null;
+  national_short_address?: string | null;
+  property_area?: number | string | null;
+  property_type?: string | null;
+  usage_type?: string | null;
+  management_type?: string | null;
+  floors_count?: number | string | null;
+  elevators_count?: number | string | null;
+  parking_spots_count?: number | string | null;
+  notes?: string | null;
   property_contracts_count?: number;
   unit_contracts_count?: number;
   whole_property_contract_exists?: boolean;
   can_create_whole_property_contract?: boolean;
   can_create_unit_contract?: boolean;
   can_create_contract?: boolean;
-  owner?: { id: number; name?: string; type?: string };
-  units?: Array<{
-    id: number;
-    unit_number?: string;
-    floor?: string;
-    type?: string;
-    status?: string;
-    rent_amount?: number;
-    contracts_count?: number;
-    contracts?: Array<{ id: number }>;
-  }>;
-  parking_spots?: Array<{ id: number; spot_number?: string; status?: string }>;
-  expenses?: Array<{ id: number; amount?: number; title?: string }>;
+  owner?: { id: number; name?: string | null; type?: string | null } | null;
+  units?: PropertyUnit[];
+  expenses?: Array<{ id: number; amount?: number | string | null; title?: string | null }>;
 };
-
-type ContractScope = 'property' | 'unit';
-type ContractMethod = 'manual' | 'upload';
-type PropertyUnit = NonNullable<PropertyDetail['units']>[number];
 
 const typeMap: Record<string, string> = {
-  building: 'عمارة', apartment: 'وحدة', villa: 'فيلا', land: 'أرض', commercial: 'تجاري', other: 'أخرى',
+  building: 'عمارة',
+  apartment: 'شقة',
+  villa: 'فيلا',
+  land: 'أرض',
+  commercial: 'تجاري',
+  mixed: 'مختلط',
+  other: 'أخرى',
 };
+
 const usageMap: Record<string, string> = { residential: 'سكني', commercial: 'تجاري', mixed: 'مختلط' };
-const mgmtMap: Record<string, string> = { owned: 'ملك خاص', managed: 'مُدار' };
+const mgmtMap: Record<string, string> = { owned: 'ملك خاص', managed: 'إدارة للغير' };
+
+function hasValue(value: unknown) {
+  return value !== null && value !== undefined && String(value).trim() !== '' && String(value).trim() !== '-';
+}
+
+function display(value: unknown) {
+  return hasValue(value) ? String(value) : '-';
+}
+
+function numberValue(value: unknown) {
+  const n = Number(String(value ?? 0).replace(/,/g, ''));
+  return Number.isFinite(n) ? n : 0;
+}
+
+function money(value: unknown) {
+  return `${numberValue(value).toLocaleString('ar-SA')} ر.س`;
+}
 
 function unitContractsCount(unit: PropertyUnit) {
   if (typeof unit.contracts_count === 'number') return unit.contracts_count;
   return Array.isArray(unit.contracts) ? unit.contracts.length : 0;
 }
 
-function hasValue(value: unknown) {
-  return value !== null && value !== undefined && String(value).trim() !== '' && String(value).trim() !== '-';
+function queryValue(value: unknown) {
+  return encodeURIComponent(String(value ?? ''));
 }
 
-function moneyValue(value: unknown) {
-  if (!hasValue(value)) return undefined;
-  const n = Number(String(value).replace(/,/g, ''));
-  return Number.isFinite(n) ? money(n) : String(value);
-}
-
-function DeedSection({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <>
-      <SectionHeader title={title} />
-      <Card>{children}</Card>
-    </>
+    <View style={styles.sectionCard}>
+      <Text style={styles.sectionTitle}>{title}</Text>
+      {children}
+    </View>
+  );
+}
+
+function Row({ label, value }: { label: string; value: unknown }) {
+  if (!hasValue(value)) return null;
+  return (
+    <View style={styles.infoRow}>
+      <Text style={styles.infoValue}>{display(value)}</Text>
+      <Text style={styles.infoLabel}>{label}</Text>
+    </View>
   );
 }
 
@@ -146,16 +163,12 @@ function BoundaryRows({ data }: { data: PropertyDetail }) {
   if (rows.length === 0 && !hasValue(data.deed_boundaries_description)) return null;
 
   return (
-    <DeedSection title="حدود العقار">
+    <Section title="حدود العقار">
       {rows.map(([label, type, desc, len]) => (
-        <InfoRow
-          key={String(label)}
-          label={String(label)}
-          value={[type, desc, hasValue(len) ? `الطول ${len} م` : null].filter(hasValue).join(' - ')}
-        />
+        <Row key={String(label)} label={String(label)} value={[type, desc, hasValue(len) ? `الطول ${len} م` : null].filter(hasValue).join(' - ')} />
       ))}
-      {hasValue(data.deed_boundaries_description) ? <InfoRow label="وصف الحدود" value={data.deed_boundaries_description} /> : null}
-    </DeedSection>
+      <Row label="وصف الحدود" value={data.deed_boundaries_description} />
+    </Section>
   );
 }
 
@@ -167,280 +180,219 @@ export default function PropertyDetailScreen() {
 
   useEffect(() => {
     if (!shouldReturnAfterDelete) return;
-    const timer = setTimeout(() => { smartBack(); }, 250);
+    const timer = setTimeout(() => smartBack(), 250);
     return () => clearTimeout(timer);
   }, [shouldReturnAfterDelete]);
 
-  useEffect(() => {
-    globalThis.__RENTAL_EDIT_CONTEXT__ = { resource: 'properties', id: id || '', owner_id: data?.owner?.id || '' };
-    return () => {
-      if (globalThis.__RENTAL_EDIT_CONTEXT__?.resource === 'properties' && String(globalThis.__RENTAL_EDIT_CONTEXT__?.id || '') === String(id || '')) {
-        globalThis.__RENTAL_EDIT_CONTEXT__ = undefined;
-      }
-    };
-  }, [id, data?.owner?.id]);
+  if (loading || shouldReturnAfterDelete) {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <View style={styles.loadingBox}><ActivityIndicator /><Text style={styles.loadingText}>جاري تحميل العقار...</Text></View>
+      </SafeAreaView>
+    );
+  }
 
-  if (loading || shouldReturnAfterDelete) return <LoadingState />;
-  if (error || !data) return <ErrorState message={error || 'غير موجود'} onRetry={reload} />;
+  if (error || !data) {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <View style={styles.errorBox}>
+          <Text style={styles.errorTitle}>تعذر عرض العقار</Text>
+          <Text style={styles.errorText}>{String(error || 'غير موجود')}</Text>
+          <TouchableOpacity style={styles.retryButton} onPress={reload}><Text style={styles.retryText}>إعادة المحاولة</Text></TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   const units = data.units || [];
-  const rented = units.filter((u) => u.status === 'rented').length;
-  const available = units.filter((u) => u.status === 'available').length;
-  const totalRent = units.reduce((s, u) => s + (u.rent_amount || 0), 0);
-  const totalExpenses = (data.expenses || []).reduce((s, e) => s + (e.amount || 0), 0);
-  const unitContracts = units.reduce((sum, unit) => sum + unitContractsCount(unit), 0);
-  const propertyContracts = Number(data.property_contracts_count || 0);
-  const totalContracts = propertyContracts + Number(data.unit_contracts_count ?? unitContracts);
-  const hasAnyContracts = totalContracts > 0;
-  const unitsWithoutContract = units.filter((unit) => unitContractsCount(unit) === 0);
-  const hasUnitsWithoutContract = unitsWithoutContract.length > 0;
-  const canCreateWholePropertyContract = typeof data.can_create_whole_property_contract === 'boolean'
-    ? data.can_create_whole_property_contract
-    : propertyContracts === 0;
-  const canCreateUnitContract = typeof data.can_create_unit_contract === 'boolean'
-    ? data.can_create_unit_contract
-    : units.length > 0 && propertyContracts === 0 && hasUnitsWithoutContract;
-  const shouldShowCreateContract = typeof data.can_create_contract === 'boolean'
-    ? data.can_create_contract
-    : canCreateWholePropertyContract || canCreateUnitContract;
+  const rented = units.filter((unit) => unit.status === 'rented').length;
+  const available = units.filter((unit) => unit.status === 'available').length;
+  const totalRent = units.reduce((sum, unit) => sum + numberValue(unit.rent_amount), 0);
+  const totalExpenses = (data.expenses || []).reduce((sum, expense) => sum + numberValue(expense.amount), 0);
   const propertyId = data.id;
-  const encodedPropertyName = encodeURIComponent(data.name || `عقار #${propertyId}`);
+  const encodedPropertyName = queryValue(data.name || `عقار #${propertyId}`);
+  const ownerQuery = data.owner?.id ? `&owner_id=${data.owner.id}&owner_name=${queryValue(data.owner.name || '')}` : '';
+  const unitContracts = units.reduce((sum, unit) => sum + unitContractsCount(unit), 0);
+  const totalContracts = Number(data.property_contracts_count || 0) + Number(data.unit_contracts_count ?? unitContracts);
+  const canCreateContract = typeof data.can_create_contract === 'boolean' ? data.can_create_contract : totalContracts === 0;
 
-  function openPropertyService(path: string, extraQuery = '') {
-    const separator = extraQuery ? '&' : '';
-    router.push(`${path}?property_id=${propertyId}&property_name=${encodedPropertyName}${separator}${extraQuery}` as any);
+  function openEditProperty() {
+    router.push(`/property-form?id=${propertyId}` as never);
+  }
+
+  function openRepository() {
+    router.push(`/files?property_id=${propertyId}&property_name=${encodedPropertyName}${ownerQuery}` as never);
   }
 
   function openAddUnit() {
-    const query = [
-      `property_id=${propertyId}`,
-      `property_name=${encodedPropertyName}`,
-      'unit_scope=property',
-      'create=1',
-    ];
-
-    if (data.owner?.id) query.push(`owner_id=${data.owner.id}`);
-    if (data.owner?.name) query.push(`owner_name=${encodeURIComponent(data.owner.name)}`);
-
-    router.push(`/units?${query.join('&')}` as any);
+    router.push(`/units?property_id=${propertyId}&property_name=${encodedPropertyName}&unit_scope=property&create=1${ownerQuery}` as never);
   }
 
-  function contractQuery(scope: ContractScope, unit?: PropertyUnit) {
-    const parts = [
-      `property_id=${propertyId}`,
-      `property_name=${encodedPropertyName}`,
-      `contract_scope=${scope}`,
-      `target_type=${scope}`,
-      'source=property-details',
-    ];
-
-    if (data.owner?.id) parts.push(`owner_id=${data.owner.id}`);
-    if (data.owner?.name) parts.push(`owner_name=${encodeURIComponent(data.owner.name)}`);
-    if (scope === 'unit' && unit?.id) parts.push(`unit_id=${unit.id}`);
-    if (scope === 'unit' && unit?.unit_number) parts.push(`unit_name=${encodeURIComponent(unit.unit_number)}`);
-    if (scope === 'property') parts.push('unit_name=%D8%A7%D9%84%D8%B9%D9%82%D8%A7%D8%B1%20%D9%83%D8%A7%D9%85%D9%84');
-
-    return parts.join('&');
+  function openPropertyService(path: string, extraQuery = '') {
+    const extra = extraQuery ? `&${extraQuery}` : '';
+    router.push(`${path}?property_id=${propertyId}&property_name=${encodedPropertyName}${ownerQuery}${extra}` as never);
   }
 
-  function openContractFlow(method: ContractMethod, scope: ContractScope, unit?: PropertyUnit) {
-    const query = contractQuery(scope, unit);
-    const target = method === 'upload' ? '/upload-contract' : '/create-contract';
-    router.push(`${target}?${query}` as any);
-  }
-
-  function askContractMethod(scope: ContractScope, unit?: PropertyUnit) {
-    const targetName = scope === 'unit'
-      ? `الوحدة ${unit?.unit_number || unit?.id || ''}`.trim()
-      : 'العقار بالكامل';
-
-    Alert.alert('إضافة عقد', `اختر طريقة إضافة العقد على ${targetName}:`, [
-      { text: 'رفع عقد PDF', onPress: () => openContractFlow('upload', scope, unit) },
-      { text: 'إنشاء عقد يدوي', onPress: () => openContractFlow('manual', scope, unit) },
+  function openCreateContract() {
+    Alert.alert('إضافة عقد', 'اختر طريقة إضافة العقد:', [
+      { text: 'رفع عقد PDF', onPress: () => router.push(`/upload-contract?property_id=${propertyId}&property_name=${encodedPropertyName}&contract_scope=property&target_type=property${ownerQuery}` as never) },
+      { text: 'إنشاء عقد يدوي', onPress: () => router.push(`/create-contract?property_id=${propertyId}&property_name=${encodedPropertyName}&contract_scope=property&target_type=property${ownerQuery}` as never) },
       { text: 'إلغاء', style: 'cancel' },
     ]);
   }
 
-  function askUnitTarget() {
-    const selectableUnits = unitsWithoutContract.length > 0 ? unitsWithoutContract : units;
-
-    if (selectableUnits.length === 0) {
-      Alert.alert('تنبيه', 'لا توجد وحدات تحت هذا العقار.');
-      return;
-    }
-
-    Alert.alert(
-      'اختر الوحدة',
-      'اختر الوحدة التي تريد إنشاء أو رفع العقد عليها:',
-      [
-        ...selectableUnits.map((unit) => ({
-          text: unit.unit_number || `وحدة #${unit.id}`,
-          onPress: () => askContractMethod('unit', unit),
-        })),
-        { text: 'إلغاء', style: 'cancel' as const },
-      ],
-    );
-  }
-
-  function chooseContractTarget() {
-    if (!shouldShowCreateContract) {
-      Alert.alert('تنبيه', 'لا يمكن إنشاء عقد جديد؛ يوجد عقد مسجل على هذا العقار أو وحداته.');
-      return;
-    }
-
-    if (units.length > 0) {
-      Alert.alert('إنشاء عقد', 'هل تريد العقد على العقار كامل أم على إحدى الوحدات؟', [
-        {
-          text: 'العقار كامل',
-          onPress: () => {
-            if (!canCreateWholePropertyContract) {
-              Alert.alert('تنبيه', 'لا يمكن إنشاء عقد على العقار بالكامل؛ توجد عقود أو قيود مرتبطة بوحدات هذا العقار.');
-              return;
-            }
-            askContractMethod('property');
-          },
+  function confirmDeleteProperty() {
+    Alert.alert('حذف العقار', `هل تريد حذف ${data.name || `عقار #${propertyId}`}؟`, [
+      { text: 'إلغاء', style: 'cancel' },
+      {
+        text: 'حذف',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await apiPost(`/edit-delete-center/properties/${propertyId}/delete`, {});
+            Alert.alert('تم', 'تم حذف العقار.', [{ text: 'حسنًا', onPress: () => smartBack() }]);
+          } catch (e) {
+            Alert.alert('تعذر الحذف', e instanceof Error ? e.message : 'حدث خطأ غير متوقع');
+          }
         },
-        {
-          text: 'إحدى الوحدات',
-          onPress: () => {
-            if (!canCreateUnitContract) {
-              Alert.alert('تنبيه', 'لا توجد وحدة متاحة بدون عقد داخل هذا العقار.');
-              return;
-            }
-            askUnitTarget();
-          },
-        },
-        { text: 'إلغاء', style: 'cancel' },
-      ]);
-      return;
-    }
-
-    askContractMethod('property');
+      },
+    ]);
   }
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={false} onRefresh={reload} tintColor={colors.primary} />}>
-        <Card style={styles.heroCard}>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={false} onRefresh={reload} tintColor="#0F766E" />}
+      >
+        <View style={styles.heroCard}>
           <View style={styles.heroTop}>
             <View style={styles.heroIcon}>
-              <Text style={{ fontSize: 32 }}>{data.property_type === 'villa' ? '🏡' : data.property_type === 'apartment' ? '🏠' : data.property_type === 'land' ? '🧭' : '🏢'}</Text>
+              <Text style={styles.heroEmoji}>{data.property_type === 'villa' ? '🏡' : data.property_type === 'apartment' ? '🏠' : data.property_type === 'land' ? '🧭' : '🏢'}</Text>
             </View>
-            <View style={{ flex: 1 }}>
-              <View style={styles.titleRow}>
-                <InlineEditDeleteActions resource="properties" id={data.id} hideDetails compact iconOnly onChanged={reload} />
-                <Text style={styles.heroName}>{data.name}</Text>
-              </View>
-              <Text style={styles.heroLocation}>{[data.district, data.city].filter(Boolean).join('، ')}</Text>
-              {data.owner && <Text style={styles.heroOwner}>المالك: {data.owner.name}</Text>}
+            <View style={styles.heroTextBox}>
+              <Text style={styles.heroTitle}>{data.name || `عقار #${propertyId}`}</Text>
+              <Text style={styles.heroSubtitle}>{[data.district, data.city].filter(Boolean).join('، ') || 'لا يوجد موقع مسجل'}</Text>
+              {data.owner?.name ? <Text style={styles.ownerText}>المالك: {data.owner.name}</Text> : null}
             </View>
           </View>
 
-          <View style={styles.statsRow}>
-            <View style={styles.statItem}><Text style={styles.statNum}>{units.length}</Text><Text style={styles.statLbl}>وحدة</Text></View>
-            <View style={styles.statItem}><Text style={[styles.statNum, { color: colors.success }]}>{rented}</Text><Text style={styles.statLbl}>مؤجرة</Text></View>
-            <View style={styles.statItem}><Text style={[styles.statNum, { color: colors.warning }]}>{available}</Text><Text style={styles.statLbl}>شاغرة</Text></View>
+          <View style={styles.heroActions}>
+            <TouchableOpacity style={styles.heroActionButton} activeOpacity={0.86} onPress={openEditProperty}>
+              <Ionicons name="create-outline" size={19} color="#fff" />
+              <Text style={styles.heroActionText}>تعديل العقار</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.heroActionButton, styles.repositoryButton]} activeOpacity={0.86} onPress={openRepository}>
+              <Ionicons name="folder-open-outline" size={19} color="#0F766E" />
+              <Text style={[styles.heroActionText, styles.repositoryButtonText]}>المستودع</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.heroActionButton, styles.deleteButton]} activeOpacity={0.86} onPress={confirmDeleteProperty}>
+              <Ionicons name="trash-outline" size={19} color="#991B1B" />
+              <Text style={[styles.heroActionText, styles.deleteButtonText]}>حذف</Text>
+            </TouchableOpacity>
           </View>
-        </Card>
-
-        <Card style={styles.servicesCard}>
-          <Text style={styles.actionsTitle}>خدمات العقار</Text>
-          <Text style={styles.servicesHint}>كل خدمة هنا خاصة بهذا العقار فقط.</Text>
-          <View style={styles.servicesGrid}>
-            <TouchableOpacity style={[styles.serviceButton, styles.addUnitService]} onPress={openAddUnit}><Text style={styles.serviceIcon}>＋</Text><Text style={styles.serviceText}>إضافة وحدة</Text></TouchableOpacity>
-            <TouchableOpacity style={styles.serviceButton} onPress={() => openPropertyService('/expenses')}><Text style={styles.serviceIcon}>📉</Text><Text style={styles.serviceText}>المصروفات</Text></TouchableOpacity>
-            {hasAnyContracts ? <TouchableOpacity style={styles.serviceButton} onPress={() => openPropertyService('/contracts')}><Text style={styles.serviceIcon}>📑</Text><Text style={styles.serviceText}>العقود</Text></TouchableOpacity> : null}
-            {shouldShowCreateContract ? <TouchableOpacity style={[styles.serviceButton, styles.createContractService]} onPress={chooseContractTarget}><Text style={styles.serviceIcon}>📝</Text><Text style={styles.serviceText}>إنشاء / رفع عقد</Text></TouchableOpacity> : null}
-            <TouchableOpacity style={styles.serviceButton} onPress={() => openPropertyService('/documents', 'entity_type=property')}><Text style={styles.serviceIcon}>📁</Text><Text style={styles.serviceText}>المستندات</Text></TouchableOpacity>
-            <TouchableOpacity style={styles.serviceButton} onPress={() => openPropertyService('/files')}><Text style={styles.serviceIcon}>📂</Text><Text style={styles.serviceText}>الملفات والوسائط</Text></TouchableOpacity>
-          </View>
-        </Card>
-
-        <View style={styles.finRow}>
-          <StatCard label="إجمالي الإيجارات" value={money(totalRent)} color={colors.success} />
-          <StatCard label="المصروفات" value={money(totalExpenses)} color={colors.danger} />
         </View>
 
-        <DeedSection title="تفاصيل العقار">
-          <InfoRow label="النوع" value={typeMap[data.property_type || ''] || data.property_type} />
-          <InfoRow label="الاستخدام" value={usageMap[data.usage_type || ''] || data.usage_type} />
-          <InfoRow label="الإدارة" value={mgmtMap[data.management_type || ''] || data.management_type} />
-          <InfoRow label="رقم الصك" value={data.deed_number || data.document_number} />
-          <InfoRow label="العنوان الوطني المختصر" value={data.national_short_address} />
-          <InfoRow label="مساحة العقار" value={data.property_area ? `${data.property_area} م²` : undefined} />
-          <InfoRow label="عدد الأدوار" value={data.floors_count} />
-          <InfoRow label="المصاعد" value={data.elevators_count} />
-          {data.address && <InfoRow label="العنوان" value={data.address} />}
-          {data.notes && <InfoRow label="ملاحظات" value={data.notes} />}
-        </DeedSection>
+        <View style={styles.statsRow}>
+          <View style={styles.statCard}><Text style={styles.statValue}>{units.length.toLocaleString('ar-SA')}</Text><Text style={styles.statLabel}>وحدة</Text></View>
+          <View style={styles.statCard}><Text style={styles.statValue}>{rented.toLocaleString('ar-SA')}</Text><Text style={styles.statLabel}>مؤجرة</Text></View>
+          <View style={styles.statCard}><Text style={styles.statValue}>{available.toLocaleString('ar-SA')}</Text><Text style={styles.statLabel}>شاغرة</Text></View>
+        </View>
 
-        <DeedSection title="بيانات الوثيقة">
-          <InfoRow label="تاريخ الوثيقة" value={data.document_date_hijri} />
-          <InfoRow label="التاريخ الميلادي" value={data.document_date_gregorian} />
-          <InfoRow label="الحالة" value={data.document_status} />
-          <InfoRow label="القيود" value={data.document_restrictions} />
-          <InfoRow label="تاريخ الوثيقة السابقة" value={data.previous_document_date_hijri} />
-          <InfoRow label="رقم الوثيقة السابقة" value={data.previous_document_number} />
-          <InfoRow label="نوع العملية" value={data.operation_type} />
-        </DeedSection>
+        <Section title="خدمات العقار">
+          <View style={styles.servicesGrid}>
+            <TouchableOpacity style={styles.serviceButton} onPress={openAddUnit}><Ionicons name="add-circle-outline" size={23} color="#0F766E" /><Text style={styles.serviceText}>إضافة وحدة</Text></TouchableOpacity>
+            <TouchableOpacity style={styles.serviceButton} onPress={() => openPropertyService('/expenses')}><MaterialCommunityIcons name="cash-minus" size={23} color="#0F766E" /><Text style={styles.serviceText}>المصروفات</Text></TouchableOpacity>
+            <TouchableOpacity style={styles.serviceButton} onPress={() => openPropertyService('/contracts')}><MaterialCommunityIcons name="file-document-outline" size={23} color="#0F766E" /><Text style={styles.serviceText}>العقود</Text></TouchableOpacity>
+            {canCreateContract ? <TouchableOpacity style={styles.serviceButton} onPress={openCreateContract}><MaterialCommunityIcons name="file-sign" size={23} color="#0F766E" /><Text style={styles.serviceText}>إنشاء / رفع عقد</Text></TouchableOpacity> : null}
+            <TouchableOpacity style={styles.serviceButton} onPress={() => openPropertyService('/documents', 'entity_type=property')}><Ionicons name="documents-outline" size={23} color="#0F766E" /><Text style={styles.serviceText}>المستندات</Text></TouchableOpacity>
+            <TouchableOpacity style={styles.serviceButton} onPress={openRepository}><Ionicons name="images-outline" size={23} color="#0F766E" /><Text style={styles.serviceText}>الملفات والوسائط</Text></TouchableOpacity>
+          </View>
+        </Section>
 
-        <DeedSection title="بيانات المالك في الصك">
-          <InfoRow label="رقم الهوية" value={data.deed_owner_identifier} />
-          <InfoRow label="الاسم" value={data.deed_owner_name} />
-          <InfoRow label="الجنسية" value={data.deed_owner_nationality} />
-          <InfoRow label="نسبة التملك" value={hasValue(data.deed_ownership_percentage) ? `${data.deed_ownership_percentage}%` : undefined} />
-        </DeedSection>
+        <View style={styles.financeRow}>
+          <View style={styles.financeCard}><Text style={styles.financeValue}>{money(totalRent)}</Text><Text style={styles.financeLabel}>إجمالي الإيجارات</Text></View>
+          <View style={styles.financeCard}><Text style={styles.financeValue}>{money(totalExpenses)}</Text><Text style={styles.financeLabel}>المصروفات</Text></View>
+        </View>
 
-        <DeedSection title="بيانات الصك العقارية">
-          <InfoRow label="رقم الهوية العقارية" value={data.real_estate_identity_number} />
-          <InfoRow label="نوع العقار في الصك" value={data.deed_property_type_text} />
-          <InfoRow label="نوع الاستخدام" value={data.deed_usage_text} />
-          <InfoRow label="رقم القطعة" value={data.plot_number} />
-          <InfoRow label="رقم المخطط" value={data.plan_number} />
-          <InfoRow label="البلك" value={data.block_number} />
-          <InfoRow label="المجاورة / الجزء" value={data.deed_neighboring_part} />
-          <InfoRow label="الموقع" value={data.deed_location_text} />
-          <InfoRow label="نموذج العقار" value={data.deed_property_model} />
-        </DeedSection>
+        <Section title="تفاصيل العقار">
+          <Row label="النوع" value={typeMap[String(data.property_type || '')] || data.property_type} />
+          <Row label="الاستخدام" value={usageMap[String(data.usage_type || '')] || data.usage_type} />
+          <Row label="الإدارة" value={mgmtMap[String(data.management_type || '')] || data.management_type} />
+          <Row label="رقم الصك" value={data.deed_number || data.document_number} />
+          <Row label="العنوان الوطني المختصر" value={data.national_short_address} />
+          <Row label="المساحة" value={hasValue(data.property_area) ? `${data.property_area} م²` : null} />
+          <Row label="عدد الأدوار" value={data.floors_count} />
+          <Row label="المواقف" value={data.parking_spots_count} />
+          <Row label="المصاعد" value={data.elevators_count} />
+          <Row label="العنوان" value={data.address} />
+          <Row label="ملاحظات" value={data.notes} />
+        </Section>
+
+        <Section title="بيانات الوثيقة">
+          <Row label="تاريخ الوثيقة" value={data.document_date_hijri} />
+          <Row label="التاريخ الميلادي" value={data.document_date_gregorian} />
+          <Row label="الحالة" value={data.document_status} />
+          <Row label="القيود" value={data.document_restrictions} />
+          <Row label="تاريخ الوثيقة السابقة" value={data.previous_document_date_hijri} />
+          <Row label="رقم الوثيقة السابقة" value={data.previous_document_number} />
+          <Row label="نوع العملية" value={data.operation_type} />
+        </Section>
+
+        <Section title="بيانات المالك في الصك">
+          <Row label="رقم الهوية" value={data.deed_owner_identifier} />
+          <Row label="الاسم" value={data.deed_owner_name} />
+          <Row label="الجنسية" value={data.deed_owner_nationality} />
+          <Row label="نسبة التملك" value={hasValue(data.deed_ownership_percentage) ? `${data.deed_ownership_percentage}%` : null} />
+        </Section>
+
+        <Section title="بيانات الصك العقارية">
+          <Row label="رقم الهوية العقارية" value={data.real_estate_identity_number} />
+          <Row label="نوع العقار في الصك" value={data.deed_property_type_text} />
+          <Row label="نوع الاستخدام" value={data.deed_usage_text} />
+          <Row label="رقم القطعة" value={data.plot_number} />
+          <Row label="رقم المخطط" value={data.plan_number} />
+          <Row label="البلك" value={data.block_number} />
+          <Row label="المجاورة / الجزء" value={data.deed_neighboring_part} />
+          <Row label="الموقع" value={data.deed_location_text} />
+          <Row label="نموذج العقار" value={data.deed_property_model} />
+        </Section>
 
         {(hasValue(data.deed_mortgage_status) || hasValue(data.deed_mortgagee_name) || hasValue(data.deed_mortgage_amount)) ? (
-          <DeedSection title="بيانات الرهن / القيود المالية">
-            <InfoRow label="حالة الرهن" value={data.deed_mortgage_status} />
-            <InfoRow label="الجهة المرتهنة" value={data.deed_mortgagee_name} />
-            <InfoRow label="رقم المنشأة" value={data.deed_mortgagee_entity_number} />
-            <InfoRow label="قيمة الرهن" value={moneyValue(data.deed_mortgage_amount)} />
-            <InfoRow label="تاريخ الاستحقاق" value={data.deed_mortgage_due_date} />
-            <InfoRow label="ملاحظات" value={data.deed_mortgage_notes} />
-          </DeedSection>
+          <Section title="بيانات الرهن / القيود المالية">
+            <Row label="حالة الرهن" value={data.deed_mortgage_status} />
+            <Row label="الجهة المرتهنة" value={data.deed_mortgagee_name} />
+            <Row label="رقم المنشأة" value={data.deed_mortgagee_entity_number} />
+            <Row label="قيمة الرهن" value={hasValue(data.deed_mortgage_amount) ? money(data.deed_mortgage_amount) : null} />
+            <Row label="تاريخ الاستحقاق" value={data.deed_mortgage_due_date} />
+            <Row label="ملاحظات" value={data.deed_mortgage_notes} />
+          </Section>
         ) : null}
 
         <BoundaryRows data={data} />
 
-        {units.length > 0 && (
-          <>
-            <SectionHeader title="الوحدات" />
+        {units.length > 0 ? (
+          <Section title="الوحدات">
             {units.map((unit) => {
-              const contractsCount = unitContractsCount(unit);
-              const hasContract = contractsCount > 0;
+              const hasContract = unitContractsCount(unit) > 0;
               return (
-                <Card key={unit.id} style={styles.unitCard} onPress={() => router.push(`/unit/${unit.id}` as any)}>
-                  <View style={styles.unitRow}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.unitNumber}>{unit.unit_number}</Text>
-                      <Text style={styles.unitInfo}>{unit.type || 'شقة'} — الطابق {unit.floor || '-'}</Text>
-                      <Text style={hasContract ? styles.unitContractOk : styles.unitContractEmpty}>{hasContract ? `يوجد ${contractsCount} عقد` : 'لا يوجد عقد'}</Text>
-                    </View>
-                    <View style={styles.unitActionsColumn}>
-                      <StatusBadge status={unit.status} size="sm" />
-                      {!hasContract && canCreateUnitContract ? <TouchableOpacity style={styles.unitCreateContractButton} onPress={(event) => { event.stopPropagation?.(); askContractMethod('unit', unit); }}><Text style={styles.unitCreateContractIcon}>📝</Text><Text style={styles.unitCreateContractText}>إنشاء / رفع عقد</Text></TouchableOpacity> : null}
-                      <Text style={styles.unitRent}>{money(unit.rent_amount)}</Text>
-                    </View>
+                <TouchableOpacity key={unit.id} style={styles.unitCard} activeOpacity={0.9} onPress={() => router.push(`/unit/${unit.id}` as never)}>
+                  <View style={styles.unitInfoBox}>
+                    <Text style={styles.unitTitle}>{unit.unit_number || `وحدة #${unit.id}`}</Text>
+                    <Text style={styles.unitMeta}>{unit.type || 'وحدة'} — الدور {display(unit.floor)}</Text>
+                    <Text style={hasContract ? styles.unitContractOk : styles.unitContractEmpty}>{hasContract ? `يوجد ${unitContractsCount(unit)} عقد` : 'لا يوجد عقد'}</Text>
                   </View>
-                </Card>
+                  <View style={styles.unitSideBox}>
+                    <Text style={styles.unitStatus}>{unit.status || '-'}</Text>
+                    <Text style={styles.unitRent}>{money(unit.rent_amount)}</Text>
+                  </View>
+                </TouchableOpacity>
               );
             })}
-          </>
-        )}
+          </Section>
+        ) : null}
+
         <View style={{ height: 40 }} />
       </ScrollView>
     </SafeAreaView>
@@ -448,38 +400,53 @@ export default function PropertyDetailScreen() {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.background },
-  content: { padding: spacing.lg, paddingTop: spacing.lg, paddingBottom: 40 },
-  heroCard: { padding: spacing.xl, marginBottom: spacing.lg },
-  heroTop: { flexDirection: 'row', alignItems: 'center', gap: spacing.lg, marginBottom: spacing.xl },
-  heroIcon: { width: 64, height: 64, borderRadius: 32, backgroundColor: colors.primaryLight, alignItems: 'center', justifyContent: 'center' },
-  titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm },
-  heroName: { ...typography.h3, color: colors.text, textAlign: 'right', flex: 1 },
-  heroLocation: { ...typography.caption, color: colors.textSecondary, textAlign: 'right', marginTop: 2 },
-  heroOwner: { ...typography.small, color: colors.primary, textAlign: 'right', marginTop: 4 },
-  actionsTitle: { ...typography.bodyBold, color: colors.text, textAlign: 'right', marginBottom: spacing.sm },
-  servicesCard: { padding: spacing.md, marginBottom: spacing.lg },
-  servicesHint: { ...typography.small, color: colors.textSecondary, textAlign: 'right', marginBottom: spacing.md },
-  servicesGrid: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: spacing.sm },
-  serviceButton: { width: '48%', minHeight: 78, borderRadius: radii.lg, backgroundColor: colors.background, borderWidth: 1, borderColor: colors.borderLight, alignItems: 'center', justifyContent: 'center', padding: spacing.sm },
-  addUnitService: { borderColor: colors.primary, backgroundColor: colors.primary },
-  createContractService: { borderColor: colors.primary, backgroundColor: colors.primaryLight },
-  serviceIcon: { fontSize: 24, marginBottom: 4 },
-  serviceText: { ...typography.captionBold, color: colors.text, textAlign: 'center' },
-  statsRow: { flexDirection: 'row', justifyContent: 'space-around' },
-  statItem: { alignItems: 'center' },
-  statNum: { ...typography.h2, color: colors.text },
-  statLbl: { ...typography.small, color: colors.textSecondary, marginTop: 2 },
-  finRow: { flexDirection: 'row', gap: spacing.md, marginBottom: spacing.lg },
-  unitCard: { marginBottom: spacing.sm },
-  unitRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: spacing.sm },
-  unitNumber: { ...typography.bodyBold, color: colors.text, textAlign: 'right' },
-  unitInfo: { ...typography.caption, color: colors.textSecondary, textAlign: 'right', marginTop: 2 },
-  unitContractOk: { ...typography.small, color: colors.success, textAlign: 'right', marginTop: 4, fontWeight: '800' },
-  unitContractEmpty: { ...typography.small, color: colors.warning, textAlign: 'right', marginTop: 4, fontWeight: '800' },
-  unitActionsColumn: { alignItems: 'flex-end', gap: 6 },
-  unitCreateContractButton: { flexDirection: 'row-reverse', alignItems: 'center', gap: 4, borderRadius: radii.full, backgroundColor: colors.primaryLight, paddingHorizontal: 10, paddingVertical: 5, borderWidth: 1, borderColor: colors.primary },
-  unitCreateContractIcon: { fontSize: 13 },
-  unitCreateContractText: { ...typography.small, color: colors.primary, fontWeight: '900' },
-  unitRent: { ...typography.captionBold, color: colors.text, marginTop: 4 },
+  safe: { flex: 1, backgroundColor: '#F7F6F4' },
+  content: { padding: 14, paddingBottom: 44 },
+  loadingBox: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40 },
+  loadingText: { marginTop: 8, color: '#64748B', fontWeight: '800' },
+  errorBox: { margin: 16, backgroundColor: '#FEE2E2', borderRadius: 20, padding: 18, alignItems: 'center' },
+  errorTitle: { color: '#991B1B', fontSize: 18, fontWeight: '900' },
+  errorText: { color: '#7F1D1D', marginTop: 8, textAlign: 'center' },
+  retryButton: { marginTop: 12, backgroundColor: '#991B1B', borderRadius: 14, paddingHorizontal: 16, paddingVertical: 10 },
+  retryText: { color: '#fff', fontWeight: '900' },
+  heroCard: { backgroundColor: '#111827', borderRadius: 28, padding: 16, marginBottom: 12 },
+  heroTop: { flexDirection: 'row-reverse', alignItems: 'center', gap: 12 },
+  heroIcon: { width: 62, height: 62, borderRadius: 23, backgroundColor: '#ECFDF5', alignItems: 'center', justifyContent: 'center' },
+  heroEmoji: { fontSize: 31 },
+  heroTextBox: { flex: 1, alignItems: 'flex-end' },
+  heroTitle: { color: '#fff', fontSize: 23, fontWeight: '900', textAlign: 'right' },
+  heroSubtitle: { color: '#CBD5E1', fontWeight: '800', marginTop: 5, textAlign: 'right' },
+  ownerText: { color: '#5EEAD4', fontWeight: '900', marginTop: 5, textAlign: 'right' },
+  heroActions: { flexDirection: 'row-reverse', gap: 8, marginTop: 14 },
+  heroActionButton: { flex: 1, minHeight: 45, borderRadius: 16, backgroundColor: '#0F766E', alignItems: 'center', justifyContent: 'center', flexDirection: 'row-reverse', gap: 6 },
+  heroActionText: { color: '#fff', fontWeight: '900', fontSize: 12 },
+  repositoryButton: { backgroundColor: '#ECFDF5', borderWidth: 1, borderColor: '#A7F3D0' },
+  repositoryButtonText: { color: '#0F766E' },
+  deleteButton: { backgroundColor: '#FEF2F2', borderWidth: 1, borderColor: '#FECACA' },
+  deleteButtonText: { color: '#991B1B' },
+  statsRow: { flexDirection: 'row-reverse', gap: 8, marginBottom: 12 },
+  statCard: { flex: 1, backgroundColor: '#fff', borderRadius: 20, padding: 14, alignItems: 'center', borderWidth: 1, borderColor: '#ECEFF3' },
+  statValue: { color: '#111827', fontSize: 20, fontWeight: '900' },
+  statLabel: { color: '#64748B', fontWeight: '800', marginTop: 4 },
+  sectionCard: { backgroundColor: '#fff', borderRadius: 22, padding: 14, marginBottom: 12, borderWidth: 1, borderColor: '#ECEFF3' },
+  sectionTitle: { color: '#111827', fontSize: 18, fontWeight: '900', textAlign: 'right', marginBottom: 10 },
+  servicesGrid: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 8 },
+  serviceButton: { width: '48%', minHeight: 76, borderRadius: 18, backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#E2E8F0', alignItems: 'center', justifyContent: 'center', padding: 8 },
+  serviceText: { color: '#111827', fontWeight: '900', textAlign: 'center', marginTop: 5, fontSize: 12 },
+  financeRow: { flexDirection: 'row-reverse', gap: 8, marginBottom: 12 },
+  financeCard: { flex: 1, backgroundColor: '#fff', borderRadius: 20, padding: 14, alignItems: 'center', borderWidth: 1, borderColor: '#ECEFF3' },
+  financeValue: { color: '#0F766E', fontWeight: '900', fontSize: 17 },
+  financeLabel: { color: '#64748B', fontWeight: '800', marginTop: 5, textAlign: 'center' },
+  infoRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
+  infoLabel: { color: '#64748B', fontWeight: '900', textAlign: 'right', minWidth: 110 },
+  infoValue: { color: '#111827', fontWeight: '900', flex: 1, textAlign: 'left' },
+  unitCard: { backgroundColor: '#F8FAFC', borderRadius: 18, padding: 12, marginBottom: 8, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', borderWidth: 1, borderColor: '#E2E8F0' },
+  unitInfoBox: { flex: 1, alignItems: 'flex-end' },
+  unitTitle: { color: '#111827', fontWeight: '900', fontSize: 16, textAlign: 'right' },
+  unitMeta: { color: '#64748B', fontWeight: '800', marginTop: 3, textAlign: 'right' },
+  unitContractOk: { color: '#16A34A', fontWeight: '900', marginTop: 4, textAlign: 'right' },
+  unitContractEmpty: { color: '#D97706', fontWeight: '900', marginTop: 4, textAlign: 'right' },
+  unitSideBox: { alignItems: 'flex-start', gap: 7 },
+  unitStatus: { backgroundColor: '#E0F2FE', color: '#0369A1', borderRadius: 999, paddingHorizontal: 9, paddingVertical: 5, overflow: 'hidden', fontWeight: '900', fontSize: 11 },
+  unitRent: { color: '#111827', fontWeight: '900' },
 });
