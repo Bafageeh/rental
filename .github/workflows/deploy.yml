@@ -15,10 +15,11 @@ jobs:
       - name: Deploy over SSH
         uses: appleboy/ssh-action@v1.2.0
         with:
-          host: ${{ secrets.RENTAL_SSH_HOST || secrets.SSH_HOST }}
-          username: ${{ secrets.RENTAL_SSH_USER || secrets.SSH_USER }}
-          key: ${{ secrets.RENTAL_SSH_KEY || secrets.SSH_PRIVATE_KEY }}
-          port: ${{ secrets.RENTAL_SSH_PORT || secrets.SSH_PORT || 22 }}
+          host: ${{ secrets.RENTAL_SSH_HOST || secrets.SSH_HOST || 'rental.pm.sa' }}
+          username: ${{ secrets.RENTAL_SSH_USER || secrets.SSH_USER || secrets.DEPLOY_USER || 'root' }}
+          key: ${{ secrets.RENTAL_SSH_KEY || secrets.SSH_PRIVATE_KEY || secrets.DEPLOY_KEY || secrets.SSH_KEY }}
+          password: ${{ secrets.RENTAL_SSH_PASSWORD || secrets.SSH_PASSWORD || secrets.DEPLOY_PASSWORD }}
+          port: ${{ secrets.RENTAL_SSH_PORT || secrets.SSH_PORT || '22' }}
           script: |
             set -e
 
@@ -28,11 +29,16 @@ jobs:
                 PROJECT_PATH=/home/pmsa/apps/rental
               elif [ -d /mnt/home-storage/home/pmsa/apps/rental ]; then
                 PROJECT_PATH=/mnt/home-storage/home/pmsa/apps/rental
+              elif [ -d /home/pmsa/apps/my-rentals-api ]; then
+                PROJECT_PATH=/home/pmsa/apps
+              elif [ -d /mnt/home-storage/home/pmsa/apps/my-rentals-api ]; then
+                PROJECT_PATH=/mnt/home-storage/home/pmsa/apps
               else
                 PROJECT_PATH=/home/pmsa/apps/rental
               fi
             fi
 
+            echo "Using project path: $PROJECT_PATH"
             cd "$PROJECT_PATH"
             git config --global --add safe.directory "$PROJECT_PATH" || true
             git pull --ff-only origin main
