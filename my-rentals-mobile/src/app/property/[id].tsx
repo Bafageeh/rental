@@ -83,6 +83,7 @@ type PropertyDetail = {
   elevators_count?: number | string | null;
   parking_spots_count?: number | string | null;
   notes?: string | null;
+  total_rent_amount?: number | string | null;
   property_contracts_count?: number;
   unit_contracts_count?: number;
   whole_property_contract_exists?: boolean;
@@ -223,7 +224,9 @@ export default function PropertyDetailScreen() {
   const units = data.units || [];
   const rented = units.filter((unit) => unit.status === 'rented').length;
   const available = units.filter((unit) => unit.status === 'available').length;
-  const totalRent = units.reduce((sum, unit) => sum + numberValue(unit.rent_amount), 0);
+  const totalRent = hasValue(data.total_rent_amount)
+    ? numberValue(data.total_rent_amount)
+    : units.reduce((sum, unit) => sum + numberValue(unit.rent_amount), 0);
   const totalExpenses = (data.expenses || []).reduce((sum, expense) => sum + numberValue(expense.amount), 0);
   const propertyId = data.id;
   const encodedPropertyName = queryValue(data.name || `عقار #${propertyId}`);
