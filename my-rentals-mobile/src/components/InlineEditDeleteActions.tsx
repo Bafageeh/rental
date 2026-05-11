@@ -79,6 +79,10 @@ function isPropertyResource(resource: string | null | undefined) {
   return resource === "properties" || resource === "property";
 }
 
+function isUnitResource(resource: string | null | undefined) {
+  return resource === "units" || resource === "unit";
+}
+
 function isRequiredPropertyField(resource: string | null | undefined, field: string) {
   return isPropertyResource(resource) && field === "owner_id";
 }
@@ -86,6 +90,16 @@ function isRequiredPropertyField(resource: string | null | undefined, field: str
 function isCompactPropertyOptionField(resource: string | null | undefined, field: string) {
   return isPropertyResource(resource) && field === "usage_type";
 }
+
+const hiddenUnitEditFields = new Set(["parent_unit_id", "is_subdivided", "unit_scope"]);
+
+const unitEditorSections = [
+  { title: "الموقع والتصنيف", subtitle: "ربط الوحدة بالعقار وتحديد الدور والنوع.", icon: "🏢", fields: ["property_id", "floor", "type", "status"] },
+  { title: "بيانات الوحدة", subtitle: "اسم الوحدة والقيمة الإيجارية المقترحة.", icon: "🏠", fields: ["unit_number", "rent_amount"] },
+  { title: "المواصفات الداخلية", subtitle: "الغرف والحمامات والمرافق الأساسية.", icon: "🧩", fields: ["rooms_count", "bathrooms_count", "has_living_room", "is_rooftop", "orientation"] },
+  { title: "المطبخ", subtitle: "خيارات المطبخ بدون حقول رقمية إضافية.", icon: "🍳", fields: ["has_kitchen", "kitchen_type", "is_kitchen_installed"] },
+  { title: "ملاحظات", subtitle: "أي تفاصيل إضافية عن الوحدة.", icon: "📝", fields: ["notes"] },
+];
 
 export default function InlineEditDeleteActions({ resource, id, onChanged, hideDetails = false, hideDelete = false, compact = false, iconOnly = false }: Props) {
   const [modalVisible, setModalVisible] = useState(false);
@@ -144,9 +158,13 @@ export default function InlineEditDeleteActions({ resource, id, onChanged, hideD
         return;
       }
 
-      const editableFields = resource === "owners"
+      let editableFields = resource === "owners"
         ? item.editable_fields.filter((field: string) => field !== "type")
         : item.editable_fields;
+
+      if (isUnitResource(resource)) {
+        editableFields = editableFields.filter((field: string) => !hiddenUnitEditFields.has(field));
+      }
 
       const nextForm: Record<string, string> = {};
       editableFields.forEach((field: string) => {
@@ -528,6 +546,42 @@ export default function InlineEditDeleteActions({ resource, id, onChanged, hideD
     );
   }
 
+  function renderUnitEditor() {
+    const rendered = new Set<string>();
+    const fields = visibleEditableFields.filter((field) => !hiddenUnitEditFields.has(field));
+    const sectionNodes = unitEditorSections.map((section) => {
+      const sectionFields = section.fields.filter((field) => fields.includes(field));
+      if (sectionFields.length === 0) return null;
+      sectionFields.forEach((field) => rendered.add(field));
+      return (
+        <View key={section.title} style={styles.unitSectionCard}>
+          <View style={styles.unitSectionHeader}>
+            <View style={styles.unitSectionIconBox}><Text style={styles.unitSectionIcon}>{section.icon}</Text></View>
+            <View style={styles.unitSectionTitleBox}>
+              <Text style={styles.unitSectionTitle}>{section.title}</Text>
+              <Text style={styles.unitSectionSubtitle}>{section.subtitle}</Text>
+            </View>
+          </View>
+          <View style={styles.unitSectionFields}>{sectionFields.map((field) => renderField(field))}</View>
+        </View>
+      );
+    }).filter(Boolean);
+    const remainingFields = fields.filter((field) => !rendered.has(field));
+    return (
+      <>
+        <View style={styles.unitEditorHero}>
+          <View style={styles.unitEditorHeroIcon}><Text style={styles.unitEditorHeroIconText}>🏠</Text></View>
+          <View style={styles.unitEditorHeroTextBox}>
+            <Text style={styles.unitEditorHeroTitle}>تعديل بيانات الوحدة</Text>
+            <Text style={styles.unitEditorHeroSubtitle}>{record?.title || "حدّث بيانات الوحدة بدقة"}</Text>
+          </View>
+        </View>
+        {sectionNodes}
+        {remainingFields.length > 0 ? <View style={styles.unitSectionCard}><View style={styles.unitSectionFields}>{remainingFields.map((field) => renderField(field))}</View></View> : null}
+      </>
+    );
+  }
+
   return (
     <>
       <View style={[styles.iconBar, compact ? styles.iconBarCompact : null]}>
@@ -601,7 +655,7 @@ export default function InlineEditDeleteActions({ resource, id, onChanged, hideD
                   </View>
                 ) : null}
 
-                {visibleEditableFields.map((field) => renderField(field))}
+                {isUnitResource(resource) ? renderUnitEditor() : visibleEditableFields.map((field) => renderField(field))}
 
                 {record.editable_fields.length > visibleEditableFields.length ? (
                   <TouchableOpacity style={styles.moreFieldsButton} onPress={() => setShowAllFields(!showAllFields)}>
@@ -640,6 +694,20 @@ export default function InlineEditDeleteActions({ resource, id, onChanged, hideD
 }
 
 const styles = StyleSheet.create({
+  unitEditorHero: { backgroundColor: "#0f172a", borderRadius: 24, padding: 16, marginBottom: 12, flexDirection: "row-reverse", alignItems: "center", gap: 12, shadowColor: "#000", shadowOpacity: 0.12, shadowRadius: 14, elevation: 3 },
+  unitEditorHeroIcon: { width: 54, height: 54, borderRadius: 20, backgroundColor: "rgba(255,255,255,0.12)", alignItems: "center", justifyContent: "center" },
+  unitEditorHeroIconText: { fontSize: 26 },
+  unitEditorHeroTextBox: { flex: 1, alignItems: "flex-end" },
+  unitEditorHeroTitle: { color: "#fff", fontSize: 19, fontWeight: "900", textAlign: "right" },
+  unitEditorHeroSubtitle: { color: "#cbd5e1", fontSize: 12, fontWeight: "800", textAlign: "right", marginTop: 4 },
+  unitSectionCard: { backgroundColor: "#fff", borderRadius: 24, padding: 14, marginBottom: 12, borderWidth: 1, borderColor: "#eceff3", shadowColor: "#000", shadowOpacity: 0.05, shadowRadius: 10, elevation: 1 },
+  unitSectionHeader: { flexDirection: "row-reverse", alignItems: "center", gap: 10, marginBottom: 10 },
+  unitSectionIconBox: { width: 42, height: 42, borderRadius: 16, backgroundColor: "#F1F5F9", alignItems: "center", justifyContent: "center" },
+  unitSectionIcon: { fontSize: 21 },
+  unitSectionTitleBox: { flex: 1, alignItems: "flex-end" },
+  unitSectionTitle: { color: "#111827", fontSize: 16, fontWeight: "900", textAlign: "right" },
+  unitSectionSubtitle: { color: "#64748b", fontSize: 11, fontWeight: "700", textAlign: "right", marginTop: 2 },
+  unitSectionFields: { gap: 0 },
   iconBar: {
     flexDirection: "row-reverse",
     gap: 7,
