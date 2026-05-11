@@ -12,6 +12,8 @@ use Illuminate\Support\Str;
 
 class SendDailyRentOverdueWhatsAppReport extends Command
 {
+    private const WHATSAPP_TEXT_LIMIT = 3900;
+
     protected $signature = 'rent:send-overdue-whatsapp-report
         {--to= : WhatsApp recipient phone number}
         {--dry-run : Print the report without sending it}';
@@ -21,40 +23,58 @@ class SendDailyRentOverdueWhatsAppReport extends Command
     public function handle(): int
     {
         $to = (string) ($this->option('to') ?: env('DAILY_RENT_OVERDUE_WHATSAPP_TO', '0500007650'));
-        $message = $this->buildReportMessage();
+        $messages = $this->buildReportMessages();
 
         if ($this->option('dry-run')) {
-            $this->line($message);
+            foreach ($messages as $message) {
+                $this->line($message);
+                $this->line(str_repeat('-', 30));
+            }
             return self::SUCCESS;
         }
 
-        $result = $this->sendWhatsAppText($to, $message);
+        $allOk = true;
+        $results = [];
 
-        WebhookEvent::create([
-            'provider' => 'whatsapp',
-            'event_type' => 'daily_rent_overdue_report',
-            'direction' => 'outgoing',
-            'external_id' => $result['message_id'] ?? (string) Str::uuid(),
-            'source' => config('services.whatsapp.phone_number_id'),
-            'destination' => $this->normalizePhone($to),
-            'status' => $result['ok'] ? 'sent' : 'failed',
-            'payload' => [
-                'message' => $message,
-                'result' => $result,
-            ],
-            'processed_at' => now(),
-        ]);
+        foreach ($messages as $partIndex => $message) {
+            $result = $this->sendWhatsAppText($to, $message);
+            $results[] = $result;
+            $allOk = $allOk && (bool) $result['ok'];
 
-        if (! $result['ok']) {
+            WebhookEvent::create([
+                'provider' => 'whatsapp',
+                'event_type' => 'daily_rent_overdue_report',
+                'direction' => 'outgoing',
+                'external_id' => $result['message_id'] ?? (string) Str::uuid(),
+                'source' => config('services.whatsapp.phone_number_id'),
+                'destination' => $this->normalizePhone($to),
+                'status' => $result['ok'] ? 'sent' : 'failed',
+                'payload' => [
+                    'message' => $message,
+                    'part' => $partIndex + 1,
+                    'parts_count' => count($messages),
+                    'result' => $result,
+                ],
+                'processed_at' => now(),
+            ]);
+
+            usleep(250000);
+        }
+
+        if (! $allOk) {
             $this->error('فشل إرسال تقرير المتأخرين عبر واتساب. راجع سجل Laravel.');
+            Log::warning('Daily rent overdue WhatsApp report failed in one or more parts', [
+                'parts_count' => count($messages),
+                'results' => $results,
+            ]);
             return self::FAILURE;
         }
 
-        $this->info('تم إرسال تقرير المتأخرين عبر واتساب إلى ' . $to);
+        $this->info('تم إرسال تقرير المتأخرين عبر واتساب إلى ' . $to . ' على ' . count($messages) . ' رسالة.');
         return self::SUCCESS;
     }
 
-    private function buildReportMessage(): string
+    private function buildReportMessages(): array
     {
         $today = now('Asia/Riyadh')->toDateString();
         $paidStatuses = ['paid', 'مدفوع', 'مسدد'];
@@ -69,8 +89,7 @@ class SendDailyRentOverdueWhatsAppReport extends Command
             ->get();
 
         $totalAmount = $payments->sum(fn (Payment $payment) => (float) $payment->amount);
-
-        $lines = [
+        $headerLines = [
             'تقرير المتأخرين عن دفع الإيجار',
             'التاريخ: ' . Carbon::parse($today)->format('Y-m-d'),
             'عدد الدفعات المتأخرة: ' . $payments->count(),
@@ -78,15 +97,11 @@ class SendDailyRentOverdueWhatsAppReport extends Command
         ];
 
         if ($payments->isEmpty()) {
-            $lines[] = '';
-            $lines[] = 'لا توجد دفعات إيجار متأخرة حتى الآن.';
-            return implode("\n", $lines);
+            return [implode("\n", array_merge($headerLines, ['', 'لا توجد دفعات إيجار متأخرة حتى الآن.']))];
         }
 
-        $lines[] = '';
-        $lines[] = 'القائمة:';
-
-        foreach ($payments->take(50) as $index => $payment) {
+        $entryBlocks = [];
+        foreach ($payments as $index => $payment) {
             $contract = $payment->contract;
             $tenant = $contract?->tenant;
             $unit = $contract?->unit;
@@ -106,20 +121,48 @@ class SendDailyRentOverdueWhatsAppReport extends Command
                 $unit?->floor !== null && $unit?->floor !== '' ? 'الدور ' . $unit->floor : null,
             ]));
 
-            $lines[] = ($index + 1) . ') ' . ($tenant?->name ?: 'مستأجر غير محدد');
-            $lines[] = '   الجوال: ' . ($tenant?->phone ?: '-');
-            $lines[] = '   العقار: ' . (empty($locationParts) ? '-' : implode(' - ', $locationParts));
-            $lines[] = '   العقد: ' . $contractNumber;
-            $lines[] = '   الاستحقاق: ' . ($payment->due_date ?: '-') . ' | التأخير: ' . $daysLate . ' يوم';
-            $lines[] = '   المبلغ: ' . $this->money($payment->amount);
+            $entryBlocks[] = implode("\n", [
+                ($index + 1) . ') ' . ($tenant?->name ?: 'مستأجر غير محدد'),
+                'الجوال: ' . ($tenant?->phone ?: '-'),
+                'العقار: ' . (empty($locationParts) ? '-' : implode(' - ', $locationParts)),
+                'العقد: ' . $contractNumber,
+                'الاستحقاق: ' . ($payment->due_date ?: '-') . ' | التأخير: ' . $daysLate . ' يوم',
+                'المبلغ: ' . $this->money($payment->amount),
+            ]);
         }
 
-        if ($payments->count() > 50) {
-            $lines[] = '';
-            $lines[] = 'تم عرض أول 50 دفعة فقط من أصل ' . $payments->count() . '.';
+        $messages = [];
+        $current = implode("\n", array_merge($headerLines, ['', 'القائمة:']));
+
+        foreach ($entryBlocks as $block) {
+            $candidate = $current . "\n\n" . $block;
+            if (mb_strlen($candidate) > self::WHATSAPP_TEXT_LIMIT && $current !== '') {
+                $messages[] = $current;
+                $current = implode("\n", [
+                    'تقرير المتأخرين عن دفع الإيجار - تتمة',
+                    'التاريخ: ' . Carbon::parse($today)->format('Y-m-d'),
+                    '',
+                    $block,
+                ]);
+            } else {
+                $current = $candidate;
+            }
         }
 
-        return implode("\n", $lines);
+        if (trim($current) !== '') {
+            $messages[] = $current;
+        }
+
+        $totalParts = count($messages);
+        if ($totalParts > 1) {
+            $messages = array_map(
+                fn (string $message, int $index) => 'جزء ' . ($index + 1) . ' من ' . $totalParts . "\n" . $message,
+                $messages,
+                array_keys($messages)
+            );
+        }
+
+        return $messages;
     }
 
     private function sendWhatsAppText(string $to, string $message): array
@@ -151,6 +194,7 @@ class SendDailyRentOverdueWhatsAppReport extends Command
         if (! $response->successful()) {
             Log::warning('Daily rent overdue WhatsApp report failed', [
                 'status' => $response->status(),
+                'length' => mb_strlen($message),
                 'response' => $json,
             ]);
         }
