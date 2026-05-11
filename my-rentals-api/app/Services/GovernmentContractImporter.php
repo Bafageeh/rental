@@ -136,8 +136,6 @@ class GovernmentContractImporter
     private function resolveProperty(Owner $owner, array $ownership, array $propertyData, ?Property $forcedProperty, ?Unit $forcedUnit): ?Property
     {
         if ($forcedUnit) {
-            // إذا تم رفع العقد من وحدة محددة، لا ننشئ عقارًا جديدًا من بيانات PDF.
-            // لو كانت الوحدة مباشرة للمالك تبقى مباشرة، ولو كانت تحت عقار تبقى تحت عقارها الحالي فقط.
             if ($forcedUnit->property) {
                 return $forcedUnit->property;
             }
@@ -216,9 +214,6 @@ class GovernmentContractImporter
         }
 
         if ($forcedUnit) {
-            // مهم جدًا: عند رفع عقد PDF لوحدة محددة من الشاشة، لا نسمح للاستخراج بتغيير هوية الوحدة.
-            // لا تغيّر رقم الوحدة مثل شقة 9 إلى رقم قرأه الـ PDF، ولا تنقلها لعقار/مالك آخر.
-            // يتم تحديث بيانات وصفية آمنة فقط، ثم العقد يربط بنفس forcedUnit.id.
             $safePayload = $payload;
             unset(
                 $safePayload['property_id'],
@@ -248,8 +243,8 @@ class GovernmentContractImporter
         $recordNumber = $contractData['ejar_record_number'] ?? $contractData['government_contract_number'] ?? null;
         $versionNumber = $contractData['ejar_version_number'] ?? null;
         $displayNumber = $contractData['contract_number'] ?? ($recordNumber && $versionNumber ? $recordNumber . ' / ' . $versionNumber : $recordNumber);
-        $startDate = $contractData['start_date'] ? Carbon::parse($contractData['start_date'])->toDateString() : null;
-        $endDate = $contractData['end_date'] ? Carbon::parse($contractData['end_date'])->toDateString() : null;
+        $startDate = !empty($contractData['start_date']) ? Carbon::parse($contractData['start_date'])->toDateString() : null;
+        $endDate = !empty($contractData['end_date']) ? Carbon::parse($contractData['end_date'])->toDateString() : null;
         $status = $endDate && Carbon::parse($endDate)->lt(today()) ? 'ended' : 'active';
 
         $payload = [
@@ -286,6 +281,14 @@ class GovernmentContractImporter
 
         $payload = $this->onlyExistingColumns('contracts', $payload);
 
+        $existingByNumber = $this->findExistingContractByNumber($recordNumber, $displayNumber);
+        if ($existingByNumber) {
+            $existingByNumber->fill($payload);
+            $existingByNumber->save();
+            $this->syncUnitStatus($unit, $status, $financial['rent_amount'] ?? null);
+            return $existingByNumber;
+        }
+
         if ($startDate && $endDate) {
             $existingSameIdentityAndDates = $this->findMatchingIdentityAndDates($unit, $tenant, $startDate, $endDate);
 
@@ -303,6 +306,30 @@ class GovernmentContractImporter
         $contract->save();
         $this->syncUnitStatus($unit, $status, $financial['rent_amount'] ?? null);
         return $contract;
+    }
+
+    private function findExistingContractByNumber(?string $recordNumber, ?string $displayNumber): ?Contract
+    {
+        $numbers = collect([$recordNumber, $displayNumber])
+            ->filter(fn ($value) => trim((string) $value) !== '')
+            ->map(fn ($value) => trim((string) $value))
+            ->unique()
+            ->values();
+
+        if ($numbers->isEmpty()) {
+            return null;
+        }
+
+        return Contract::query()
+            ->where(function ($query) use ($numbers) {
+                foreach ($numbers as $number) {
+                    $query->orWhere('government_contract_number', $number)
+                        ->orWhere('ejar_record_number', $number)
+                        ->orWhere('contract_number', $number);
+                }
+            })
+            ->orderByDesc('id')
+            ->first();
     }
 
     private function findMatchingIdentityAndDates(Unit $unit, Tenant $tenant, string $startDate, string $endDate): ?Contract
