@@ -1,1 +1,1 @@
-Retry rental deployment after DEPLOY_KEY update.
+Retry rental deployment after SSH key fix.
