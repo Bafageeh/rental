@@ -154,10 +154,12 @@ export default function ContractDetailsScreen({ id }: { id: string | number }) {
             </View>
             <View style={styles.heroTextBox}>
               <View style={styles.tenantRow}>
-                <Text style={[styles.statusBadge, isActiveStatus(contract?.status) ? styles.statusActive : styles.statusEnded]}>{badgeText}</Text>
                 <Text style={styles.tenantName}>{tenantName}</Text>
               </View>
-              <Text style={styles.contractNumber}>رقم العقد: {contractNumber}</Text>
+              <View style={styles.contractMetaRow}>
+                <Text style={[styles.statusBadge, isActiveStatus(contract?.status) ? styles.statusActive : styles.statusEnded]}>{badgeText}</Text>
+                <Text style={styles.contractNumber}>رقم العقد: {contractNumber}</Text>
+              </View>
             </View>
             <View style={styles.heroIconBox}>
               <Ionicons name="document-text-outline" size={29} color="#0F766E" />
@@ -270,12 +272,13 @@ const styles = StyleSheet.create({
   heroActionsBox: { minWidth: 96, alignItems: "flex-start" },
   heroTextBox: { flex: 1, alignItems: "flex-end" },
   heroIconBox: { width: 55, height: 55, borderRadius: 21, backgroundColor: "#ECFDF5", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#A7F3D0" },
-  tenantRow: { flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 8, flexWrap: "wrap" },
-  tenantName: { color: "#fff", fontSize: 23, lineHeight: 31, fontWeight: "900", textAlign: "right" },
+  tenantRow: { flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 8, flexWrap: "wrap", alignSelf: "stretch" },
+  tenantName: { color: "#fff", fontSize: 23, lineHeight: 31, fontWeight: "900", textAlign: "right", flexShrink: 1 },
+  contractMetaRow: { alignSelf: "stretch", flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8, marginTop: 4 },
   statusBadge: { overflow: "hidden", borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5, fontWeight: "900", fontSize: 12 },
   statusActive: { backgroundColor: "#DCFCE7", color: "#166534" },
   statusEnded: { backgroundColor: "#FEE2E2", color: "#991B1B" },
-  contractNumber: { color: "#CBD5E1", fontSize: 12, fontWeight: "900", textAlign: "right", marginTop: 4 },
+  contractNumber: { color: "#CBD5E1", fontSize: 12, fontWeight: "900", textAlign: "right", flex: 1 },
   timelineBox: { marginTop: 14, backgroundColor: "rgba(255,255,255,0.10)", borderRadius: 20, padding: 12, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   timelineDateBlock: { flex: 1, alignItems: "center" },
   timelineLabel: { color: "#A7F3D0", fontWeight: "900", fontSize: 11 },
