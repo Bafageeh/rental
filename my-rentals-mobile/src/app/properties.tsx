@@ -1,573 +1,212 @@
-import { router, useLocalSearchParams } from 'expo-router';
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useFocusEffect } from '@react-navigation/native';
-import {
-  Alert,
-  FlatList,
-  RefreshControl,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import DropdownSelect, { DropdownOption } from '../components/DropdownSelect';
-import { useList } from '../hooks/useCrud';
-import {
-  Card,
-  ErrorState,
-  EmptyState,
-  SkeletonList,
-} from '../components/ui/shared';
-import { colors, typography, spacing, radii } from '../constants/theme';
-import { apiGetScoped, apiPostAny } from '../lib/api';
-import { smartBack } from '../lib/navigationHistory';
+import { router } from "expo-router";
+import { useEffect, useMemo, useState } from "react";
+import { ActivityIndicator, Alert, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { useAuth } from "../context/AuthContext";
+import { apiGet } from "../lib/api";
 
-type Property = {
+type PropertyItem = {
   id: number;
-  name?: string;
-  city?: string;
-  district?: string;
-  property_type?: string;
-  management_type?: string;
+  name?: string | null;
+  city?: string | null;
+  district?: string | null;
+  property_type?: string | null;
+  management_type?: string | null;
+  deed_owner_name?: string | null;
   units_count?: number;
-  parking_spots_count?: number;
-  owner?: { id: number; name?: string; type?: string };
+  rented_units_count?: number;
+  active_contracts_count?: number;
+  owner_id?: number | string | null;
+  owner?: { id?: number | string | null; name?: string | null; type?: string | null } | null;
 };
 
-type OptionRecord = {
-  id: number | string;
-  label: string;
+type AccountPayload = {
+  id?: number;
+  name?: string | null;
+  email?: string | null;
+  role?: string | null;
+  is_admin?: boolean;
+  owner_id?: number | string | null;
+  owner?: { id?: number | string | null; name?: string | null; type?: string | null } | null;
 };
 
-const propertyTypeOptions: DropdownOption[] = [
-  { id: 'building', label: 'عمارة' },
-  { id: 'apartment', label: 'شقة مستقلة' },
-  { id: 'villa', label: 'فيلا' },
-  { id: 'commercial', label: 'تجاري' },
-  { id: 'other', label: 'أخرى' },
-];
-
-const managementTypeOptions: DropdownOption[] = [
-  { id: 'owned', label: 'ملك خاص' },
-  { id: 'managed', label: 'إدارة للغير' },
-];
-
-const typeLabels: Record<string, string> = {
-  building: 'عمارة',
-  apartment: 'شقة',
-  villa: 'فيلا',
-  land: 'أرض',
-  commercial: 'تجاري',
-  other: 'أخرى',
+const propertyTypeLabels: Record<string, string> = {
+  building: "عمارة",
+  apartment: "شقة مستقلة",
+  villa: "فيلا",
+  land: "أرض",
+  commercial: "تجاري",
+  shop: "محل",
+  office: "مكتب",
+  mixed: "مختلط",
 };
 
-function firstParam(value: string | string[] | undefined): string {
-  if (Array.isArray(value)) return value[0] || '';
-  return value || '';
+function propertyTypeText(value?: string | null) {
+  return value ? propertyTypeLabels[value] || value : "عقار";
 }
 
-function PropertyCard({ item }: { item: Property }) {
-  return (
-    <Card
-      style={styles.propertyCard}
-      onPress={() => router.push(`/property/${item.id}` as any)}
-    >
-      <View style={styles.cardHeader}>
-        <View style={styles.iconCircle}>
-          <Text style={styles.iconText}>
-            {item.property_type === 'villa' ? '🏡' : item.property_type === 'land' ? '🌍' : '🏢'}
-          </Text>
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.propertyName}>{item.name || 'بدون اسم'}</Text>
-          <Text style={styles.propertyLocation}>
-            {[item.district, item.city].filter(Boolean).join('، ') || 'بدون موقع'}
-          </Text>
-        </View>
-        <View style={styles.typeBadge}>
-          <Text style={styles.typeBadgeText}>
-            {typeLabels[item.property_type || ''] || item.property_type || 'عقار'}
-          </Text>
-        </View>
-      </View>
-
-      <View style={styles.cardFooter}>
-        <View style={styles.footerStat}>
-          <Text style={styles.footerNum}>{item.units_count ?? 0}</Text>
-          <Text style={styles.footerLabel}>وحدة</Text>
-        </View>
-        <View style={styles.footerDivider} />
-        <View style={styles.footerStat}>
-          <Text style={styles.footerNum}>{item.parking_spots_count ?? 0}</Text>
-          <Text style={styles.footerLabel}>موقف</Text>
-        </View>
-        <View style={styles.footerDivider} />
-        <View style={styles.footerStat}>
-          <Text style={styles.footerOwner} numberOfLines={1}>
-            {item.owner?.name || '-'}
-          </Text>
-          <Text style={styles.footerLabel}>المالك</Text>
-        </View>
-      </View>
-    </Card>
-  );
+function n(value: unknown) {
+  const parsed = Number(value ?? 0);
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
-export default function PropertiesScreen() {
-  const params = useLocalSearchParams();
-  const ownerIdParam = firstParam(params.owner_id as string | string[] | undefined);
-  const ownerNameParam = firstParam(params.owner_name as string | string[] | undefined);
-  const createParam = firstParam(params.create as string | string[] | undefined);
-  const scopedOwnerName = ownerNameParam ? decodeURIComponent(ownerNameParam) : '';
-  const endpoint = ownerIdParam ? `/properties?owner_id=${encodeURIComponent(ownerIdParam)}` : '/properties';
+function count(value: unknown) {
+  return Math.round(n(value)).toLocaleString("ar-SA");
+}
 
-  const {
-    items,
-    loading,
-    refreshing,
-    error,
-    total,
-    refresh,
-    loadMore,
-    search,
-  } = useList<Property>({ endpoint });
+function responseList(payload: any) {
+  return Array.isArray(payload?.data) ? payload.data : Array.isArray(payload) ? payload : [];
+}
 
-  useFocusEffect(
-    useCallback(() => {
-      refresh();
-    }, [refresh]),
-  );
+function normalized(value?: string | null) {
+  return String(value || "").trim().toLowerCase().replace(/[أإآ]/g, "ا").replace(/ى/g, "ي");
+}
 
-  const [searchText, setSearchText] = useState('');
-  const [owners, setOwners] = useState<OptionRecord[]>([]);
-  const [showCreate, setShowCreate] = useState(createParam === '1');
-  const [createMode, setCreateMode] = useState<'choice' | 'manual'>('choice');
-  const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState({
-    owner_id: ownerIdParam,
-    name: '',
-    property_type: 'building',
-    management_type: 'managed',
-    city: '',
-    district: '',
-    deed_number: '',
-    floors_count: '',
-    parking_spots_count: '',
-  });
+function directOwnerId(account: AccountPayload | null, fallback: AccountPayload | null) {
+  return String(account?.owner_id || account?.owner?.id || fallback?.owner_id || fallback?.owner?.id || "");
+}
+
+function isAhmedOwnedProperty(property: PropertyItem) {
+  const ownerName = normalized(property.owner?.name);
+  const deedOwnerName = normalized(property.deed_owner_name);
+  const propertyName = normalized(property.name);
+  const ownerType = normalized(property.owner?.type);
+  const managementType = normalized(property.management_type);
+  const haystack = `${ownerName} ${deedOwnerName} ${propertyName}`;
+  return ownerType === "self" || managementType === "owned" || haystack.includes("احمد") || haystack.includes("ahmed") || haystack.includes("املاكي") || haystack.includes("املاك");
+}
+
+export default function MyPropertiesScreen() {
+  const auth = useAuth();
+  const [properties, setProperties] = useState<PropertyItem[]>([]);
+  const [accountOwnerId, setAccountOwnerId] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+  async function load(refresh = false) {
+    try {
+      if (refresh) setRefreshing(true);
+      else setLoading(true);
+
+      const meResult = await apiGet("/auth/me").catch(() => null);
+      const me = (meResult?.data ?? meResult?.user ?? meResult ?? null) as AccountPayload | null;
+      const fallback = auth.user as AccountPayload | null;
+      const ownerId = directOwnerId(me, fallback);
+      setAccountOwnerId(ownerId);
+
+      let list: PropertyItem[] = [];
+      const profileResult = await apiGet("/profile/properties").catch(() => []);
+      list = responseList(profileResult) as PropertyItem[];
+
+      if (auth.isAdmin) {
+        if (ownerId) {
+          list = list.filter((property) => String(property.owner_id || property.owner?.id || "") === ownerId);
+        } else {
+          const all = await apiGet("/properties").catch(() => []);
+          list = (responseList(all) as PropertyItem[]).filter(isAhmedOwnedProperty);
+        }
+      } else if (ownerId) {
+        list = list.filter((property) => String(property.owner_id || property.owner?.id || "") === ownerId);
+      }
+
+      setProperties(list);
+    } catch (e) {
+      Alert.alert("تعذر التحميل", e instanceof Error ? e.message : "حدث خطأ غير متوقع");
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }
 
   useEffect(() => {
-    async function loadOwners() {
-      try {
-        const data = await apiGetScoped('/relation-manager/options', '/my/relation-manager/options');
-        setOwners(Array.isArray(data?.owners) ? data.owners : []);
-      } catch {
-        setOwners([]);
-      }
-    }
-
-    loadOwners();
+    load(false);
   }, []);
 
-  useEffect(() => {
-    if (ownerIdParam) {
-      setForm((previous) => ({ ...previous, owner_id: ownerIdParam }));
-    }
-  }, [ownerIdParam]);
-
-  const ownerOptions = useMemo(() => {
-    const options = owners.map((owner) => ({ id: owner.id, label: owner.label }));
-
-    if (ownerIdParam && !options.some((owner) => String(owner.id) === String(ownerIdParam))) {
-      options.unshift({ id: ownerIdParam, label: scopedOwnerName || `مالك #${ownerIdParam}` });
-    }
-
-    return options;
-  }, [owners, ownerIdParam, scopedOwnerName]);
-
-  const handleSearch = useCallback((text: string) => {
-    setSearchText(text);
-    if (text.length === 0 || text.length >= 2) {
-      search(text);
-    }
-  }, [search]);
-
-  function openCreateOptions() {
-    setShowCreate(true);
-    setCreateMode('choice');
-  }
-
-  function closeCreate() {
-    setShowCreate(false);
-    setCreateMode('choice');
-  }
-
-  function openDeedUpload() {
-    const query = ownerIdParam
-      ? `?owner_id=${encodeURIComponent(ownerIdParam)}&owner_name=${encodeURIComponent(scopedOwnerName || `مالك #${ownerIdParam}`)}`
-      : '';
-    router.push(`/upload-property-deed${query}` as any);
-  }
-
-  function setField(key: keyof typeof form, value: string) {
-    setForm((previous) => ({ ...previous, [key]: value }));
-  }
-
-  async function createProperty() {
-    if (!form.owner_id) {
-      Alert.alert('تنبيه', 'اختر اسم المالك قبل حفظ العقار.');
-      return;
-    }
-
-    if (!form.name.trim()) {
-      Alert.alert('تنبيه', 'اكتب اسم العقار.');
-      return;
-    }
-
-    try {
-      setSaving(true);
-      await apiPostAny(['/properties', '/relation-manager/create-property', '/my/relation-manager/create-property'], {
-        ...form,
-        title: form.name.trim(),
-        name: form.name.trim(),
-        floors_count: form.floors_count.trim() || null,
-        parking_spots_count: form.parking_spots_count.trim() || null,
-      });
-
-      Alert.alert('تم', 'تم إضافة العقار وربطه بالمالك.');
-      setForm((previous) => ({
-        ...previous,
-        owner_id: ownerIdParam || previous.owner_id,
-        name: '',
-        city: '',
-        district: '',
-        deed_number: '',
-        floors_count: '',
-        parking_spots_count: '',
-      }));
-      closeCreate();
-      refresh();
-    } catch (e) {
-      Alert.alert('تعذر حفظ العقار', e instanceof Error ? e.message : 'حدث خطأ غير متوقع');
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  if (error && items.length === 0) return <ErrorState message={error} onRetry={refresh} />;
-
-  const showSkeleton = loading && items.length === 0;
+  const totalUnits = useMemo(() => properties.reduce((sum, item) => sum + n(item.units_count), 0), [properties]);
+  const rentedUnits = useMemo(() => properties.reduce((sum, item) => sum + n(item.rented_units_count), 0), [properties]);
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top']}>
-      <View style={styles.header}>
-        <View style={styles.headerTop}>
-          <TouchableOpacity onPress={() => smartBack()}>
-            <Text style={styles.backBtn}>→</Text>
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>{ownerIdParam ? 'عقارات المالك' : 'العقارات'}</Text>
-          <Text style={styles.headerCount}>{total}</Text>
+    <SafeAreaView style={styles.safe} edges={["top"]}>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor="#0f766e" />}
+      >
+        <View style={styles.hero}>
+          <Text style={styles.heroIcon}>🏢</Text>
+          <Text style={styles.heroTitle}>عقاراتي</Text>
+          <Text style={styles.heroSubtitle}>{auth.isAdmin ? "تعرض عقارات حساب المدير فقط، ولا تعرض عقارات الملاك الآخرين." : "تعرض العقارات التابعة لمالك الحساب الحالي فقط."}</Text>
         </View>
 
-        {ownerIdParam ? (
-          <Text style={styles.scopedOwnerText}>المالك: {scopedOwnerName || `#${ownerIdParam}`}</Text>
+        <View style={styles.summaryRow}>
+          <View style={styles.summaryCard}><Text style={styles.summaryValue}>{count(properties.length)}</Text><Text style={styles.summaryLabel}>عقارات</Text></View>
+          <View style={styles.summaryCard}><Text style={styles.summaryValue}>{count(totalUnits)}</Text><Text style={styles.summaryLabel}>وحدات</Text></View>
+          <View style={styles.summaryCard}><Text style={styles.summaryValue}>{count(rentedUnits)}</Text><Text style={styles.summaryLabel}>مؤجرة</Text></View>
+        </View>
+
+        {loading ? (
+          <View style={styles.stateCard}><ActivityIndicator /><Text style={styles.stateText}>جاري تحميل عقاراتك...</Text></View>
         ) : null}
 
-        <TouchableOpacity style={styles.createToggleButton} onPress={showCreate ? closeCreate : openCreateOptions}>
-          <Text style={styles.createToggleText}>{showCreate ? 'إغلاق إضافة العقار' : 'إضافة عقار جديد'}</Text>
-        </TouchableOpacity>
-
-        <View style={styles.searchContainer}>
-          <TextInput
-            style={styles.searchInput}
-            placeholder="بحث بالاسم، المدينة، رقم الصك..."
-            placeholderTextColor={colors.textTertiary}
-            value={searchText}
-            onChangeText={handleSearch}
-            textAlign="right"
-          />
-        </View>
-      </View>
-
-      <FlatList
-        data={items}
-        keyExtractor={(item) => String(item.id)}
-        renderItem={({ item }) => <PropertyCard item={item} />}
-        contentContainerStyle={styles.listContent}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={colors.primary} />
-        }
-        onEndReached={loadMore}
-        onEndReachedThreshold={0.3}
-        ListHeaderComponent={showCreate ? (
-          <View style={styles.formCard}>
-            {createMode === 'choice' ? (
-              <View>
-                <Text style={styles.formTitle}>كيف تريد إضافة العقار؟</Text>
-                <Text style={styles.formHint}>اختر الطريقة المناسبة. يمكنك الإدخال يدويًا أو رفع الصك ليتم سحب البيانات ومراجعتها قبل الحفظ.</Text>
-
-                <TouchableOpacity style={styles.choiceCard} onPress={() => setCreateMode('manual')} activeOpacity={0.85}>
-                  <Text style={styles.choiceIcon}>⌨️</Text>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.choiceTitle}>إدخالات يدوية</Text>
-                    <Text style={styles.choiceText}>تعبئة اسم العقار، المالك، المدينة، رقم الصك، والمواقف يدويًا.</Text>
-                  </View>
-                </TouchableOpacity>
-
-                <TouchableOpacity style={styles.choiceCard} onPress={openDeedUpload} activeOpacity={0.85}>
-                  <Text style={styles.choiceIcon}>📄</Text>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.choiceTitle}>رفع الصك وسحب البيانات</Text>
-                    <Text style={styles.choiceText}>رفع PDF للصك ثم مراجعة البيانات المستخرجة قبل إنشاء العقار.</Text>
-                  </View>
-                </TouchableOpacity>
-              </View>
-            ) : (
-              <View>
-                <View style={styles.formHeaderRow}>
-                  <TouchableOpacity onPress={() => setCreateMode('choice')}>
-                    <Text style={styles.backToChoice}>تغيير الطريقة</Text>
-                  </TouchableOpacity>
-                  <Text style={styles.formTitle}>إضافة عقار يدويًا</Text>
-                </View>
-
-                <DropdownSelect
-                  label="اسم المالك"
-                  value={form.owner_id}
-                  options={ownerOptions}
-                  placeholder="اختر المالك"
-                  required
-                  disabled={Boolean(ownerIdParam)}
-                  onChange={(value) => setField('owner_id', value)}
-                />
-
-                <TextInput style={styles.input} value={form.name} onChangeText={(value) => setField('name', value)} placeholder="اسم العقار" textAlign="right" />
-                <DropdownSelect label="نوع العقار" value={form.property_type} options={propertyTypeOptions} onChange={(value) => setField('property_type', value)} />
-                <DropdownSelect label="نوع الإدارة" value={form.management_type} options={managementTypeOptions} onChange={(value) => setField('management_type', value)} />
-                <TextInput style={styles.input} value={form.city} onChangeText={(value) => setField('city', value)} placeholder="المدينة" textAlign="right" />
-                <TextInput style={styles.input} value={form.district} onChangeText={(value) => setField('district', value)} placeholder="الحي" textAlign="right" />
-                <TextInput style={styles.input} value={form.deed_number} onChangeText={(value) => setField('deed_number', value)} placeholder="رقم الصك" textAlign="right" />
-                <TextInput style={styles.input} value={form.floors_count} onChangeText={(value) => setField('floors_count', value)} placeholder="عدد الأدوار" keyboardType="number-pad" textAlign="right" />
-                <TextInput style={styles.input} value={form.parking_spots_count} onChangeText={(value) => setField('parking_spots_count', value)} placeholder="عدد المواقف" keyboardType="number-pad" textAlign="right" />
-
-                <TouchableOpacity style={styles.saveButton} onPress={createProperty} disabled={saving}>
-                  <Text style={styles.saveButtonText}>{saving ? 'جاري الحفظ...' : 'حفظ العقار'}</Text>
-                </TouchableOpacity>
-              </View>
-            )}
+        {!loading && properties.length === 0 ? (
+          <View style={styles.emptyCard}>
+            <Text style={styles.emptyTitle}>لا توجد عقارات</Text>
+            <Text style={styles.emptyText}>{accountOwnerId ? "لا توجد عقارات مرتبطة مباشرة بهذا الحساب." : "لم يتم العثور على عقارات خاصة بهذا الحساب."}</Text>
           </View>
         ) : null}
-        ListEmptyComponent={
-          showSkeleton ? (
-            <SkeletonList count={4} />
-          ) : (
-            <EmptyState
-              title="لا توجد عقارات"
-              message="أضف أول عقار لبدء إدارة إيجاراتك"
-              actionLabel="إضافة عقار"
-              icon="🏢"
-              onAction={openCreateOptions}
-            />
-          )
-        }
-        ItemSeparatorComponent={() => <View style={{ height: spacing.md }} />}
-      />
+
+        {properties.map((property) => (
+          <TouchableOpacity key={property.id} style={styles.propertyCard} activeOpacity={0.9} onPress={() => router.push(`/property/${property.id}` as never)}>
+            <View style={styles.cardHeader}>
+              <Text style={styles.typeBadge}>{propertyTypeText(property.property_type)}</Text>
+              <View style={styles.cardTitleBox}>
+                <Text style={styles.propertyName}>{property.name || `عقار #${property.id}`}</Text>
+                <Text style={styles.propertyLocation}>{[property.district, property.city].filter(Boolean).join("، ") || "لا يوجد موقع مسجل"}</Text>
+              </View>
+            </View>
+            <View style={styles.cardFooter}>
+              <Text style={styles.pill}>الوحدات {count(property.units_count)}</Text>
+              <Text style={styles.pill}>المؤجرة {count(property.rented_units_count)}</Text>
+              <Text style={styles.pill}>العقود {count(property.active_contracts_count)}</Text>
+            </View>
+            <View style={styles.actionsRow}>
+              <TouchableOpacity style={styles.openButton} onPress={() => router.push(`/property/${property.id}` as never)}><Text style={styles.openButtonText}>فتح العقار</Text></TouchableOpacity>
+              <TouchableOpacity style={styles.editButton} onPress={() => router.push(`/edit-record?resource=properties&id=${property.id}` as never)}><Text style={styles.editButtonText}>تعديل</Text></TouchableOpacity>
+            </View>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.background },
-  header: {
-    backgroundColor: colors.surface,
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.borderLight,
-  },
-  headerTop: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: spacing.md,
-  },
-  backBtn: {
-    fontSize: 24,
-    color: colors.primary,
-    fontWeight: '600',
-  },
-  headerTitle: {
-    ...typography.h2,
-    color: colors.text,
-  },
-  headerCount: {
-    ...typography.captionBold,
-    color: colors.textSecondary,
-    backgroundColor: colors.surfaceSubtle,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: radii.full,
-    overflow: 'hidden',
-  },
-  scopedOwnerText: {
-    ...typography.captionBold,
-    color: colors.primary,
-    textAlign: 'right',
-    marginBottom: spacing.sm,
-  },
-  createToggleButton: {
-    backgroundColor: colors.primary,
-    borderRadius: radii.md,
-    paddingVertical: 11,
-    alignItems: 'center',
-    marginBottom: spacing.sm,
-  },
-  createToggleText: {
-    color: '#ffffff',
-    fontWeight: '900',
-  },
-  searchContainer: {
-    marginTop: spacing.sm,
-  },
-  searchInput: {
-    height: 42,
-    backgroundColor: colors.surfaceSubtle,
-    borderRadius: radii.md,
-    paddingHorizontal: spacing.lg,
-    ...typography.body,
-    color: colors.text,
-  },
-
-  listContent: {
-    padding: spacing.lg,
-    paddingBottom: 100,
-  },
-  formCard: {
-    backgroundColor: '#ffffff',
-    borderRadius: radii.xl,
-    padding: spacing.md,
-    marginBottom: spacing.md,
-    borderWidth: 1,
-    borderColor: colors.borderLight,
-  },
-  formTitle: {
-    ...typography.bodyBold,
-    color: colors.text,
-    textAlign: 'right',
-    marginBottom: spacing.md,
-  },
-  formHint: {
-    ...typography.caption,
-    color: colors.textSecondary,
-    textAlign: 'right',
-    lineHeight: 21,
-    marginBottom: spacing.md,
-  },
-  formHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.sm },
-  backToChoice: { color: colors.primary, fontWeight: '900' },
-  choiceCard: {
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    gap: spacing.md,
-    backgroundColor: colors.surfaceSubtle,
-    borderRadius: radii.lg,
-    padding: spacing.md,
-    marginBottom: spacing.sm,
-    borderWidth: 1,
-    borderColor: colors.borderLight,
-  },
-  choiceIcon: { fontSize: 28 },
-  choiceTitle: { color: colors.text, fontWeight: '900', textAlign: 'right', marginBottom: 4 },
-  choiceText: { color: colors.textSecondary, fontWeight: '700', textAlign: 'right', lineHeight: 19, fontSize: 12 },
-  input: {
-    minHeight: 44,
-    backgroundColor: '#f9fafb',
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    marginBottom: 10,
-    color: '#111827',
-  },
-  saveButton: {
-    backgroundColor: '#16a34a',
-    borderRadius: 12,
-    padding: 12,
-    alignItems: 'center',
-  },
-  saveButtonText: { color: '#ffffff', fontWeight: '900' },
-
-  propertyCard: {
-    padding: 0,
-    overflow: 'hidden',
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    padding: spacing.lg,
-  },
-  iconCircle: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: colors.primaryLight,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  iconText: { fontSize: 20 },
-  propertyName: {
-    ...typography.bodyBold,
-    color: colors.text,
-    textAlign: 'right',
-  },
-  propertyLocation: {
-    ...typography.caption,
-    color: colors.textSecondary,
-    textAlign: 'right',
-    marginTop: 2,
-  },
-  typeBadge: {
-    backgroundColor: colors.surfaceSubtle,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: radii.full,
-  },
-  typeBadgeText: {
-    ...typography.small,
-    color: colors.textSecondary,
-  },
-
-  cardFooter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.surfaceSubtle,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.lg,
-  },
-  footerStat: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  footerNum: {
-    ...typography.bodyBold,
-    color: colors.text,
-  },
-  footerOwner: {
-    ...typography.caption,
-    color: colors.text,
-    fontWeight: '600',
-  },
-  footerLabel: {
-    ...typography.small,
-    color: colors.textTertiary,
-    marginTop: 2,
-  },
-  footerDivider: {
-    width: 1,
-    height: 28,
-    backgroundColor: colors.border,
-  },
+  safe: { flex: 1, backgroundColor: "#F7F6F4" },
+  content: { padding: 14, paddingBottom: 44 },
+  hero: { backgroundColor: "#111827", borderRadius: 28, padding: 18, marginBottom: 12, alignItems: "flex-end" },
+  heroIcon: { fontSize: 34, marginBottom: 8 },
+  heroTitle: { color: "#fff", fontSize: 30, fontWeight: "900", textAlign: "right" },
+  heroSubtitle: { color: "#CBD5E1", marginTop: 8, fontWeight: "800", textAlign: "right", lineHeight: 22 },
+  summaryRow: { flexDirection: "row-reverse", gap: 8, marginBottom: 12 },
+  summaryCard: { flex: 1, backgroundColor: "#fff", borderRadius: 20, padding: 14, alignItems: "center", borderWidth: 1, borderColor: "#ECEFF3" },
+  summaryValue: { color: "#111827", fontSize: 20, fontWeight: "900" },
+  summaryLabel: { color: "#64748B", fontWeight: "800", marginTop: 5 },
+  stateCard: { backgroundColor: "#fff", borderRadius: 22, padding: 18, alignItems: "center" },
+  stateText: { color: "#64748B", fontWeight: "800", marginTop: 8 },
+  emptyCard: { backgroundColor: "#fff", borderRadius: 22, padding: 18, alignItems: "center" },
+  emptyTitle: { color: "#111827", fontSize: 18, fontWeight: "900" },
+  emptyText: { color: "#64748B", fontWeight: "800", marginTop: 8, textAlign: "center" },
+  propertyCard: { backgroundColor: "#fff", borderRadius: 24, padding: 14, marginBottom: 12, borderWidth: 1, borderColor: "#ECEFF3", shadowColor: "#000", shadowOpacity: 0.05, shadowRadius: 10, elevation: 1 },
+  cardHeader: { flexDirection: "row", alignItems: "center", gap: 10 },
+  cardTitleBox: { flex: 1, alignItems: "flex-end" },
+  propertyName: { color: "#111827", fontSize: 19, fontWeight: "900", textAlign: "right" },
+  propertyLocation: { color: "#64748B", fontWeight: "800", marginTop: 4, textAlign: "right" },
+  typeBadge: { backgroundColor: "#ECFDF5", color: "#0F766E", paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, overflow: "hidden", fontWeight: "900" },
+  cardFooter: { flexDirection: "row-reverse", flexWrap: "wrap", gap: 6, marginTop: 12 },
+  pill: { backgroundColor: "#F1F5F9", color: "#334155", paddingHorizontal: 9, paddingVertical: 6, borderRadius: 999, overflow: "hidden", fontWeight: "900", fontSize: 12 },
+  actionsRow: { flexDirection: "row-reverse", gap: 8, marginTop: 12 },
+  openButton: { flex: 1, backgroundColor: "#111827", borderRadius: 16, padding: 12, alignItems: "center" },
+  openButtonText: { color: "#fff", fontWeight: "900" },
+  editButton: { width: 90, backgroundColor: "#E0E7FF", borderRadius: 16, padding: 12, alignItems: "center" },
+  editButtonText: { color: "#3730A3", fontWeight: "900" },
 });
