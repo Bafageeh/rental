@@ -7,6 +7,12 @@ const LEGACY_OR_BROKEN_API_BASE_URLS = new Set([
   "http://rentals-api.pm.sa/api",
 ]);
 
+declare global {
+  // يستخدم لتقييد اختيارات التعديل حسب السجل المفتوح حاليًا، خصوصًا عند دخول المدير من مالك محدد.
+  // eslint-disable-next-line no-var
+  var __RENTAL_EDIT_CONTEXT__: { resource?: string; id?: string | number; owner_id?: string | number } | undefined;
+}
+
 function normalizeApiBaseUrl(value?: string | null) {
   const normalized = (value || DEFAULT_API_BASE_URL).replace(/\/+$/, "");
 
@@ -129,6 +135,30 @@ function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15
     });
 }
 
+function appendQuery(path: string, params: Record<string, string>) {
+  const entries = Object.entries(params).filter(([, value]) => value !== "");
+  if (entries.length === 0) return path;
+
+  const query = entries
+    .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`)
+    .join("&");
+
+  return `${path}${path.includes("?") ? "&" : "?"}${query}`;
+}
+
+function addEditContextToScopedPath(path: string) {
+  if (!path.includes("/edit-delete-center/lookups")) {
+    return path;
+  }
+
+  const context = globalThis.__RENTAL_EDIT_CONTEXT__ || {};
+  return appendQuery(path, {
+    resource: context.resource === undefined ? "" : String(context.resource),
+    id: context.id === undefined ? "" : String(context.id),
+    owner_id: context.owner_id === undefined ? "" : String(context.owner_id),
+  });
+}
+
 export function apiGet(path: string) {
   return buildHeaders(false)
     .then((headers) =>
@@ -156,7 +186,7 @@ export function apiPost(path: string, body: Record<string, unknown> = {}) {
 }
 
 export function apiGetScoped(_normalPath: string, scopedPath: string) {
-  return apiGet(scopedPath);
+  return apiGet(addEditContextToScopedPath(scopedPath));
 }
 
 export function apiPostFormData(path: string, formData: FormData) {
