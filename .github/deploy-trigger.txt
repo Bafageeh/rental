@@ -1,1 +1,1 @@
-Retry rental deployment after SSH key fix.
+Retry rental deployment after B64 SSH key added.
