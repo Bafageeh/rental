@@ -54,9 +54,85 @@ function decodeParam(value: string) {
   }
 }
 
-function display(value: any, fallback = '-') {
+function stripBidi(value: string) {
+  return String(value || '')
+    .replace(/[\u200E\u200F\u202A-\u202E\u2066-\u2069]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function reverseText(value: string) {
+  return Array.from(value).reverse().join('');
+}
+
+function hasArabic(value: string) {
+  return /[\u0600-\u06FF]/.test(value);
+}
+
+function mostlyNumericOrDate(value: string) {
+  const compact = value.replace(/\s/g, '');
+  if (!compact) return false;
+  const numericLike = compact.replace(/[0-9٠-٩.,:/\-+]/g, '');
+  return numericLike.length === 0;
+}
+
+function normalizeExtractedArabic(value: any) {
+  const raw = stripBidi(displayRaw(value, ''));
+  if (!raw) return '';
+  if (!hasArabic(raw) || mostlyNumericOrDate(raw)) return raw;
+
+  const reversedMarkers = [
+    'دنه',
+    'هيجو',
+    'زيمق',
+    'زيمقل',
+    'ةدج',
+    'دقع',
+    'دوقع',
+    'ةقش',
+    'يراجيإ',
+    'يعبر',
+    'يرهش',
+    'يونس',
+  ];
+  const forwardMarkers = [
+    'مهند',
+    'وجيه',
+    'القميز',
+    'جدة',
+    'عقد',
+    'شقة',
+    'شهري',
+    'سنوي',
+    'ربع',
+    'إيجار',
+  ];
+
+  const hasReversedMarker = reversedMarkers.some((marker) => raw.includes(marker));
+  const hasForwardMarker = forwardMarkers.some((marker) => raw.includes(marker));
+
+  if (hasReversedMarker && !hasForwardMarker) return stripBidi(reverseText(raw));
+
+  const arabicLetters = raw.match(/[\u0600-\u06FF]/g)?.length || 0;
+  const latinLetters = raw.match(/[A-Za-z]/g)?.length || 0;
+  const digitCount = raw.match(/[0-9٠-٩]/g)?.length || 0;
+
+  if (arabicLetters >= 3 && latinLetters === 0 && digitCount === 0 && !hasForwardMarker) {
+    return stripBidi(reverseText(raw));
+  }
+
+  return raw;
+}
+
+function displayRaw(value: any, fallback = '-') {
   if (value === null || value === undefined || value === '') return fallback;
   return String(value);
+}
+
+function display(value: any, fallback = '-') {
+  const raw = displayRaw(value, fallback);
+  if (raw === fallback) return fallback;
+  return normalizeExtractedArabic(raw) || fallback;
 }
 
 function money(value: any) {
@@ -65,12 +141,8 @@ function money(value: any) {
   return formatMoney(numeric);
 }
 
-function reverseText(value: string) {
-  return Array.from(value).reverse().join('');
-}
-
 function cleanCycleText(value: any) {
-  return display(value)
+  return displayRaw(value)
     .replace(/[\u200E\u200F\u202A-\u202E\u2066-\u2069]/g, '')
     .replace(/\s+/g, ' ')
     .trim();
@@ -102,7 +174,7 @@ function cycleLabel(value: any) {
     return 'سنوي';
   }
 
-  return raw || '-';
+  return normalizeExtractedArabic(raw) || '-';
 }
 
 function scheduleSourceLabel(source?: string) {
@@ -420,7 +492,7 @@ export default function UploadContractScreen() {
                 tone="success"
                 icon="checkmark-done-outline"
                 title="تم الحفظ"
-                message={`العقد: #${lastImportResult?.contract?.id || '-'} — المستأجر: ${lastImportResult?.tenant?.name || '-'} — الدفعات المعتمدة من PDF: ${lastImportResult?.payments_count || paymentsCount || 0}`}
+                message={`العقد: #${lastImportResult?.contract?.id || '-'} — المستأجر: ${normalizeExtractedArabic(lastImportResult?.tenant?.name || '-') || '-'} — الدفعات المعتمدة من PDF: ${lastImportResult?.payments_count || paymentsCount || 0}`}
               />
             ) : null}
           </View>
