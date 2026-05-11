@@ -105,8 +105,22 @@ const typeMap: Record<string, string> = {
   other: 'أخرى',
 };
 
+const detailTitleMap: Record<string, string> = {
+  building: 'تفاصيل العمارة',
+  apartment: 'تفاصيل الشقة',
+  villa: 'تفاصيل الفيلا',
+  land: 'تفاصيل الأرض',
+  commercial: 'تفاصيل العقار التجاري',
+  mixed: 'تفاصيل العقار المختلط',
+  other: 'تفاصيل العقار',
+};
+
 const usageMap: Record<string, string> = { residential: 'سكني', commercial: 'تجاري', mixed: 'مختلط' };
 const mgmtMap: Record<string, string> = { owned: 'ملك خاص', managed: 'إدارة للغير' };
+
+function detailTitleForType(propertyType?: string | null) {
+  return detailTitleMap[String(propertyType || '')] || 'تفاصيل العقار';
+}
 
 function hasValue(value: unknown) {
   return value !== null && value !== undefined && String(value).trim() !== '' && String(value).trim() !== '-';
@@ -203,9 +217,7 @@ export default function PropertyDetailScreen() {
 
   useEffect(() => {
     if (!data) return;
-    navigation.setOptions({
-      title: String(data.property_type || '') === 'apartment' ? 'تفاصيل الشقة' : 'تفاصيل العقار',
-    });
+    navigation.setOptions({ title: detailTitleForType(data.property_type) });
   }, [data?.property_type, navigation]);
 
   if (loading || shouldReturnAfterDelete) {
