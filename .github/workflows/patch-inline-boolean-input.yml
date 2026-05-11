@@ -1,0 +1,40 @@
+name: Patch inline boolean input
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/patch-inline-boolean-input.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Remove duplicate text input below boolean chips
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          p = Path('my-rentals-mobile/src/components/InlineEditDeleteActions.tsx')
+          s = p.read_text(encoding='utf-8')
+          old = '!relationField && optionList.length === 0 ? ('
+          new = '!relationField && !isBoolean && optionList.length === 0 ? ('
+          if old not in s:
+              raise SystemExit('target condition not found')
+          s = s.replace(old, new, 1)
+          p.write_text(s, encoding='utf-8')
+          PY
+      - name: Commit patch and remove workflow
+        run: |
+          rm -f .github/workflows/patch-inline-boolean-input.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add my-rentals-mobile/src/components/InlineEditDeleteActions.tsx .github/workflows/patch-inline-boolean-input.yml
+          git commit -m "Hide text input under boolean edit fields" || exit 0
+          git push
