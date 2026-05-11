@@ -63,13 +63,25 @@ class RunDueScheduledMessages extends Command
             return false;
         }
 
-        if ($message->last_sent_date === $now->toDateString()) {
+        $dueAt = Carbon::parse($now->toDateString() . ' ' . $scheduledTime, $timezone);
+
+        if ($now->lessThan($dueAt)) {
             return false;
         }
 
-        $dueAt = Carbon::parse($now->toDateString() . ' ' . $scheduledTime, $timezone);
+        if ($message->last_sent_at) {
+            $lastSentAt = Carbon::parse($message->last_sent_at)->setTimezone($timezone);
 
-        return $now->greaterThanOrEqualTo($dueAt);
+            if ($lastSentAt->greaterThanOrEqualTo($dueAt)) {
+                return false;
+            }
+        }
+
+        if (! $message->last_sent_at && $message->last_sent_date === $now->toDateString()) {
+            return false;
+        }
+
+        return true;
     }
 
     private function normalizeTime(string $time): string
