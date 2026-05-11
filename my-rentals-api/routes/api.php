@@ -52,6 +52,8 @@ Route::middleware(['auth.api', 'api.scope'])->group(function () {
     Route::get('/webhook-events', [WebhookController::class, 'index']);
 
     foreach ([
+        // يجب تحميل هذا المسار قبل 00_core.php لأن Laravel يستخدم أول مسار مطابق لرفع العقد.
+        __DIR__ . '/api/000_contract_file_extract_official_schedule.php',
         __DIR__ . '/api/00_core.php',
         __DIR__ . '/api/01_owners.php',
         __DIR__ . '/api/02_properties.php',
