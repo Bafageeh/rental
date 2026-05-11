@@ -16,10 +16,12 @@ Route::get('/profile/properties', function (Request $request) {
         ], 401);
     }
 
+    $role = method_exists($user, 'effectiveRole') ? $user->effectiveRole() : strtolower((string) ($user->role ?? ''));
+    $isAdmin = in_array($role, ['admin', 'manager', 'super_admin'], true);
     $ownerIds = collect();
 
     // شاشة عقاراتي تعرض عقارات مالك الحساب الحالي فقط.
-    // حتى لو كان المستخدم أدمن، لا نستخدم أي تخمين بالاسم ولا نعرض عقارات كل الملاك.
+    // للأدمن الذي لا يملك owner_id مباشر، نعرض فقط مالك النظام الافتراضي type=self حتى تظهر عقارات الأدمن اليدوية.
     if (!empty($user->owner_id)) {
         $ownerIds->push((int) $user->owner_id);
     }
@@ -47,6 +49,14 @@ Route::get('/profile/properties', function (Request $request) {
         });
 
         $ownerIds = $ownerIds->merge($owners->pluck('id'));
+
+        if ($isAdmin && $ownerIds->isEmpty() && Schema::hasColumn('owners', 'type')) {
+            $ownerIds = $ownerIds->merge(
+                DB::table('owners')
+                    ->where('type', 'self')
+                    ->pluck('id')
+            );
+        }
     }
 
     $ownerIds = $ownerIds
