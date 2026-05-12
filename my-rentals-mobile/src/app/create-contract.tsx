@@ -14,12 +14,6 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { apiGetScoped, apiPost } from "../lib/api";
 
-type Tenant = {
-  id: number;
-  name?: string | null;
-  phone?: string | null;
-};
-
 type Unit = {
   id: number;
   unit_number?: string | null;
@@ -97,12 +91,11 @@ export default function CreateContractScreen() {
   const scopedOwnerId = ownerIdParam ? Number(ownerIdParam) : null;
   const scopedOwnerName = cleanName(ownerNameParam);
 
-  const [tenants, setTenants] = useState<Tenant[]>([]);
   const [units, setUnits] = useState<Unit[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  const [tenantId, setTenantId] = useState<number | null>(null);
+  const [tenantName, setTenantName] = useState("");
   const [unitId, setUnitId] = useState<number | null>(null);
 
   const [contractNumber, setContractNumber] = useState("");
@@ -114,11 +107,6 @@ export default function CreateContractScreen() {
   const [depositAmount, setDepositAmount] = useState("");
   const [paymentsCount, setPaymentsCount] = useState("12");
   const [paymentCycle, setPaymentCycle] = useState<PaymentCycle>("monthly");
-
-  const selectedTenant = useMemo(
-    () => tenants.find((tenant) => Number(tenant.id) === Number(tenantId)) || null,
-    [tenantId, tenants],
-  );
 
   const selectedUnit = useMemo(
     () => units.find((unit) => Number(unit.id) === Number(unitId)) || null,
@@ -149,13 +137,11 @@ export default function CreateContractScreen() {
           ? `?owner_id=${scopedOwnerId}`
           : "";
 
-      const [tenantsResult, unitsResult, relationOptions] = await Promise.all([
-        apiGetScoped("/tenants", "/my/tenants"),
+      const [unitsResult, relationOptions] = await Promise.all([
         isPropertyContract ? Promise.resolve([]) : apiGetScoped(`/units${propertyFilter}`, `/my/units${propertyFilter}`),
         !isPropertyContract && scopedOwnerId ? apiGetScoped("/relation-manager/options", "/my/relation-manager/options") : Promise.resolve(null),
       ]);
 
-      const tenantsList = Array.isArray(tenantsResult) ? tenantsResult : [];
       let loadedUnitsList: Unit[] = Array.isArray(unitsResult) ? unitsResult : [];
 
       if (!isPropertyContract && scopedOwnerId && relationOptions) {
@@ -191,12 +177,7 @@ export default function CreateContractScreen() {
         ? loadedUnitsList.filter((unit: Unit) => Number(unit.id) === Number(scopedUnitId))
         : loadedUnitsList;
 
-      setTenants(tenantsList);
       setUnits(unitsList);
-
-      if (!tenantId && tenantsList.length > 0) {
-        setTenantId(tenantsList[0].id);
-      }
 
       if (isPropertyContract) {
         setUnitId(null);
@@ -207,7 +188,7 @@ export default function CreateContractScreen() {
         setUnitId(availableUnit?.id || unitsList[0].id);
       }
     } catch (e) {
-      Alert.alert("خطأ", e instanceof Error ? e.message : "تعذر تحميل البيانات");
+      Alert.alert("خطأ", e instanceof Error ? e.message : "تعذر تحميل بيانات العقد");
     } finally {
       setLoading(false);
     }
@@ -233,8 +214,8 @@ export default function CreateContractScreen() {
   }
 
   async function saveContract() {
-    if (!tenantId) {
-      Alert.alert("تنبيه", "اختر المستأجر");
+    if (!tenantName.trim()) {
+      Alert.alert("تنبيه", "أدخل اسم المستأجر");
       return;
     }
 
@@ -262,7 +243,7 @@ export default function CreateContractScreen() {
       setSaving(true);
 
       const result = await apiPost("/contracts", {
-        tenant_id: tenantId,
+        tenant_name: tenantName.trim(),
         unit_id: isPropertyContract ? null : unitId,
         property_id: scopedPropertyId || selectedUnit?.property_id || null,
         contract_scope: contractScope,
@@ -277,6 +258,7 @@ export default function CreateContractScreen() {
         payments_count: Number(paymentsCount || 1),
       });
 
+      setTenantName("");
       setContractNumber("");
       setRentAmount("");
       setParkingFee("");
@@ -310,7 +292,7 @@ export default function CreateContractScreen() {
           <View style={styles.heroTextWrap}>
             <Text style={styles.eyebrow}>عقد إيجار جديد</Text>
             <Text style={styles.title}>{isPropertyContract ? "إنشاء عقد وربطه بالعقار" : "إنشاء عقد وربطه بالوحدة"}</Text>
-            <Text style={styles.subtitle}>تأكد من بيانات المالك والعقار ونطاق العقد ثم أضف المستأجر والبيانات المالية.</Text>
+            <Text style={styles.subtitle}>تأكد من بيانات المالك والعقار ونطاق العقد ثم أدخل اسم المستأجر والبيانات المالية.</Text>
           </View>
           <TouchableOpacity style={styles.uploadButton} onPress={openUploadContract} activeOpacity={0.82}>
             <Ionicons name="cloud-upload-outline" size={18} color="#ffffff" />
@@ -351,33 +333,24 @@ export default function CreateContractScreen() {
         {loading ? (
           <View style={styles.loadingBox}>
             <ActivityIndicator />
-            <Text style={styles.loadingText}>جاري تحميل المستأجرين والوحدات...</Text>
+            <Text style={styles.loadingText}>جاري تحميل بيانات العقد...</Text>
           </View>
         ) : null}
 
         <View style={styles.card}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>اختيار المستأجر</Text>
-            <Text style={styles.sectionHint}>{selectedTenant?.phone ? `الجوال: ${selectedTenant.phone}` : "اختر المستأجر المرتبط بالعقد"}</Text>
+            <Text style={styles.sectionTitle}>بيانات المستأجر</Text>
+            <Text style={styles.sectionHint}>أدخل اسم المستأجر يدويًا كما تريد ظهوره في العقد</Text>
           </View>
 
-          <View style={styles.chips}>
-            {tenants.map((tenant) => (
-              <TouchableOpacity
-                key={tenant.id}
-                style={[styles.chip, tenantId === tenant.id ? styles.chipActive : null]}
-                onPress={() => setTenantId(tenant.id)}
-                activeOpacity={0.8}
-              >
-                <Text style={[styles.chipText, tenantId === tenant.id ? styles.chipTextActive : null]}>
-                  {tenant.name || "مستأجر"}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-          {!loading && tenants.length === 0 ? (
-            <Text style={styles.emptyHint}>لا يوجد مستأجرون. أضف مستأجرًا أولًا ثم أنشئ العقد.</Text>
-          ) : null}
+          <TextInput
+            style={styles.input}
+            placeholder="اسم المستأجر"
+            value={tenantName}
+            onChangeText={setTenantName}
+            textAlign="right"
+            returnKeyType="next"
+          />
         </View>
 
         {!isPropertyContract ? (
