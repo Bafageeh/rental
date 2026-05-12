@@ -3,6 +3,7 @@ import { router } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -13,72 +14,12 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { apiGetScoped } from "../lib/api";
 
-type Owner = {
-  id: number;
-  name?: string | null;
-  phone?: string | null;
-  email?: string | null;
-  national_id?: string | null;
-};
-
-type Summary = {
-  properties_count?: number;
-  units_count?: number;
-  active_contracts_count?: number;
-  paid_income?: number;
-  due_income?: number;
-  overdue_income?: number;
-  expenses?: number;
-  net_income?: number;
-};
-
-type Unit = {
-  id: number;
-  property_id?: number | string | null;
-  unit_scope?: string | null;
-  unit_number?: string | null;
-  name?: string | null;
-  type?: string | null;
-  floor?: string | number | null;
-  status?: string | null;
-  rent_amount?: number | string | null;
-  property_name?: string | null;
-};
-
-type Property = {
-  id: number;
-  name?: string | null;
-  city?: string | null;
-  district?: string | null;
-  property_type?: string | null;
-  units_count?: number;
-  rented_units_count?: number;
-  active_contracts_count?: number;
-  paid_income?: number;
-  expenses?: number;
-  management_type?: string | null;
-  units?: Unit[];
-};
-
-type Contract = {
-  id: number;
-  contract_number?: string | null;
-  government_contract_number?: string | null;
-  tenant_name?: string | null;
-  property_name?: string | null;
-  unit_number?: string | null;
-  status?: string | null;
-  rent_amount?: number;
-};
-
-type DashboardData = {
-  owner?: Owner;
-  summary?: Summary;
-  properties?: Property[];
-  units?: Unit[];
-  contracts?: Contract[];
-};
-
+type Owner = { id: number; name?: string | null; phone?: string | null; email?: string | null; national_id?: string | null };
+type Summary = { properties_count?: number; units_count?: number; active_contracts_count?: number; paid_income?: number; due_income?: number; net_income?: number };
+type Unit = { id: number; property_id?: number | string | null; unit_scope?: string | null; unit_number?: string | null; name?: string | null; floor?: string | number | null; status?: string | null; rent_amount?: number | string | null };
+type Property = { id: number; name?: string | null; city?: string | null; district?: string | null; property_type?: string | null; units_count?: number; rented_units_count?: number; active_contracts_count?: number; units?: Unit[] };
+type Contract = { id: number; contract_number?: string | null; government_contract_number?: string | null; tenant_name?: string | null; property_name?: string | null; unit_number?: string | null; rent_amount?: number };
+type DashboardData = { owner?: Owner; summary?: Summary; properties?: Property[]; units?: Unit[]; contracts?: Contract[] };
 type TabKey = "summary" | "properties" | "contracts";
 
 const tabs: Array<{ key: TabKey; label: string }> = [
@@ -87,71 +28,23 @@ const tabs: Array<{ key: TabKey; label: string }> = [
   { key: "contracts", label: "العقود" },
 ];
 
-const propertyTypeLabels: Record<string, string> = {
-  building: "عمارة",
-  apartment: "شقة",
-  villa: "فيلا",
-  land: "أرض",
-  commercial: "تجاري",
-  mixed: "مختلط",
-};
+const propertyTypeLabels: Record<string, string> = { building: "عمارة", apartment: "شقة", villa: "فيلا", land: "أرض", commercial: "تجاري", mixed: "مختلط" };
+const statusLabels: Record<string, string> = { active: "نشط", ended: "منتهي", cancelled: "ملغى", available: "متاح", rented: "مؤجر", maintenance: "صيانة" };
 
-const statusLabels: Record<string, string> = {
-  active: "نشط",
-  ended: "منتهي",
-  cancelled: "ملغى",
-  available: "متاح",
-  rented: "مؤجر",
-  maintenance: "صيانة",
-};
-
-function asNumber(value: unknown) {
-  const n = Number(value ?? 0);
-  return Number.isFinite(n) ? n : 0;
-}
-
-function count(value: unknown) {
-  return Math.round(asNumber(value)).toLocaleString("ar-SA");
-}
-
-function money(value: unknown) {
-  return `${Math.round(asNumber(value)).toLocaleString("ar-SA")} ريال`;
-}
-
-function valueOrDash(value: unknown) {
-  if (value === null || value === undefined || String(value).trim() === "") return "-";
-  return String(value);
-}
-
-function typeText(value?: string | null) {
-  if (!value) return "عقار";
-  return propertyTypeLabels[value] || value;
-}
-
-function statusText(value?: string | null) {
-  if (!value) return "-";
-  return statusLabels[value] || value;
-}
-
-function unitName(unit: Unit) {
-  return unit.name || unit.unit_number || `وحدة #${unit.id}`;
-}
+function asNumber(value: unknown) { const n = Number(value ?? 0); return Number.isFinite(n) ? n : 0; }
+function count(value: unknown) { return Math.round(asNumber(value)).toLocaleString("ar-SA"); }
+function money(value: unknown) { return `${Math.round(asNumber(value)).toLocaleString("ar-SA")} ريال`; }
+function valueOrDash(value: unknown) { return value === null || value === undefined || String(value).trim() === "" ? "-" : String(value); }
+function typeText(value?: string | null) { return value ? (propertyTypeLabels[value] || value) : "عقار"; }
+function statusText(value?: string | null) { return value ? (statusLabels[value] || value) : "-"; }
+function unitName(unit: Unit) { return unit.name || unit.unit_number || `وحدة #${unit.id}`; }
 
 function EmptyBox({ text }: { text: string }) {
-  return (
-    <View style={styles.emptyBox}>
-      <Text style={styles.emptyText}>{text}</Text>
-    </View>
-  );
+  return <View style={styles.emptyBox}><Text style={styles.emptyText}>{text}</Text></View>;
 }
 
 function StatCard({ label, value }: { label: string; value: string }) {
-  return (
-    <View style={styles.statCard}>
-      <Text style={styles.statValue}>{value}</Text>
-      <Text style={styles.statLabel}>{label}</Text>
-    </View>
-  );
+  return <View style={styles.statCard}><Text style={styles.statValue}>{value}</Text><Text style={styles.statLabel}>{label}</Text></View>;
 }
 
 export default function OwnerAssetsDashboardScreen({ id }: { id: string | number }) {
@@ -164,24 +57,19 @@ export default function OwnerAssetsDashboardScreen({ id }: { id: string | number
 
   async function load(isRefresh = false) {
     if (!ownerId) return;
-
     try {
-      if (isRefresh) setRefreshing(true);
-      else setLoading(true);
+      if (isRefresh) setRefreshing(true); else setLoading(true);
       setError("");
       const response = await apiGetScoped(`/owners/${ownerId}/dashboard`, `/my/owners/${ownerId}/dashboard`);
       setData((response?.data ?? response) as DashboardData);
     } catch (e) {
       setError(e instanceof Error ? e.message : "تعذر تحميل تفاصيل الأملاك");
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      setLoading(false); setRefreshing(false);
     }
   }
 
-  useEffect(() => {
-    load(false);
-  }, [ownerId]);
+  useEffect(() => { load(false); }, [ownerId]);
 
   const owner = data?.owner;
   const ownerName = owner?.name || "مالك بدون اسم";
@@ -190,12 +78,9 @@ export default function OwnerAssetsDashboardScreen({ id }: { id: string | number
   const properties = data?.properties || [];
   const units = data?.units || [];
   const contracts = data?.contracts || [];
+  const ownerReturnTo = encodeURIComponent(`/owner/${ownerId}`);
 
-  const directOwnerUnits = useMemo(
-    () => units.filter((unit) => !unit.property_id || String(unit.unit_scope || "") === "owner"),
-    [units],
-  );
-
+  const directOwnerUnits = useMemo(() => units.filter((unit) => !unit.property_id || String(unit.unit_scope || "") === "owner"), [units]);
   const unitsByPropertyId = useMemo(() => {
     const map = new Map<string, Unit[]>();
     units
@@ -207,26 +92,29 @@ export default function OwnerAssetsDashboardScreen({ id }: { id: string | number
     return map;
   }, [units, directOwnerUnits]);
 
+  function openManualProperty() {
+    router.push(`/property-form?owner_id=${encodeURIComponent(ownerId)}&owner_name=${ownerNameForUrl}&management_type=owned&owner_private=1&return_to=${ownerReturnTo}` as never);
+  }
+
+  function openPdfProperty() {
+    router.push(`/upload-property-deed?owner_id=${encodeURIComponent(ownerId)}&owner_name=${ownerNameForUrl}&management_type=owned&owner_private=1&return_to=${ownerReturnTo}` as never);
+  }
+
   function openAddPrivateProperty() {
-    router.push(
-      `/property-form?owner_id=${encodeURIComponent(ownerId)}&owner_name=${ownerNameForUrl}&management_type=owned&owner_private=1&return_to=${encodeURIComponent(`/owner/${ownerId}`)}` as never,
-    );
+    Alert.alert("إضافة عقار", "اختر طريقة إضافة العقار لهذا المالك كأملاك خاصة:", [
+      { text: "رفع ملف PDF", onPress: openPdfProperty },
+      { text: "إدخال يدوي", onPress: openManualProperty },
+      { text: "إلغاء", style: "cancel" },
+    ]);
   }
 
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={styles.container}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} />}
-        showsVerticalScrollIndicator={false}
-      >
+      <ScrollView style={styles.scroll} contentContainerStyle={styles.container} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} />} showsVerticalScrollIndicator={false}>
         <View style={styles.heroCard}>
           <View style={styles.heroTopRow}>
             <Text style={styles.typeBadge}>مالك</Text>
-            <View style={styles.heroTitleWrap}>
-              <Text numberOfLines={2} style={styles.ownerName}>{ownerName}</Text>
-            </View>
+            <View style={styles.heroTitleWrap}><Text numberOfLines={2} style={styles.ownerName}>{ownerName}</Text></View>
           </View>
           <View style={styles.contactGrid}>
             <Text style={styles.contactText}>الجوال: {valueOrDash(owner?.phone)}</Text>
@@ -243,29 +131,12 @@ export default function OwnerAssetsDashboardScreen({ id }: { id: string | number
           ))}
         </View>
 
-        {loading ? (
-          <View style={styles.stateBox}>
-            <ActivityIndicator />
-            <Text style={styles.stateText}>جاري تحميل تفاصيل الأملاك...</Text>
-          </View>
-        ) : null}
-
-        {error ? (
-          <View style={styles.errorBox}>
-            <Text style={styles.errorTitle}>تعذر تحميل تفاصيل الأملاك</Text>
-            <Text style={styles.errorText}>{error}</Text>
-            <TouchableOpacity style={styles.retryButton} onPress={() => load(false)}>
-              <Text style={styles.retryText}>إعادة المحاولة</Text>
-            </TouchableOpacity>
-          </View>
-        ) : null}
+        {loading ? <View style={styles.stateBox}><ActivityIndicator /><Text style={styles.stateText}>جاري تحميل تفاصيل الأملاك...</Text></View> : null}
+        {error ? <View style={styles.errorBox}><Text style={styles.errorTitle}>تعذر تحميل تفاصيل الأملاك</Text><Text style={styles.errorText}>{error}</Text><TouchableOpacity style={styles.retryButton} onPress={() => load(false)}><Text style={styles.retryText}>إعادة المحاولة</Text></TouchableOpacity></View> : null}
 
         {!loading && !error && activeTab === "summary" ? (
           <View>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>ملخص المالك</Text>
-              <Text style={styles.sectionSubtitle}>إحصائيات خاصة بأملاك هذا المالك فقط</Text>
-            </View>
+            <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>ملخص المالك</Text><Text style={styles.sectionSubtitle}>إحصائيات خاصة بأملاك هذا المالك فقط</Text></View>
             <View style={styles.statsGrid}>
               <StatCard label="العقارات" value={count(summary.properties_count ?? properties.length)} />
               <StatCard label="الوحدات" value={count(summary.units_count ?? units.length)} />
@@ -285,23 +156,14 @@ export default function OwnerAssetsDashboardScreen({ id }: { id: string | number
               </TouchableOpacity>
               <View style={styles.assetsHeaderText}>
                 <Text style={styles.sectionTitle}>العقارات والوحدات</Text>
-                <Text style={styles.sectionSubtitle}>إضافة العقار هنا تربطه بهذا المالك كأملاك خاصة فقط</Text>
+                <Text style={styles.sectionSubtitle}>اختر الإضافة بالـ PDF أو الإدخال اليدوي، وسيتم ربط العقار بهذا المالك فقط</Text>
               </View>
             </View>
 
             <View style={styles.assetSummaryStrip}>
-              <View style={styles.assetSummaryItem}>
-                <Text style={styles.assetSummaryValue}>{count(properties.length)}</Text>
-                <Text style={styles.assetSummaryLabel}>عقارات</Text>
-              </View>
-              <View style={styles.assetSummaryItem}>
-                <Text style={styles.assetSummaryValue}>{count(units.length)}</Text>
-                <Text style={styles.assetSummaryLabel}>وحدات</Text>
-              </View>
-              <View style={styles.assetSummaryItem}>
-                <Text style={styles.assetSummaryValue}>{count(directOwnerUnits.length)}</Text>
-                <Text style={styles.assetSummaryLabel}>مباشرة</Text>
-              </View>
+              <View style={styles.assetSummaryItem}><Text style={styles.assetSummaryValue}>{count(properties.length)}</Text><Text style={styles.assetSummaryLabel}>عقارات</Text></View>
+              <View style={styles.assetSummaryItem}><Text style={styles.assetSummaryValue}>{count(units.length)}</Text><Text style={styles.assetSummaryLabel}>وحدات</Text></View>
+              <View style={styles.assetSummaryItem}><Text style={styles.assetSummaryValue}>{count(directOwnerUnits.length)}</Text><Text style={styles.assetSummaryLabel}>مباشرة</Text></View>
             </View>
 
             {properties.map((property) => {
@@ -310,64 +172,27 @@ export default function OwnerAssetsDashboardScreen({ id }: { id: string | number
                 <TouchableOpacity key={property.id} style={styles.propertyCard} activeOpacity={0.9} onPress={() => router.push(`/property/${property.id}` as never)}>
                   <View style={styles.propertyHeader}>
                     <Text style={styles.propertyType}>{typeText(property.property_type)}</Text>
-                    <View style={styles.propertyTitleBox}>
-                      <Text numberOfLines={1} style={styles.propertyTitle}>{property.name || "عقار بدون اسم"}</Text>
-                      <Text style={styles.propertyMeta}>{[property.district, property.city].filter(Boolean).join("، ") || "لا يوجد موقع مسجل"}</Text>
-                    </View>
+                    <View style={styles.propertyTitleBox}><Text numberOfLines={1} style={styles.propertyTitle}>{property.name || "عقار بدون اسم"}</Text><Text style={styles.propertyMeta}>{[property.district, property.city].filter(Boolean).join("، ") || "لا يوجد موقع مسجل"}</Text></View>
                   </View>
                   <View style={styles.miniStatsRow}>
                     <Text style={styles.miniPill}>وحدات: {count(propertyUnits.length || property.units_count)}</Text>
                     <Text style={styles.miniPill}>مؤجرة: {count(property.rented_units_count)}</Text>
                     <Text style={styles.miniPill}>عقود: {count(property.active_contracts_count)}</Text>
                   </View>
-
-                  {propertyUnits.length ? (
-                    <View style={styles.unitsBox}>
-                      {propertyUnits.map((unit) => (
-                        <TouchableOpacity key={unit.id} style={styles.unitRow} activeOpacity={0.85} onPress={() => router.push(`/unit/${unit.id}` as never)}>
-                          <Text style={styles.unitStatus}>{statusText(unit.status)}</Text>
-                          <View style={styles.unitTextBox}>
-                            <Text numberOfLines={1} style={styles.unitTitle}>{unitName(unit)}</Text>
-                            <Text style={styles.unitMeta}>الدور: {valueOrDash(unit.floor)} | الإيجار: {money(unit.rent_amount)}</Text>
-                          </View>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                  ) : null}
+                  {propertyUnits.length ? <View style={styles.unitsBox}>{propertyUnits.map((unit) => <TouchableOpacity key={unit.id} style={styles.unitRow} activeOpacity={0.85} onPress={() => router.push(`/unit/${unit.id}` as never)}><Text style={styles.unitStatus}>{statusText(unit.status)}</Text><View style={styles.unitTextBox}><Text numberOfLines={1} style={styles.unitTitle}>{unitName(unit)}</Text><Text style={styles.unitMeta}>الدور: {valueOrDash(unit.floor)} | الإيجار: {money(unit.rent_amount)}</Text></View></TouchableOpacity>)}</View> : null}
                 </TouchableOpacity>
               );
             })}
 
-            {directOwnerUnits.length ? (
-              <View>
-                <Text style={styles.directTitle}>وحدات مباشرة على المالك</Text>
-                {directOwnerUnits.map((unit) => (
-                  <TouchableOpacity key={unit.id} style={styles.directUnitCard} activeOpacity={0.9} onPress={() => router.push(`/unit/${unit.id}` as never)}>
-                    <Text style={styles.unitTitle}>{unitName(unit)}</Text>
-                    <Text style={styles.unitMeta}>الحالة: {statusText(unit.status)} | الإيجار: {money(unit.rent_amount)}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            ) : null}
-
+            {directOwnerUnits.length ? <View><Text style={styles.directTitle}>وحدات مباشرة على المالك</Text>{directOwnerUnits.map((unit) => <TouchableOpacity key={unit.id} style={styles.directUnitCard} activeOpacity={0.9} onPress={() => router.push(`/unit/${unit.id}` as never)}><Text style={styles.unitTitle}>{unitName(unit)}</Text><Text style={styles.unitMeta}>الحالة: {statusText(unit.status)} | الإيجار: {money(unit.rent_amount)}</Text></TouchableOpacity>)}</View> : null}
             {!properties.length && !directOwnerUnits.length ? <EmptyBox text="لا توجد عقارات أو وحدات تابعة لهذا المالك." /> : null}
           </View>
         ) : null}
 
         {!loading && !error && activeTab === "contracts" ? (
           <View>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>عقود المالك</Text>
-              <Text style={styles.sectionSubtitle}>العقود التابعة لعقارات ووحدات هذا المالك</Text>
-            </View>
-            {contracts.length ? contracts.map((contract) => (
-              <TouchableOpacity key={contract.id} style={styles.contractCard} activeOpacity={0.9} onPress={() => router.push(`/contract/${contract.id}` as never)}>
-                <Text style={styles.contractTitle}>عقد {contract.government_contract_number || contract.contract_number || contract.id}</Text>
-                <Text style={styles.contractMeta}>المستأجر: {contract.tenant_name || "-"}</Text>
-                <Text style={styles.contractMeta}>{contract.property_name || "عقار"} / وحدة {valueOrDash(contract.unit_number)}</Text>
-                <Text style={styles.contractRent}>{money(contract.rent_amount)}</Text>
-              </TouchableOpacity>
-            )) : <EmptyBox text="لا توجد عقود لهذا المالك." />}
+            <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>عقود المالك</Text><Text style={styles.sectionSubtitle}>العقود التابعة لعقارات ووحدات هذا المالك</Text></View>
+            {contracts.length ? contracts.map((contract) => <TouchableOpacity key={contract.id} style={styles.contractCard} activeOpacity={0.9} onPress={() => router.push(`/contract/${contract.id}` as never)}><Text style={styles.contractTitle}>عقد {contract.government_contract_number || contract.contract_number || contract.id}</Text><Text style={styles.contractMeta}>المستأجر: {contract.tenant_name || "-"}</Text><Text style={styles.contractMeta}>{contract.property_name || "عقار"} / وحدة {valueOrDash(contract.unit_number)}</Text><Text style={styles.contractRent}>{money(contract.rent_amount)}</Text></TouchableOpacity>) : <EmptyBox text="لا توجد عقود لهذا المالك." />}
           </View>
         ) : null}
       </ScrollView>
