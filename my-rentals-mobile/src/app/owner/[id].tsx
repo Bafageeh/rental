@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useLocalSearchParams } from "expo-router";
 import { useIsFocused } from "@react-navigation/native";
-import OwnerDashboardScreenWithActions from "../../components/OwnerDashboardScreenWithActions";
+import OwnerAssetsDashboardScreen from "../../components/OwnerAssetsDashboardScreen";
 
 export default function OwnerDashboardRoute() {
   const params = useLocalSearchParams<{ id: string }>();
@@ -15,5 +15,5 @@ export default function OwnerDashboardRoute() {
     }
   }, [isFocused]);
 
-  return <OwnerDashboardScreenWithActions key={`${id}-${refreshKey}`} id={id} />;
+  return <OwnerAssetsDashboardScreen key={`${id}-${refreshKey}`} id={id} />;
 }
