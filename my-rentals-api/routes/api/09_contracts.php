@@ -120,7 +120,8 @@ if (!function_exists('mr_contract_prevent_duplicate')) {
 
 Route::post('/contracts', function (Request $request) {
     $data = $request->validate([
-        'tenant_id' => ['required', 'integer', 'exists:tenants,id'],
+        'tenant_id' => ['nullable', 'integer', 'exists:tenants,id'],
+        'tenant_name' => ['required_without:tenant_id', 'nullable', 'string', 'max:255'],
         'unit_id' => ['nullable', 'integer', 'exists:units,id'],
         'property_id' => ['nullable', 'integer', 'exists:properties,id'],
         'contract_scope' => ['nullable', 'string', 'in:property,unit'],
@@ -139,8 +140,25 @@ Route::post('/contracts', function (Request $request) {
     $targetUnit = mr_contract_target_unit($data);
     mr_contract_prevent_duplicate($targetUnit);
 
+    $tenantId = $data['tenant_id'] ?? null;
+    if (!$tenantId) {
+        $tenantName = trim((string) ($data['tenant_name'] ?? ''));
+        if ($tenantName === '') {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'أدخل اسم المستأجر.',
+            ], 422);
+        }
+
+        $tenant = Tenant::firstOrCreate(
+            ['name' => $tenantName],
+            ['notes' => 'تم إنشاؤه تلقائيًا من شاشة إنشاء عقد جديد']
+        );
+        $tenantId = $tenant->id;
+    }
+
     $contract = Contract::create([
-        'tenant_id' => $data['tenant_id'],
+        'tenant_id' => $tenantId,
         'unit_id' => $targetUnit->id,
         'contract_number' => $data['contract_number'] ?? ('MAN-' . now()->format('YmdHis')),
         'start_date' => $data['start_date'],
