@@ -62,6 +62,10 @@ function fieldValue(fields: FieldItem[] | undefined, key: string) {
   return fields?.find((field) => field.key === key)?.value ?? "";
 }
 
+function shouldOfferCascadeDelete(message: string) {
+  return /ارتباط|الارتباطات|راجع التفاصيل|أكد الحذف|تأكيد|cascade|requires_confirmation/i.test(message);
+}
+
 export default function UnitDetailsRoute() {
   const params = useLocalSearchParams<{ id: string; source?: string; return_to?: string }>();
   const id = String(params.id || "");
@@ -136,22 +140,46 @@ export default function UnitDetailsRoute() {
     router.push(`${path}?unit_id=${id}&unit_name=${unitName}${suffix}` as never);
   }
 
+  async function performUnitDelete(force = false) {
+    try {
+      await apiPost(`/edit-delete-center/units/${id}/delete`, force ? { force: true } : {});
+      router.replace(deleteReturnTo as never);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "فشل حذف الوحدة";
+
+      if (!force && shouldOfferCascadeDelete(message)) {
+        Alert.alert(
+          "تأكيد حذف الارتباطات",
+          `${message}\n\nهل تؤكد حذف الوحدة مع جميع الارتباطات التابعة لها؟ سيتم حذف العقود والدفعات والملفات المرتبطة بهذه الوحدة.`,
+          [
+            { text: "إلغاء", style: "cancel" },
+            {
+              text: "تأكيد الحذف",
+              style: "destructive",
+              onPress: () => performUnitDelete(true),
+            },
+          ],
+        );
+        return;
+      }
+
+      Alert.alert("تعذر الحذف", message);
+    }
+  }
+
   function deleteUnit() {
-    Alert.alert("حذف الوحدة", "هل تريد حذف هذه الوحدة؟ إذا كانت مرتبطة بعقود سيتم منع الحذف تلقائيًا.", [
-      { text: "إلغاء", style: "cancel" },
-      {
-        text: "حذف",
-        style: "destructive",
-        onPress: async () => {
-          try {
-            await apiPost(`/edit-delete-center/units/${id}/delete`, {});
-            router.replace(deleteReturnTo as never);
-          } catch (e) {
-            Alert.alert("تعذر الحذف", e instanceof Error ? e.message : "فشل حذف الوحدة");
-          }
+    Alert.alert(
+      "حذف الوحدة",
+      "سيتم حذف الوحدة. إذا كانت عليها عقود أو دفعات أو ملفات مرتبطة سيظهر لك تأكيد إضافي لحذفها معها.",
+      [
+        { text: "إلغاء", style: "cancel" },
+        {
+          text: "حذف",
+          style: "destructive",
+          onPress: () => performUnitDelete(false),
         },
-      },
-    ]);
+      ],
+    );
   }
 
   return (
