@@ -4,10 +4,9 @@
 |--------------------------------------------------------------------------
 | Mirrored Arabic deed parser
 |--------------------------------------------------------------------------
-| Some deeds are extracted by the PDF parser as mirrored Arabic text, for
-| example: "ةيساسلأا تانايبلا" instead of "البيانات الأساسية".
-| This parser mirrors each extracted line back, fixes reversed numbers/dates,
-| then extracts the common deed model fields.
+| Some deeds are extracted with Arabic words mirrored letter-by-letter while
+| word order and numbers remain mostly in place. This parser reverses Arabic
+| tokens only, preserves numbers/dates, then extracts common deed fields.
 */
 
 if (!function_exists('deed_m_clean')) {
@@ -37,22 +36,25 @@ if (!function_exists('deed_m_reverse')) {
     }
 }
 
-if (!function_exists('deed_m_fix_numbers')) {
-    function deed_m_fix_numbers(string $line): string
+if (!function_exists('deed_m_fix_token')) {
+    function deed_m_fix_token(string $token): string
     {
-        $dates = [];
-        $line = preg_replace_callback('/(\d{1,2})\s*\/\s*(\d{1,2})\s*\/\s*(\d{4})/u', function ($m) use (&$dates) {
-            $key = ' __DATE_' . count($dates) . '__ ';
-            $dates[$key] = strrev($m[3]) . '/' . $m[2] . '/' . $m[1];
-            return $key;
-        }, $line) ?? $line;
-
-        $line = preg_replace_callback('/(?<![\/\d])\d{2,}(?![\/\d])/u', fn ($m) => strrev($m[0]), $line) ?? $line;
-
-        foreach ($dates as $key => $date) {
-            $line = str_replace($key, $date, $line);
+        if (!preg_match('/[\x{0600}-\x{06FF}]/u', $token)) {
+            return $token;
         }
-        return $line;
+
+        $leading = '';
+        $trailing = '';
+        if (preg_match('/^([^\x{0600}-\x{06FF}0-9]+)(.*)$/u', $token, $m)) {
+            $leading = $m[1];
+            $token = $m[2];
+        }
+        if (preg_match('/^(.*?)([^\x{0600}-\x{06FF}0-9]+)$/u', $token, $m)) {
+            $token = $m[1];
+            $trailing = $m[2];
+        }
+
+        return $leading . deed_m_reverse($token) . $trailing;
     }
 }
 
@@ -60,12 +62,15 @@ if (!function_exists('deed_m_mirror_text')) {
     function deed_m_mirror_text(string $text): string
     {
         $text = str_replace(["\r\n", "\r"], "\n", $text);
+        $text = strtr($text, ['٠'=>'0','١'=>'1','٢'=>'2','٣'=>'3','٤'=>'4','٥'=>'5','٦'=>'6','٧'=>'7','٨'=>'8','٩'=>'9']);
         $lines = preg_split('/\n/u', $text) ?: [];
         $out = [];
         foreach ($lines as $line) {
             $line = deed_m_clean($line, 2000);
             if (!$line) continue;
-            $out[] = deed_m_clean(deed_m_fix_numbers(deed_m_reverse($line)), 2000);
+            $tokens = preg_split('/(\s+)/u', $line, -1, PREG_SPLIT_DELIM_CAPTURE) ?: [];
+            $fixed = implode('', array_map(fn ($token) => preg_match('/^\s+$/u', $token) ? $token : deed_m_fix_token($token), $tokens));
+            $out[] = deed_m_clean($fixed, 2000);
         }
         return trim(implode("\n", array_filter($out)));
     }
@@ -96,7 +101,7 @@ if (!function_exists('deed_m_find_header')) {
 }
 
 if (!function_exists('deed_m_data_after')) {
-    function deed_m_data_after(array $lines, array $tokens, int $lookAhead = 5): ?string
+    function deed_m_data_after(array $lines, array $tokens, int $lookAhead = 6): ?string
     {
         $idx = deed_m_find_header($lines, $tokens);
         if ($idx === null) return null;
@@ -163,7 +168,7 @@ if (!function_exists('deed_m_payload')) {
             $payload['document_restrictions'] = deed_m_clean($m[1]);
             $payload['document_status'] = deed_m_clean($m[2], 100);
         } elseif (($line = deed_m_data_after($lines, ['القيود', 'الحالة']))) {
-            if (preg_match('/(لا يوجد قيود|مرهون|قيد.*?)\s+(فعال|غير فعال|ملغي|منتهي)/u', $line, $m)) {
+            if (preg_match('/(لا\s*يوجد\s*قيود|مرهون|قيد.*?)\s+(فعال|غير فعال|ملغي|منتهي)/u', $line, $m)) {
                 $payload['document_restrictions'] = deed_m_clean($m[1]);
                 $payload['document_status'] = deed_m_clean($m[2], 100);
             }
@@ -196,8 +201,8 @@ if (!function_exists('deed_m_payload')) {
         }
 
         $propertyLine = deed_m_data_after($lines, ['رقم الهوية العقارية', 'نوع العقار']) ?: '';
-        if ($propertyLine && preg_match('/(لا يوجد|[0-9]{8,})\s+(قطعة الأرض|قطعة أرض|قطعة ارض|شقة|فيلا|عمارة|أرض|ارض)\s+([0-9]+(?:\.[0-9]+)?)\s+(لا يوجد|سكني|تجاري|مختلط)?/u', $propertyLine, $m)) {
-            $payload['real_estate_identity_number'] = $m[1] === 'لا يوجد' ? null : deed_m_clean($m[1]);
+        if ($propertyLine && preg_match('/(لا\s*يوجد|[0-9]{8,})\s+(قطعة\s*الأرض|قطعة\s*أرض|قطعة\s*ارض|شقة|فيلا|عمارة|أرض|ارض)\s+([0-9]+(?:\.[0-9]+)?)\s+(لا\s*يوجد|سكني|تجاري|مختلط)?/u', $propertyLine, $m)) {
+            $payload['real_estate_identity_number'] = preg_match('/لا\s*يوجد/u', $m[1]) ? null : deed_m_clean($m[1]);
             $payload['deed_property_type_text'] = deed_m_clean($m[2], 100);
             $payload['property_area'] = deed_m_num($m[3]);
             if (!empty($m[4])) $payload['deed_usage_text'] = deed_m_clean($m[4], 100);
@@ -218,7 +223,7 @@ if (!function_exists('deed_m_payload')) {
         $plan = $payload['plan_number'] ?? null;
         $payload['name'] = deed_m_clean(implode(' - ', array_filter([$ptype === 'land' ? 'قطعة أرض' : 'عقار', $district, $city]))) ?: (($payload['document_number'] ?? null) ? 'عقار صك ' . $payload['document_number'] : 'عقار من صك');
         $payload['address'] = implode('، ', array_filter([$district ? 'حي ' . deed_m_clean($district, 80) : null, deed_m_clean($city, 80), $plan ? 'مخطط ' . deed_m_clean($plan, 100) : null, $plot ? 'قطعة ' . deed_m_clean($plot, 100) : null]));
-        $payload['deed_parser_engine'] = 'mirrored_smalot_pdf_parser';
+        $payload['deed_parser_engine'] = 'mirrored_arabic_word_parser';
         $payload['deed_parse_quality'] = count(array_filter($payload, fn ($v) => $v !== null && $v !== ''));
         $payload['deed_raw_excerpt'] = mb_substr($text, 0, 6000);
 
