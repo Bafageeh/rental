@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\ContractFileController;
 use App\Models\Contract;
+use App\Models\ContractFile;
 use App\Models\Property;
 use App\Models\Unit;
 use App\Services\GovernmentContractImporter;
@@ -9,6 +10,7 @@ use App\Services\GovernmentContractPdfExtractor;
 use App\Services\OfficialPaymentScheduleSynchronizer;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Storage;
 
 /*
 |--------------------------------------------------------------------------
@@ -94,6 +96,37 @@ if (!function_exists('mr_force_contract_upload_existing_target')) {
     }
 }
 
+if (!function_exists('mr_publish_contract_file_for_download')) {
+    function mr_publish_contract_file_for_download(?int $contractFileId): ?ContractFile
+    {
+        if (!$contractFileId) {
+            return null;
+        }
+
+        $contractFile = ContractFile::find($contractFileId);
+        if (!$contractFile || !$contractFile->file_path) {
+            return $contractFile;
+        }
+
+        $currentPath = (string) $contractFile->file_path;
+        if (Storage::disk('public')->exists($currentPath)) {
+            return $contractFile;
+        }
+
+        if (!Storage::disk('local')->exists($currentPath)) {
+            return $contractFile;
+        }
+
+        $extension = pathinfo($contractFile->file_name ?: $currentPath, PATHINFO_EXTENSION) ?: 'pdf';
+        $publicPath = 'contract-files/' . now()->format('Y/m') . '/' . pathinfo($currentPath, PATHINFO_FILENAME) . '.' . $extension;
+
+        Storage::disk('public')->put($publicPath, Storage::disk('local')->get($currentPath));
+        $contractFile->update(['file_path' => $publicPath]);
+
+        return $contractFile->fresh(['contract.tenant', 'contract.unit.property.owner', 'tenant']);
+    }
+}
+
 Route::post('/contract-files/extract', function (
     Request $request,
     GovernmentContractPdfExtractor $extractor,
@@ -113,6 +146,14 @@ Route::post('/contract-files/extract', function (
     $payload = json_decode($response->getContent() ?: '{}', true);
     if (!is_array($payload)) {
         return $response;
+    }
+
+    $contractFileId = isset($payload['contract_file']['id']) ? (int) $payload['contract_file']['id'] : null;
+    $publishedContractFile = mr_publish_contract_file_for_download($contractFileId);
+    if ($publishedContractFile) {
+        $payload['contract_file'] = $publishedContractFile;
+        $payload['contract_file']['file_url'] = $publishedContractFile->file_path ? url('/storage/' . $publishedContractFile->file_path) : null;
+        $payload['contract_file']['download_url'] = $payload['contract_file']['file_url'];
     }
 
     $payments = $payload['extracted_data']['payments'] ?? [];
