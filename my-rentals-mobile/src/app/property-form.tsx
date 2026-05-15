@@ -30,6 +30,8 @@ type PropertyForm = {
   floors_count: string;
   parking_spots_count: string;
   elevators_count: string;
+  rooms_count: string;
+  bathrooms_count: string;
   notes: string;
 };
 
@@ -67,6 +69,8 @@ function emptyForm(ownerId = "", propertyType = "building"): PropertyForm {
     floors_count: "",
     parking_spots_count: "",
     elevators_count: "",
+    rooms_count: "",
+    bathrooms_count: "",
     notes: "",
   };
 }
@@ -76,15 +80,20 @@ function valueToString(value: unknown) {
   return String(value);
 }
 
-function cleanPayload(form: PropertyForm, isEdit: boolean) {
+function cleanPayload(form: PropertyForm, isEdit: boolean, hideApartmentDirectFields = false) {
   const payload: Record<string, string | number | null> = {};
   Object.entries(form).forEach(([key, value]) => {
+    if (form.property_type === "apartment") {
+      if (["floors_count", "parking_spots_count", "elevators_count"].includes(key)) return;
+      if (hideApartmentDirectFields && ["deed_number", "city", "district", "address", "national_short_address"].includes(key)) return;
+    }
+    if (form.property_type === "building" && ["rooms_count", "bathrooms_count"].includes(key)) return;
     const text = String(value ?? "").trim();
     if (text === "") {
       if (isEdit) payload[key] = "";
       return;
     }
-    if (["owner_id", "floors_count", "parking_spots_count", "elevators_count"].includes(key)) {
+    if (["owner_id", "floors_count", "parking_spots_count", "elevators_count", "rooms_count", "bathrooms_count"].includes(key)) {
       payload[key] = Number(text);
       return;
     }
@@ -94,6 +103,9 @@ function cleanPayload(form: PropertyForm, isEdit: boolean) {
     }
     payload[key] = text;
   });
+  if (form.property_type === "apartment") {
+    payload.default_unit_number = form.name || "الشقة";
+  }
   return payload;
 }
 
@@ -125,6 +137,11 @@ export default function PropertyFormScreen() {
   const [loading, setLoading] = useState(isEdit);
   const [saving, setSaving] = useState(false);
 
+  const isApartment = form.property_type === "apartment";
+  const isBuilding = form.property_type === "building";
+  const hideApartmentDirectFields = isApartment && isAddingUnderBuilding;
+  const showDeedField = !hideApartmentDirectFields;
+  const showLocationSection = !hideApartmentDirectFields;
   const title = useMemo(() => lockedApartmentMode ? "إضافة شقة" : isEdit ? "تعديل العقار" : "إضافة عقار يدويًا", [isEdit, lockedApartmentMode]);
   const propertyTypeChoices = lockedApartmentMode ? propertyTypes.filter((item) => item.value === "apartment") : propertyTypes;
   const lockNotice = isAddingUnderBuilding
@@ -132,10 +149,22 @@ export default function PropertyFormScreen() {
     : "نوع العقار مثبت على شقة ولا يمكن تغييره من هذا المسار.";
 
   function setField<K extends keyof PropertyForm>(key: K, value: PropertyForm[K]) {
-    setForm((previous) => ({
-      ...previous,
-      [key]: key === "national_short_address" ? String(value).replace(/[^A-Za-z0-9]/g, "").slice(0, 8).toUpperCase() : value,
-    }));
+    setForm((previous) => {
+      const next = {
+        ...previous,
+        [key]: key === "national_short_address" ? String(value).replace(/[^A-Za-z0-9]/g, "").slice(0, 8).toUpperCase() : value,
+      };
+      if (key === "property_type" && value === "apartment") {
+        next.floors_count = "";
+        next.parking_spots_count = "";
+        next.elevators_count = "";
+      }
+      if (key === "property_type" && value === "building") {
+        next.rooms_count = "";
+        next.bathrooms_count = "";
+      }
+      return next;
+    });
   }
 
   async function loadProperty() {
@@ -143,6 +172,7 @@ export default function PropertyFormScreen() {
     try {
       setLoading(true);
       const property = await apiGet(`/properties/${encodeURIComponent(id)}`);
+      const defaultUnit = Array.isArray(property?.units) ? property.units.find((unit: any) => unit?.type === "apartment" || unit?.unit_number === "الشقة") || property.units[0] : null;
       setForm({
         owner_id: valueToString(property?.owner_id || property?.owner?.id || initialOwnerId),
         name: valueToString(property?.name),
@@ -157,6 +187,8 @@ export default function PropertyFormScreen() {
         floors_count: valueToString(property?.floors_count),
         parking_spots_count: valueToString(property?.parking_spots_count),
         elevators_count: valueToString(property?.elevators_count),
+        rooms_count: valueToString(defaultUnit?.rooms_count),
+        bathrooms_count: valueToString(defaultUnit?.bathrooms_count),
         notes: valueToString(property?.notes),
       });
     } catch (e) {
@@ -169,24 +201,24 @@ export default function PropertyFormScreen() {
   useEffect(() => { loadProperty(); }, [id]);
   useEffect(() => {
     if (!lockedApartmentMode) return;
-    setForm((previous) => ({ ...previous, property_type: "apartment" }));
+    setForm((previous) => ({ ...previous, property_type: "apartment", floors_count: "", parking_spots_count: "", elevators_count: "" }));
   }, [lockedApartmentMode]);
 
   async function save() {
-    if (!form.name.trim()) return Alert.alert("تنبيه", lockedApartmentMode ? "اسم الشقة مطلوب." : "اسم العقار مطلوب.");
+    if (!form.name.trim()) return Alert.alert("تنبيه", isApartment ? "اسم الشقة مطلوب." : "اسم العقار مطلوب.");
     try {
       setSaving(true);
       const normalizedForm = lockedApartmentMode ? { ...form, property_type: "apartment" } : form;
       if (isEdit) {
-        const fields = cleanPayload(normalizedForm, true);
+        const fields = cleanPayload(normalizedForm, true, hideApartmentDirectFields);
         delete fields.owner_id;
         await apiPost(`/edit-delete-center/properties/${id}/update`, { fields });
         Alert.alert("تم", "تم تحديث بيانات العقار.", [{ text: "عرض العقار", onPress: () => router.replace(`/property/${id}` as never) }, { text: "رجوع", onPress: () => router.back() }]);
       } else {
-        const payload = cleanPayload(normalizedForm, false);
+        const payload = cleanPayload(normalizedForm, false, hideApartmentDirectFields);
         const json = await apiPost("/properties", payload);
         const propertyId = Number(json?.property?.id || 0);
-        Alert.alert("تم", lockedApartmentMode ? "تم إنشاء الشقة." : "تم إنشاء العقار يدويًا.", [{ text: "عرض الشقة", onPress: () => propertyId ? router.replace(`/property/${propertyId}` as never) : router.replace("/properties" as never) }, { text: lockedApartmentMode ? "إضافة شقة أخرى" : "إضافة آخر", onPress: () => setForm(emptyForm(initialOwnerId, initialPropertyType)) }]);
+        Alert.alert("تم", isApartment ? "تم إنشاء الشقة." : "تم إنشاء العقار يدويًا.", [{ text: isApartment ? "عرض الشقة" : "عرض العقار", onPress: () => propertyId ? router.replace(`/property/${propertyId}` as never) : router.replace("/properties" as never) }, { text: isApartment ? "إضافة شقة أخرى" : "إضافة آخر", onPress: () => setForm(emptyForm(initialOwnerId, initialPropertyType)) }]);
       }
     } catch (e) {
       Alert.alert("تعذر الحفظ", e instanceof Error ? e.message : "حدث خطأ غير متوقع");
@@ -195,7 +227,7 @@ export default function PropertyFormScreen() {
     }
   }
 
-  return <SafeAreaView style={styles.safe} edges={["bottom"]}><KeyboardAvoidingView style={styles.safe} behavior={Platform.OS === "ios" ? "padding" : undefined}><ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}><View style={styles.hero}><TouchableOpacity style={styles.backButton} activeOpacity={0.86} onPress={() => router.back()}><Ionicons name="chevron-forward" size={20} color="#fff" /></TouchableOpacity><View style={styles.heroTextBox}><Text style={styles.heroKicker}>{lockedApartmentMode ? "إضافة شقة تابعة" : isEdit ? "تحديث البيانات" : "إدخال مباشر"}</Text><Text style={styles.heroTitle}>{title}</Text><Text style={styles.heroSubtitle}>{lockedApartmentMode ? lockNotice : isEdit ? "نفس شاشة الإضافة تستخدم للتعديل حتى تكون البيانات مرتبة وواضحة." : "أدخل بيانات العقار يدويًا، أو ارجع واختر رفع الصك PDF من شاشة عقاراتي."}</Text></View><View style={styles.heroIconBox}><Ionicons name={lockedApartmentMode ? "home-outline" : isEdit ? "create-outline" : "add-circle-outline"} size={30} color="#0F766E" /></View></View>{loading ? <View style={styles.loadingCard}><ActivityIndicator /><Text style={styles.loadingText}>جاري تحميل بيانات العقار...</Text></View> : <><Section title="البيانات الأساسية" icon="business-outline"><Field label={lockedApartmentMode ? "اسم الشقة" : "اسم العقار"} value={form.name} onChangeText={(value) => setField("name", value)} placeholder={lockedApartmentMode ? "مثال: شقة الدور الأول" : "مثال: عمارة الصفا"} /><Field label="رقم الصك" value={form.deed_number} onChangeText={(value) => setField("deed_number", value)} placeholder="رقم الصك إن وجد" keyboardType="number-pad" /><Text style={styles.fieldLabel}>نوع العقار</Text><ChoiceGroup options={propertyTypeChoices} value={form.property_type} onChange={(value) => setField("property_type", value)} disabled={lockedApartmentMode} />{lockedApartmentMode ? <View style={isAddingUnderBuilding ? styles.lockWarning : styles.lockInfo}><Ionicons name={isAddingUnderBuilding ? "alert-circle-outline" : "lock-closed-outline"} size={16} color={isAddingUnderBuilding ? "#92400E" : "#0F766E"} /><Text style={isAddingUnderBuilding ? styles.lockWarningText : styles.lockInfoText}>{lockNotice}</Text></View> : null}</Section><Section title="الموقع" icon="location-outline"><Field label="المدينة" value={form.city} onChangeText={(value) => setField("city", value)} /><Field label="الحي" value={form.district} onChangeText={(value) => setField("district", value)} /><Field label="العنوان" value={form.address} onChangeText={(value) => setField("address", value)} multiline /><Field label="العنوان الوطني المختصر" value={form.national_short_address} onChangeText={(value) => setField("national_short_address", value)} placeholder="مثال: JEDA1234" /></Section><Section title="المواصفات" icon="options-outline"><Field label="المساحة" value={form.property_area} onChangeText={(value) => setField("property_area", value)} keyboardType="decimal-pad" /><Field label="عدد الأدوار" value={form.floors_count} onChangeText={(value) => setField("floors_count", value)} keyboardType="number-pad" /><Field label="عدد المواقف" value={form.parking_spots_count} onChangeText={(value) => setField("parking_spots_count", value)} keyboardType="number-pad" /><Field label="عدد المصاعد" value={form.elevators_count} onChangeText={(value) => setField("elevators_count", value)} keyboardType="number-pad" /></Section><Section title="الاستخدام والملاحظات" icon="shield-checkmark-outline"><Text style={styles.fieldLabel}>نوع الاستخدام</Text><ChoiceGroup options={usageTypes} value={form.usage_type} onChange={(value) => setField("usage_type", value)} /><Field label="ملاحظات" value={form.notes} onChangeText={(value) => setField("notes", value)} multiline /></Section><TouchableOpacity style={[styles.saveButton, saving ? styles.disabled : null]} activeOpacity={0.88} disabled={saving} onPress={save}>{saving ? <ActivityIndicator color="#fff" /> : <Ionicons name="save-outline" size={20} color="#fff" />}<Text style={styles.saveText}>{saving ? "جاري الحفظ..." : isEdit ? "حفظ التعديل" : lockedApartmentMode ? "حفظ الشقة" : "حفظ العقار"}</Text></TouchableOpacity></>}</ScrollView></KeyboardAvoidingView></SafeAreaView>;
+  return <SafeAreaView style={styles.safe} edges={["bottom"]}><KeyboardAvoidingView style={styles.safe} behavior={Platform.OS === "ios" ? "padding" : undefined}><ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}><View style={styles.hero}><TouchableOpacity style={styles.backButton} activeOpacity={0.86} onPress={() => router.back()}><Ionicons name="chevron-forward" size={20} color="#fff" /></TouchableOpacity><View style={styles.heroTextBox}><Text style={styles.heroKicker}>{lockedApartmentMode ? "إضافة شقة تابعة" : isEdit ? "تحديث البيانات" : "إدخال مباشر"}</Text><Text style={styles.heroTitle}>{title}</Text><Text style={styles.heroSubtitle}>{lockedApartmentMode ? lockNotice : isEdit ? "نفس شاشة الإضافة تستخدم للتعديل حتى تكون البيانات مرتبة وواضحة." : "اختر نوع العقار وستتغير الحقول تلقائيًا حسب النوع."}</Text></View><View style={styles.heroIconBox}><Ionicons name={isApartment ? "home-outline" : isEdit ? "create-outline" : "add-circle-outline"} size={30} color="#0F766E" /></View></View>{loading ? <View style={styles.loadingCard}><ActivityIndicator /><Text style={styles.loadingText}>جاري تحميل بيانات العقار...</Text></View> : <><Section title="البيانات الأساسية" icon="business-outline"><Field label={isApartment ? "اسم الشقة" : "اسم العقار"} value={form.name} onChangeText={(value) => setField("name", value)} placeholder={isApartment ? "مثال: شقة الدور الأول" : "مثال: عمارة الصفا"} />{showDeedField ? <Field label={isApartment ? "رقم الصك إن كانت مباشرة مع المالك" : "رقم الصك إن وجد"} value={form.deed_number} onChangeText={(value) => setField("deed_number", value)} placeholder="رقم الصك إن وجد" keyboardType="number-pad" /> : null}<Text style={styles.fieldLabel}>نوع العقار</Text><ChoiceGroup options={propertyTypeChoices} value={form.property_type} onChange={(value) => setField("property_type", value)} disabled={lockedApartmentMode} />{lockedApartmentMode ? <View style={isAddingUnderBuilding ? styles.lockWarning : styles.lockInfo}><Ionicons name={isAddingUnderBuilding ? "alert-circle-outline" : "lock-closed-outline"} size={16} color={isAddingUnderBuilding ? "#92400E" : "#0F766E"} /><Text style={isAddingUnderBuilding ? styles.lockWarningText : styles.lockInfoText}>{lockNotice}</Text></View> : null}</Section>{showLocationSection ? <Section title={isApartment ? "الموقع إن كانت مباشرة مع المالك" : "الموقع"} icon="location-outline"><Field label="المدينة" value={form.city} onChangeText={(value) => setField("city", value)} /><Field label="الحي" value={form.district} onChangeText={(value) => setField("district", value)} /><Field label="العنوان" value={form.address} onChangeText={(value) => setField("address", value)} multiline /><Field label="العنوان الوطني المختصر" value={form.national_short_address} onChangeText={(value) => setField("national_short_address", value)} placeholder="مثال: JEDA1234" /></Section> : null}<Section title="المواصفات" icon="options-outline"><Field label="المساحة" value={form.property_area} onChangeText={(value) => setField("property_area", value)} keyboardType="decimal-pad" />{isApartment ? <><Field label="عدد الغرف" value={form.rooms_count} onChangeText={(value) => setField("rooms_count", value)} keyboardType="number-pad" /><Field label="عدد الحمامات" value={form.bathrooms_count} onChangeText={(value) => setField("bathrooms_count", value)} keyboardType="number-pad" /></> : null}{isBuilding ? <><Field label="عدد الأدوار" value={form.floors_count} onChangeText={(value) => setField("floors_count", value)} keyboardType="number-pad" /><Field label="عدد المواقف" value={form.parking_spots_count} onChangeText={(value) => setField("parking_spots_count", value)} keyboardType="number-pad" /><Field label="عدد المصاعد" value={form.elevators_count} onChangeText={(value) => setField("elevators_count", value)} keyboardType="number-pad" /></> : null}{!isApartment && !isBuilding ? <><Field label="عدد الأدوار" value={form.floors_count} onChangeText={(value) => setField("floors_count", value)} keyboardType="number-pad" /><Field label="عدد المواقف" value={form.parking_spots_count} onChangeText={(value) => setField("parking_spots_count", value)} keyboardType="number-pad" /></> : null}</Section><Section title="الاستخدام والملاحظات" icon="shield-checkmark-outline"><Text style={styles.fieldLabel}>نوع الاستخدام</Text><ChoiceGroup options={usageTypes} value={form.usage_type} onChange={(value) => setField("usage_type", value)} /><Field label="ملاحظات" value={form.notes} onChangeText={(value) => setField("notes", value)} multiline /></Section><TouchableOpacity style={[styles.saveButton, saving ? styles.disabled : null]} activeOpacity={0.88} disabled={saving} onPress={save}>{saving ? <ActivityIndicator color="#fff" /> : <Ionicons name="save-outline" size={20} color="#fff" />}<Text style={styles.saveText}>{saving ? "جاري الحفظ..." : isEdit ? "حفظ التعديل" : isApartment ? "حفظ الشقة" : "حفظ العقار"}</Text></TouchableOpacity></>}</ScrollView></KeyboardAvoidingView></SafeAreaView>;
 }
 
 const styles = StyleSheet.create({
