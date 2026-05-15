@@ -7,6 +7,11 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
 
+$visualDeedRulePath = __DIR__ . '/105_visual_deed_rule.php';
+if (is_file($visualDeedRulePath)) {
+    require_once $visualDeedRulePath;
+}
+
 if (!function_exists('deed398_data')) {
     function deed398_data(array $base): array
     {
@@ -72,11 +77,13 @@ if (!function_exists('deed398_handle')) {
         ]);
 
         $uploaded = $request->file('file');
-        $base = function_exists('deed_up_payload') ? deed_up_payload($uploaded->getRealPath()) : [];
+        $base = function_exists('deed_visual_payload')
+            ? deed_visual_payload($uploaded->getRealPath())
+            : (function_exists('deed_up_payload') ? deed_up_payload($uploaded->getRealPath()) : []);
         $doc = $base['document_number'] ?? $base['deed_number'] ?? null;
 
         if ($doc !== '398490000202') {
-            return deed_up_handle($request);
+            return function_exists('deed_visual_handle') ? deed_visual_handle($request) : deed_up_handle($request);
         }
 
         $payload = deed398_data($base);
