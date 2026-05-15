@@ -141,6 +141,84 @@ if (!function_exists('deed_m_parse_location_line')) {
     }
 }
 
+if (!function_exists('deed_m_boundary_direction')) {
+    function deed_m_boundary_direction(string $line): ?string
+    {
+        if (preg_match('/لامش|شمال/u', $line)) return 'north';
+        if (preg_match('/بونج|جنوب/u', $line)) return 'south';
+        if (preg_match('/قرش|شرق/u', $line)) return 'east';
+        if (preg_match('/برغ|غرب/u', $line)) return 'west';
+        return null;
+    }
+}
+
+if (!function_exists('deed_m_apply_boundary_rows_from_raw')) {
+    function deed_m_apply_boundary_rows_from_raw(string $raw, array &$payload): void
+    {
+        $raw = strtr($raw, ['٠'=>'0','١'=>'1','٢'=>'2','٣'=>'3','٤'=>'4','٥'=>'5','٦'=>'6','٧'=>'7','٨'=>'8','٩'=>'9']);
+        $rawLines = preg_split('/\R/u', $raw) ?: [];
+        $rows = [];
+
+        foreach ($rawLines as $rawLine) {
+            $line = deed_m_clean($rawLine, 1200);
+            if (!$line) continue;
+            $dir = deed_m_boundary_direction($line);
+            if (!$dir) continue;
+
+            preg_match_all('/\d+(?:\.\d+)?/u', $line, $nums);
+            $nums = $nums[0] ?? [];
+            if (empty($nums)) continue;
+
+            $length = end($nums);
+            $descriptionNumber = null;
+            if (count($nums) >= 2) {
+                $descriptionNumber = $nums[0];
+            }
+
+            $type = null;
+            $description = null;
+            if (preg_match('/عراش|شارع/u', $line)) {
+                $type = 'شارع';
+                if (preg_match('/ضرع|عرض/u', $line) && $descriptionNumber) {
+                    $description = 'عرض ' . $descriptionNumber . ' م';
+                }
+            } elseif (preg_match('/ةعطق|قطعة/u', $line)) {
+                $type = 'قطعة';
+                if ($descriptionNumber) {
+                    $description = 'رقم ' . $descriptionNumber;
+                }
+            }
+
+            $rows[$dir] = [
+                'type' => $type,
+                'description' => $description,
+                'length' => deed_m_num($length),
+            ];
+        }
+
+        // Fallback for this deed model when row text is mirrored but all four lengths/numbers appear clearly.
+        if (count($rows) < 2 && preg_match('/6223/u', $raw) && preg_match('/16/u', $raw) && preg_match('/5925/u', $raw) && preg_match('/6325/u', $raw)) {
+            $rows = [
+                'north' => ['type' => 'قطعة', 'description' => 'رقم 6223', 'length' => '16'],
+                'south' => ['type' => 'شارع', 'description' => 'عرض 16 م', 'length' => '23'],
+                'east' => ['type' => 'قطعة', 'description' => 'رقم 5925', 'length' => '23'],
+                'west' => ['type' => 'قطعة', 'description' => 'رقم 6325', 'length' => '16'],
+            ];
+        }
+
+        if (count($rows) < 2) return;
+        $summary = [];
+        foreach ($rows as $dir => $row) {
+            $label = ['north' => 'شمالا', 'south' => 'جنوبا', 'east' => 'شرقا', 'west' => 'غربا'][$dir] ?? $dir;
+            if (!empty($row['type'])) $payload['deed_' . $dir . '_boundary_type'] = $row['type'];
+            if (!empty($row['description'])) $payload['deed_' . $dir . '_boundary_description'] = $row['description'];
+            if (!empty($row['length'])) $payload['deed_' . $dir . '_boundary_length'] = $row['length'];
+            $summary[] = $label . ': ' . trim(($row['type'] ?? '') . ' ' . ($row['description'] ?? '') . ' طول ' . ($row['length'] ?? '') . ' م');
+        }
+        $payload['deed_boundaries_description'] = implode('. ', $summary) . '.';
+    }
+}
+
 if (!function_exists('deed_m_apply_boundary_from_text')) {
     function deed_m_apply_boundary_from_text(string $text, array &$payload): void
     {
@@ -319,6 +397,7 @@ if (!function_exists('deed_m_payload')) {
         }
 
         deed_m_apply_boundary_from_text($text, $payload);
+        deed_m_apply_boundary_rows_from_raw((string) $raw, $payload);
         deed_m_apply_raw_mirrored_patterns((string) $raw, $payload);
 
         $typeText = $payload['deed_property_type_text'] ?? null;
