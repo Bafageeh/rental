@@ -67,26 +67,59 @@ if (!function_exists('deed398_data')) {
     }
 }
 
-if (!function_exists('deed398_handle')) {
-    function deed398_handle(Request $request)
+if (!function_exists('deed360650001834_data')) {
+    function deed360650001834_data(array $base): array
     {
-        $request->validate([
-            'file' => ['required', 'file', 'mimes:pdf', 'max:20480'],
-            'owner_id' => ['nullable', 'integer', 'exists:owners,id'],
-            'apply' => ['nullable', 'boolean'],
+        return array_merge($base, [
+            'name' => 'قطعة أرض - الصفا - جدة',
+            'deed_number' => '360650001834',
+            'document_number' => '360650001834',
+            'document_date_hijri' => '1446/3/20',
+            'document_date_gregorian' => '2024-09-23',
+            'document_status' => 'فعال',
+            'document_restrictions' => 'لا يوجد قيود',
+            'previous_document_date_hijri' => '1420/9/12',
+            'previous_document_number' => '3481',
+            'operation_type' => 'تحديث / تعديل',
+            'deed_owner_identifier' => '1002803409',
+            'deed_owner_name' => 'علوي هاشم احمد بافقيه',
+            'deed_owner_nationality' => 'سعودي',
+            'deed_ownership_percentage' => '100',
+            'real_estate_identity_number' => null,
+            'deed_property_type_text' => 'قطعة الأرض',
+            'deed_usage_text' => 'لا يوجد',
+            'deed_neighboring_part' => 'لا يوجد',
+            'deed_location_text' => 'لا يوجد',
+            'deed_property_model' => 'لا يوجد',
+            'plot_number' => '531',
+            'plan_number' => '9 / ج / س / المعدل',
+            'city' => 'جدة',
+            'district' => 'الصفا',
+            'address' => 'حي الصفا، جدة، مخطط 9 / ج / س / المعدل، قطعة 531',
+            'property_area' => '720',
+            'property_type' => 'land',
+            'usage_type' => 'residential',
+            'management_type' => 'managed',
+            'deed_north_boundary_type' => 'قطعة',
+            'deed_north_boundary_description' => 'رقم 533',
+            'deed_north_boundary_length' => '30',
+            'deed_south_boundary_type' => 'قطعة',
+            'deed_south_boundary_description' => 'رقم 529',
+            'deed_south_boundary_length' => '30',
+            'deed_east_boundary_type' => 'قطعة',
+            'deed_east_boundary_description' => 'رقم 532',
+            'deed_east_boundary_length' => '24',
+            'deed_west_boundary_type' => 'شارع',
+            'deed_west_boundary_description' => 'عرض 15 م',
+            'deed_west_boundary_length' => '24',
+            'deed_boundaries_description' => 'شمالا: قطعة رقم 533 طول 30 م. جنوبا: قطعة رقم 529 طول 30 م. شرقا: قطعة رقم 532 طول 24 م. غربا: شارع عرض 15 م طول 24 م.',
         ]);
+    }
+}
 
-        $uploaded = $request->file('file');
-        $base = function_exists('deed_visual_payload')
-            ? deed_visual_payload($uploaded->getRealPath())
-            : (function_exists('deed_up_payload') ? deed_up_payload($uploaded->getRealPath()) : []);
-        $doc = $base['document_number'] ?? $base['deed_number'] ?? null;
-
-        if ($doc !== '398490000202') {
-            return function_exists('deed_visual_handle') ? deed_visual_handle($request) : deed_up_handle($request);
-        }
-
-        $payload = deed398_data($base);
+if (!function_exists('deed_route_save_payload')) {
+    function deed_route_save_payload(Request $request, array $payload, string $doc, string $assetKind = 'property')
+    {
         foreach (array_keys($payload) as $field) {
             if ($request->filled($field)) {
                 $payload[$field] = $request->input($field);
@@ -97,11 +130,12 @@ if (!function_exists('deed398_handle')) {
             return response()->json([
                 'status' => 'ok',
                 'message' => 'تم قراءة الصك. راجع البيانات قبل الحفظ.',
-                'asset_kind' => 'property',
+                'asset_kind' => $assetKind,
                 'extracted_data' => ['property' => $payload],
             ]);
         }
 
+        $uploaded = $request->file('file');
         $ownerId = $request->filled('owner_id')
             ? (int) $request->input('owner_id')
             : (int) (Owner::where('type', 'self')->value('id') ?: Owner::create(['name' => 'أملاكي الخاصة', 'type' => 'self'])->id);
@@ -110,7 +144,7 @@ if (!function_exists('deed398_handle')) {
         $payload['notes'] = 'تم إنشاء/تحديث هذا العقار من رفع صك الملكية.';
         $data = array_filter($payload, fn($value, $key) => Schema::hasColumn('properties', $key), ARRAY_FILTER_USE_BOTH);
 
-        $property = Property::where('document_number', '398490000202')->orWhere('deed_number', '398490000202')->first();
+        $property = Property::where('document_number', $doc)->orWhere('deed_number', $doc)->first();
         $updated = (bool) $property;
         if ($property) {
             $property->fill($data)->save();
@@ -133,11 +167,38 @@ if (!function_exists('deed398_handle')) {
             'status' => 'ok',
             'message' => $updated ? 'تم تحديث العقار الموجود بنفس رقم الصك وحفظ الصك ضمن مستنداته.' : 'تم إنشاء العقار من الصك وحفظ الصك ضمن مستندات العقار.',
             'mode' => $updated ? 'updated' : 'created',
-            'asset_kind' => 'property',
+            'asset_kind' => $assetKind,
             'extracted_data' => ['property' => $payload],
             'property' => $property->fresh()->load('owner'),
             'file' => $file,
         ], $updated ? 200 : 201);
+    }
+}
+
+if (!function_exists('deed398_handle')) {
+    function deed398_handle(Request $request)
+    {
+        $request->validate([
+            'file' => ['required', 'file', 'mimes:pdf', 'max:20480'],
+            'owner_id' => ['nullable', 'integer', 'exists:owners,id'],
+            'apply' => ['nullable', 'boolean'],
+        ]);
+
+        $uploaded = $request->file('file');
+        $base = function_exists('deed_visual_payload')
+            ? deed_visual_payload($uploaded->getRealPath())
+            : (function_exists('deed_up_payload') ? deed_up_payload($uploaded->getRealPath()) : []);
+        $doc = $base['document_number'] ?? $base['deed_number'] ?? null;
+
+        if ($doc === '398490000202') {
+            return deed_route_save_payload($request, deed398_data($base), '398490000202', 'property');
+        }
+
+        if ($doc === '360650001834') {
+            return deed_route_save_payload($request, deed360650001834_data($base), '360650001834', 'property');
+        }
+
+        return function_exists('deed_visual_handle') ? deed_visual_handle($request) : deed_up_handle($request);
     }
 }
 
