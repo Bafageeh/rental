@@ -57,6 +57,31 @@ if (!function_exists('deed_route_verified_360650001834')) {
     }
 }
 
+if (!function_exists('deed_route_preview_response')) {
+    function deed_route_preview_response(array $payload)
+    {
+        $quality = (int) ($payload['deed_parse_quality'] ?? 0);
+        $engine = (string) ($payload['deed_parser_engine'] ?? 'unknown');
+        $raw = trim((string) ($payload['deed_raw_excerpt'] ?? ''));
+
+        $message = 'تم قراءة الصك. راجع البيانات قبل الحفظ.';
+        if ($quality < 14) {
+            $rawPreview = mb_substr($raw, 0, 1800);
+            $message = "تمت قراءة الصك جزئيًا فقط.\n"
+                . "محرك القراءة: {$engine}\n"
+                . "جودة القراءة: {$quality}\n"
+                . "انسخ النص التالي وأرسله لي كما هو:\n{$rawPreview}";
+        }
+
+        return response()->json([
+            'status' => 'ok',
+            'message' => $message,
+            'asset_kind' => ($payload['property_type'] ?? '') === 'apartment' ? 'apartment' : 'property',
+            'extracted_data' => ['property' => $payload],
+        ]);
+    }
+}
+
 if (!function_exists('deed_route_handle_verified_then_generic')) {
     function deed_route_handle_verified_then_generic(Request $request)
     {
@@ -71,14 +96,19 @@ if (!function_exists('deed_route_handle_verified_then_generic')) {
         $doc = $payload['document_number'] ?? $payload['deed_number'] ?? null;
 
         if ($doc === '360650001834') {
-            return deed_window_save_payload($request, deed_route_verified_360650001834($payload), '360650001834', 'property');
+            $payload = deed_route_verified_360650001834($payload);
+            return $request->boolean('apply')
+                ? deed_window_save_payload($request, $payload, '360650001834', 'property')
+                : deed_route_preview_response($payload);
         }
 
         if (!$doc) {
             return response()->json(['status' => 'error', 'message' => 'تعذر قراءة رقم الصك من الملف.'], 422);
         }
 
-        return deed_window_save_payload($request, $payload, (string) $doc, ($payload['property_type'] ?? '') === 'apartment' ? 'apartment' : 'property');
+        return $request->boolean('apply')
+            ? deed_window_save_payload($request, $payload, (string) $doc, ($payload['property_type'] ?? '') === 'apartment' ? 'apartment' : 'property')
+            : deed_route_preview_response($payload);
     }
 }
 
