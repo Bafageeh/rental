@@ -141,6 +141,47 @@ if (!function_exists('deed_m_parse_location_line')) {
     }
 }
 
+if (!function_exists('deed_m_apply_boundary_from_text')) {
+    function deed_m_apply_boundary_from_text(string $text, array &$payload): void
+    {
+        $lines = deed_m_lines($text);
+        $boundaryRows = [];
+        foreach ($lines as $line) {
+            if (!preg_match('/(شمال|جنوب|شرق|غرب|شماله|جنوبه|شرقه|غربه|شمالا|جنوبا|شرقا|غربا)/u', $line)) {
+                continue;
+            }
+            $direction = null;
+            if (preg_match('/شمال/u', $line)) $direction = 'north';
+            elseif (preg_match('/جنوب/u', $line)) $direction = 'south';
+            elseif (preg_match('/شرق/u', $line)) $direction = 'east';
+            elseif (preg_match('/غرب/u', $line)) $direction = 'west';
+            if (!$direction) continue;
+
+            preg_match_all('/\d+(?:\.\d+)?/u', $line, $numbers);
+            $length = !empty($numbers[0]) ? end($numbers[0]) : null;
+            $type = preg_match('/شارع/u', $line) ? 'شارع' : (preg_match('/قطعة/u', $line) ? 'قطعة' : null);
+            $description = null;
+            if (preg_match('/رقم\s*([0-9]+(?:\s*\/\s*[^\s]+)?)/u', $line, $m)) {
+                $description = 'رقم ' . deed_m_clean($m[1], 80);
+            } elseif (preg_match('/عرض\s*([0-9]+)\s*م?/u', $line, $m)) {
+                $description = 'عرض ' . deed_m_clean($m[1], 20) . ' م';
+            }
+            $boundaryRows[$direction] = ['type' => $type, 'description' => $description, 'length' => deed_m_num($length)];
+        }
+
+        if (count($boundaryRows) < 2) return;
+        $summary = [];
+        foreach ($boundaryRows as $dir => $row) {
+            $label = ['north' => 'شمالا', 'south' => 'جنوبا', 'east' => 'شرقا', 'west' => 'غربا'][$dir] ?? $dir;
+            if (!empty($row['type'])) $payload['deed_' . $dir . '_boundary_type'] = $row['type'];
+            if (!empty($row['description'])) $payload['deed_' . $dir . '_boundary_description'] = $row['description'];
+            if (!empty($row['length'])) $payload['deed_' . $dir . '_boundary_length'] = $row['length'];
+            $summary[] = $label . ': ' . trim(($row['type'] ?? '') . ' ' . ($row['description'] ?? '') . ' طول ' . ($row['length'] ?? '') . ' م');
+        }
+        $payload['deed_boundaries_description'] = implode('. ', $summary) . '.';
+    }
+}
+
 if (!function_exists('deed_m_apply_raw_mirrored_patterns')) {
     function deed_m_apply_raw_mirrored_patterns(string $raw, array &$payload): void
     {
@@ -277,6 +318,7 @@ if (!function_exists('deed_m_payload')) {
             if ($value !== null) $payload[$key] = $value;
         }
 
+        deed_m_apply_boundary_from_text($text, $payload);
         deed_m_apply_raw_mirrored_patterns((string) $raw, $payload);
 
         $typeText = $payload['deed_property_type_text'] ?? null;
