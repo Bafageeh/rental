@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\Route;
 require_once __DIR__ . '/105_visual_deed_rule.php';
 require_once __DIR__ . '/107_visual_deed_model_parser.php';
 require_once __DIR__ . '/108_deed_field_window_parser.php';
+require_once __DIR__ . '/109_deed_mirrored_text_parser.php';
 
 if (!function_exists('deed_route_verified_360650001834')) {
     function deed_route_verified_360650001834(array $base): array
@@ -82,6 +83,27 @@ if (!function_exists('deed_route_preview_response')) {
     }
 }
 
+if (!function_exists('deed_route_best_payload')) {
+    function deed_route_best_payload(string $filePath): array
+    {
+        $normal = deed_window_payload($filePath);
+        $mirrored = function_exists('deed_m_payload') ? deed_m_payload($filePath) : [];
+        $normalQuality = (int) ($normal['deed_parse_quality'] ?? count(array_filter($normal)));
+        $mirroredQuality = (int) ($mirrored['deed_parse_quality'] ?? count(array_filter($mirrored)));
+
+        if ($mirroredQuality > $normalQuality) {
+            $normalDoc = $normal['document_number'] ?? $normal['deed_number'] ?? null;
+            $mirroredDoc = $mirrored['document_number'] ?? $mirrored['deed_number'] ?? null;
+            if (!$mirroredDoc && $normalDoc) {
+                $mirrored['document_number'] = $mirrored['deed_number'] = $normalDoc;
+            }
+            return $mirrored;
+        }
+
+        return $normal;
+    }
+}
+
 if (!function_exists('deed_route_handle_verified_then_generic')) {
     function deed_route_handle_verified_then_generic(Request $request)
     {
@@ -92,7 +114,7 @@ if (!function_exists('deed_route_handle_verified_then_generic')) {
         ]);
 
         $uploaded = $request->file('file');
-        $payload = deed_window_payload($uploaded->getRealPath());
+        $payload = deed_route_best_payload($uploaded->getRealPath());
         $doc = $payload['document_number'] ?? $payload['deed_number'] ?? null;
 
         if ($doc === '360650001834') {
