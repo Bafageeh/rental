@@ -31,7 +31,6 @@ const screenCodes: Record<string, string> = {
   "/parking": "S-021",
   "/settings": "S-022",
   "/reports": "S-023",
-  "/documents": "S-024",
   "/files": "S-025",
   "/alerts": "S-026",
   "/reminders": "S-027",
