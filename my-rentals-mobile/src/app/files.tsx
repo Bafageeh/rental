@@ -1,5 +1,5 @@
 import * as DocumentPicker from "expo-document-picker";
-import { router, useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
@@ -46,6 +46,25 @@ type UnitMedia = {
   notes?: string | null;
   unit?: Unit | null;
 };
+type ContractFile = {
+  id: number;
+  contract_id?: number | null;
+  file_name?: string | null;
+  file_type?: string | null;
+  mime_type?: string | null;
+  file_url?: string | null;
+  download_url?: string | null;
+  extraction_status?: string | null;
+  notes?: string | null;
+  contract?: {
+    id?: number | null;
+    contract_number?: string | null;
+    ejar_record_number?: string | null;
+    tenant?: { name?: string | null } | null;
+    unit?: Unit | null;
+  } | null;
+  tenant?: { name?: string | null } | null;
+};
 type FilesMode = "all" | "property-file" | "media";
 
 const propertyCategoryLabels: Record<string, string> = {
@@ -82,6 +101,7 @@ export default function FilesScreen() {
   const propertyName = decodeParam(firstParam(params.property_name as string | string[] | undefined));
   const unitId = firstParam(params.unit_id as string | string[] | undefined);
   const unitName = decodeParam(firstParam(params.unit_name as string | string[] | undefined));
+  const contractId = firstParam(params.contract_id as string | string[] | undefined);
   const modeParam = firstParam(params.mode as string | string[] | undefined) as FilesMode;
   const mode: FilesMode = modeParam === "property-file" || modeParam === "media" ? modeParam : "all";
 
@@ -89,6 +109,7 @@ export default function FilesScreen() {
   const [units, setUnits] = useState<Unit[]>([]);
   const [propertyFiles, setPropertyFiles] = useState<PropertyFile[]>([]);
   const [unitMedia, setUnitMedia] = useState<UnitMedia[]>([]);
+  const [contractFiles, setContractFiles] = useState<ContractFile[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -105,9 +126,10 @@ export default function FilesScreen() {
     if (ownerId) searchParams.set("owner_id", ownerId);
     if (propertyId) searchParams.set("property_id", propertyId);
     if (unitId) searchParams.set("unit_id", unitId);
+    if (contractId) searchParams.set("contract_id", contractId);
     const text = searchParams.toString();
     return text ? `?${text}` : "";
-  }, [ownerId, propertyId, unitId]);
+  }, [ownerId, propertyId, unitId, contractId]);
 
   const showPropertyFiles = mode === "all" || mode === "property-file";
   const showMedia = mode === "all" || mode === "media";
@@ -117,17 +139,18 @@ export default function FilesScreen() {
       ? `خاصة بالعقار: ${propertyName || `#${propertyId}`}`
       : ownerId
         ? `خاصة بالمالك: ${ownerName || `#${ownerId}`}`
-        : "ملفات العقارات ووسائط الوحدات";
+        : "ملفات العقارات ووسائط الوحدات والعقود";
 
   async function load() {
     try {
       setLoading(true);
       setError("");
-      const [propertiesResult, unitsResult, propertyFilesResult, unitMediaResult] = await Promise.all([
+      const [propertiesResult, unitsResult, propertyFilesResult, unitMediaResult, contractFilesResult] = await Promise.all([
         apiGet(`/properties${querySuffix}`),
         apiGet(`/units${querySuffix}`),
         apiGet(`/property-files${querySuffix}`),
         apiGet(`/unit-media${querySuffix}`),
+        apiGet(`/contract-files${querySuffix}`),
       ]);
       const propertyList = responseList(propertiesResult) as Property[];
       const unitList = responseList(unitsResult) as Unit[];
@@ -135,6 +158,7 @@ export default function FilesScreen() {
       setUnits(unitList);
       setPropertyFiles(responseList(propertyFilesResult) as PropertyFile[]);
       setUnitMedia(responseList(unitMediaResult) as UnitMedia[]);
+      setContractFiles(responseList(contractFilesResult) as ContractFile[]);
       if (propertyId) setSelectedPropertyId(Number(propertyId));
       else if (!selectedPropertyId && propertyList.length > 0) setSelectedPropertyId(propertyList[0].id);
       if (unitId) setSelectedUnitId(Number(unitId));
@@ -248,6 +272,31 @@ export default function FilesScreen() {
 
         {loading ? <View style={styles.box}><ActivityIndicator /><Text style={styles.boxText}>جاري تحميل الملفات...</Text></View> : null}
         {error ? <View style={styles.errorBox}><Text style={styles.errorTitle}>تعذر تحميل البيانات</Text><Text style={styles.errorText}>{error}</Text></View> : null}
+
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>ملفات عقود الإيجار</Text>
+          <Text style={styles.cardHint}>أي عقد إيجار PDF يتم اعتماده بعد الرفع يظهر هنا كرابط فتح أو تنزيل.</Text>
+          {contractFiles.length === 0 ? <Text style={styles.emptyText}>لا توجد ملفات عقود لهذا النطاق</Text> : null}
+          {contractFiles.map((file) => {
+            const url = file.download_url || file.file_url;
+            return (
+              <View key={file.id} style={styles.item}>
+                <View style={styles.itemHeader}>
+                  <Text style={styles.archiveBadge}>عقد إيجار</Text>
+                  <Text style={styles.itemTitle}>{file.file_name || "عقد إيجار PDF"}</Text>
+                </View>
+                <Text style={styles.detail}>العقد: {file.contract?.contract_number || file.contract?.ejar_record_number || (file.contract_id ? `#${file.contract_id}` : "-")}</Text>
+                <Text style={styles.detail}>المستأجر: {file.contract?.tenant?.name || file.tenant?.name || "-"}</Text>
+                <Text style={styles.detail}>الوحدة: {file.contract?.unit?.unit_number || unitName || "-"}</Text>
+                <Text style={styles.detail}>العقار: {file.contract?.unit?.property?.name || propertyName || "-"}</Text>
+                <Text style={styles.detail}>الصيغة: {file.mime_type || file.file_type || "PDF"}</Text>
+                <TouchableOpacity style={[styles.downloadButton, !canOpen(url) ? styles.downloadButtonDisabled : null]} disabled={!canOpen(url)} onPress={() => openFile(url)}>
+                  <Text style={styles.downloadButtonText}>{canOpen(url) ? "فتح / تنزيل العقد" : "لا يوجد رابط تنزيل"}</Text>
+                </TouchableOpacity>
+              </View>
+            );
+          })}
+        </View>
 
         {showPropertyFiles ? (
           <View style={styles.card}>
