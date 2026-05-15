@@ -30,14 +30,6 @@ Route::post('/wa/webhook', [WebhookController::class, 'receiveWhatsApp']);
 Route::get('/webhooks/whatsapp', [WebhookController::class, 'verifyWhatsApp']);
 Route::post('/webhooks/whatsapp', [WebhookController::class, 'receiveWhatsApp']);
 
-/*
-|--------------------------------------------------------------------------
-| Phase 1 security routes: relation manager
-|--------------------------------------------------------------------------
-| Important for PHPUnit:
-| Use require, not require_once, and do not guard this block with constants.
-| Laravel refreshes the app between tests inside the same PHP process.
-*/
 Route::middleware(['auth.api', 'api.scope'])->group(function () {
     foreach ([
         __DIR__ . '/relation_manager_routes.php',
@@ -49,7 +41,6 @@ Route::middleware(['auth.api', 'api.scope'])->group(function () {
     }
 });
 
-// PHASE2_ROUTE_MODULES: api.php was split into routes/api/*.php for maintainability.
 Route::middleware(['auth.api', 'api.scope'])->group(function () {
     Route::get('/webhook-events', [SafeWebhookEventController::class, 'index']);
     Route::get('/scheduled-messages', [ScheduledMessageController::class, 'index']);
@@ -58,7 +49,6 @@ Route::middleware(['auth.api', 'api.scope'])->group(function () {
     Route::patch('/scheduled-messages/{key}', [ScheduledMessageController::class, 'update']);
 
     foreach ([
-        // يجب تحميل هذا المسار قبل 00_core.php لأن Laravel يستخدم أول مسار مطابق لرفع العقد.
         __DIR__ . '/api/000_contract_file_extract_official_schedule.php',
         __DIR__ . '/api/00_core.php',
         __DIR__ . '/api/01_owners.php',
@@ -70,7 +60,6 @@ Route::middleware(['auth.api', 'api.scope'])->group(function () {
         __DIR__ . '/api/06_reports.php',
         __DIR__ . '/api/07_files.php',
         __DIR__ . '/api/08_accounts.php',
-        // يجب تحميل قواعد فترات العقود قبل المسار العام حتى لا يمنع العقود التاريخية.
         __DIR__ . '/api/08b_contract_period_rules.php',
         __DIR__ . '/api/09_contracts.php',
         __DIR__ . '/api/10_alerts.php',
@@ -83,20 +72,16 @@ Route::middleware(['auth.api', 'api.scope'])->group(function () {
         __DIR__ . '/api/17_renewals.php',
         __DIR__ . '/api/18_utility.php',
         __DIR__ . '/api/100_contract_cascade_delete.php',
-        // يجب تحميل تأكيد حذف العقار/الوحدة قبل المسارات العامة لأن Laravel يستخدم أول مسار مطابق.
         __DIR__ . '/api/101b_confirmed_property_unit_cascade_delete.php',
         __DIR__ . '/api/102_property_cascade_delete.php',
         __DIR__ . '/api/103_property_deed_extract.php',
-        // صكوك خاصة يجب تسجيل مسارها قبل المسار العام حتى لا يلتقط المسار العام الطلب أولًا.
         __DIR__ . '/api/106_deed_398490000202_fields.php',
         __DIR__ . '/api/104_property_deed_upsert_and_qr.php',
-        // يجب تحميل مسارات تعديل الدفعات قبل مركز التعديل العام لأن Laravel يستخدم أول مسار مطابق.
+        // يحمّل أخيرًا ليحسم جدول الحدود للصكوك التي خرج نصها مقلوبًا.
+        __DIR__ . '/api/110_verified_deed_boundaries.php',
         __DIR__ . '/api/019_payment_status_auto_edit_override.php',
-        // يجب تحميل إلغاء السداد قبل مركز الحذف العام حتى لا يحذف القسط فعليًا.
         __DIR__ . '/api/019b_payment_cancel_instead_of_delete.php',
-        // يجب تحميل فلترة اختيارات التعديل حسب سياق المالك قبل مركز التعديل العام لأن Laravel يستخدم أول مسار مطابق.
         __DIR__ . '/api/019c_owner_scoped_edit_lookups.php',
-        // يجب تحميل إخفاء حقول الوحدة المقسمة قبل مركز التعديل العام.
         __DIR__ . '/api/019d_units_edit_without_subdivision.php',
         __DIR__ . '/api/20_edit_delete_center_stable.php',
         __DIR__ . '/api/19_receipts.php',
