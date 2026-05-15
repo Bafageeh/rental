@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
-import { useLocalSearchParams } from 'expo-router';
-import { useMemo, useState, type ReactNode } from 'react';
+import { router, useLocalSearchParams } from 'expo-router';
+import { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -76,108 +76,15 @@ function mostlyNumericOrDate(value: string) {
   return numericLike.length === 0;
 }
 
-function arabicWords(value: string) {
-  return stripBidi(value).split(/[^\u0600-\u06FF]+/).filter(Boolean);
-}
-
-function rtlScore(value: string) {
-  const raw = stripBidi(value);
-  const words = arabicWords(raw);
-  let score = 0;
-
-  const forwardMarkers = [
-    'ال',
-    'بن',
-    'عبد',
-    'الله',
-    'محمد',
-    'احمد',
-    'أحمد',
-    'مهند',
-    'وجيه',
-    'القميز',
-    'جدة',
-    'مكة',
-    'الرياض',
-    'شقة',
-    'عقد',
-    'إيجار',
-    'ايجار',
-    'شهري',
-    'سنوي',
-    'ربع',
-  ];
-
-  const reversedMarkers = [
-    'دنه',
-    'دنهم',
-    'هيجو',
-    'زيمق',
-    'زيمقلا',
-    'زيمقلا',
-    'ةدج',
-    'ةكم',
-    'ضايرلا',
-    'دقع',
-    'دوقع',
-    'ةقش',
-    'يراجيإ',
-    'راجيا',
-    'يعبر',
-    'يرهش',
-    'يونس',
-    'دمحم',
-    'دمحأ',
-    'دبع',
-    'هللا',
-  ];
-
-  forwardMarkers.forEach((marker) => {
-    if (raw.includes(marker)) score += 3;
-  });
-
-  reversedMarkers.forEach((marker) => {
-    if (raw.includes(marker)) score -= 4;
-  });
-
-  words.forEach((word) => {
-    if (word.startsWith('ال')) score += 2;
-    if (word.endsWith('لا') || word.endsWith('لأ') || word.endsWith('لإ') || word.endsWith('لآ')) score -= 3;
-    if (/^[ةه][\u0600-\u06FF]{2,}/.test(word)) score -= 1;
-    if (/[\u0600-\u06FF]{2,}[ةه]$/.test(word)) score += 1;
-  });
-
-  return score;
-}
-
-function shouldReverseArabic(value: string) {
-  const raw = stripBidi(value);
-  if (!hasArabic(raw) || mostlyNumericOrDate(raw)) return false;
-
-  const words = arabicWords(raw);
-  const arabicLetters = raw.match(/[\u0600-\u06FF]/g)?.length || 0;
-  const latinLetters = raw.match(/[A-Za-z]/g)?.length || 0;
-  const digitCount = raw.match(/[0-9٠-٩]/g)?.length || 0;
-
-  if (arabicLetters < 3 || latinLetters > 0 || digitCount > 0) return false;
-
-  const currentScore = rtlScore(raw);
-  const reversedScore = rtlScore(reverseText(raw));
-
-  if (currentScore < 0 && reversedScore > currentScore) return true;
-  if (reversedScore - currentScore >= 4) return true;
-
-  const reversedAlWords = words.filter((word) => word.endsWith('لا') || word.endsWith('لأ') || word.endsWith('لإ') || word.endsWith('لآ')).length;
-  if (words.length >= 2 && reversedAlWords >= 1 && reversedScore >= currentScore) return true;
-
-  return false;
-}
-
 function normalizeExtractedArabic(value: any) {
   const raw = stripBidi(displayRaw(value, ''));
   if (!raw) return '';
   if (!hasArabic(raw) || mostlyNumericOrDate(raw)) return raw;
-  return shouldReverseArabic(raw) ? stripBidi(reverseText(raw)) : raw;
+
+  const reversed = stripBidi(reverseText(raw));
+  const rawLooksReversed = /(?:ةدج|دقع|ةقش|دمحم|يراجيإ|راجيا|يرهش|يعبر)/.test(raw);
+  const reversedLooksBetter = /(?:جدة|عقد|شقة|محمد|إيجار|ايجار|شهري|ربع)/.test(reversed);
+  return rawLooksReversed || reversedLooksBetter ? reversed : raw;
 }
 
 function displayRaw(value: any, fallback = '-') {
@@ -197,40 +104,15 @@ function money(value: any) {
   return formatMoney(numeric);
 }
 
-function cleanCycleText(value: any) {
-  return displayRaw(value)
-    .replace(/[\u200E\u200F\u202A-\u202E\u2066-\u2069]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
 function cycleLabel(value: any) {
-  const raw = cleanCycleText(value);
+  const raw = displayRaw(value).toLowerCase();
   const reversed = reverseText(raw);
-  const both = `${raw} ${reversed}`.toLowerCase();
-
-  if (value === 'quarterly') return 'ربع سنوي';
-  if (value === 'monthly') return 'شهري';
-  if (value === 'semi_annual') return 'نصف سنوي';
-  if (value === 'annual') return 'سنوي';
-
-  if (both.includes('quarter') || both.includes('ربعي') || both.includes('ربع سنوي') || both.includes('يعبر')) {
-    return 'ربع سنوي';
-  }
-
-  if (both.includes('monthly') || both.includes('شهري') || both.includes('يرهش')) {
-    return 'شهري';
-  }
-
-  if (both.includes('semi') || both.includes('نصف سنوي') || both.includes('يونس فصن')) {
-    return 'نصف سنوي';
-  }
-
-  if (both.includes('annual') || both.includes('سنوي') || both.includes('يونس')) {
-    return 'سنوي';
-  }
-
-  return normalizeExtractedArabic(raw) || '-';
+  const both = `${raw} ${reversed}`;
+  if (raw === 'quarterly' || both.includes('quarter') || both.includes('ربعي') || both.includes('ربع سنوي') || both.includes('يعبر')) return 'ربع سنوي';
+  if (raw === 'monthly' || both.includes('monthly') || both.includes('شهري') || both.includes('يرهش')) return 'شهري';
+  if (raw === 'semi_annual' || both.includes('semi') || both.includes('نصف سنوي')) return 'نصف سنوي';
+  if (raw === 'annual' || both.includes('annual') || both.includes('سنوي')) return 'سنوي';
+  return normalizeExtractedArabic(displayRaw(value)) || '-';
 }
 
 function scheduleSourceLabel(source?: string) {
@@ -256,7 +138,7 @@ function InfoRow({ label, value, warning = false }: { label: string; value: stri
   );
 }
 
-function PreviewCard({ title, icon, children }: { title: string; icon: any; children: ReactNode }) {
+function PreviewCard({ title, icon, children }: { title: string; icon: any; children: React.ReactNode }) {
   return (
     <View style={styles.previewCard}>
       <View style={styles.previewHeader}>
@@ -346,7 +228,12 @@ export default function UploadContractScreen() {
     { label: 'نطاق العقد', value: isPropertyContract ? 'العقار كامل' : (unitName || (unitId ? `وحدة #${unitId}` : 'يتم أخذها من العقد')) },
   ], [ownerName, ownerId, propertyName, propertyId, unitName, unitId, isPropertyContract]);
 
-  function returnToPreviousScreen() {
+  function openSavedContract(importResult: any) {
+    const contractId = Number(importResult?.contract?.id || 0);
+    if (contractId) {
+      router.replace(`/contract/${contractId}` as never);
+      return;
+    }
     smartBack('/contracts');
   }
 
@@ -398,20 +285,13 @@ export default function UploadContractScreen() {
 
       const json = await apiPostFormData('/contract-files/extract', formData);
       const extractedData = json.extracted_data || null;
-      const rows = paymentRowsFromExtracted(extractedData);
 
       setExtracted(extractedData);
       setLastImportResult(json.import_result || null);
       setMessage(json.message || 'تم رفع العقد واستخراج البيانات');
 
       if (apply) {
-        Alert.alert(
-          'تم',
-          rows.length
-            ? `${json.message || 'تم استخراج العقد وحفظ بياناته'}\n\nتم اعتماد ${rows.length} دفعات من جدول PDF الرسمي وتسجيل تواريخ الاستحقاق كما هي.`
-            : `${json.message || 'تم استخراج العقد وحفظ بياناته'}\n\nتنبيه: لم يظهر جدول دفعات مقروء من PDF، راجع الدفعات يدويًا.`,
-          [{ text: 'موافق', onPress: returnToPreviousScreen }],
-        );
+        openSavedContract(json.import_result);
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'حدث خطأ غير معروف');
