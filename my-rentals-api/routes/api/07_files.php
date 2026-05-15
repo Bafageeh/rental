@@ -24,6 +24,40 @@ use Illuminate\Support\Facades\Schema;
 |--------------------------------------------------------------------------
 */
 
+Route::get('/contract-files', function (Request $request) {
+    $query = \App\Models\ContractFile::with(['contract.tenant', 'contract.unit.property.owner', 'tenant']);
+
+    if ($request->filled('contract_id')) {
+        $query->where('contract_id', $request->integer('contract_id'));
+    }
+
+    if ($request->filled('unit_id')) {
+        $query->whereHas('contract', function ($contractQuery) use ($request) {
+            $contractQuery->where('unit_id', $request->integer('unit_id'));
+        });
+    }
+
+    if ($request->filled('property_id')) {
+        $query->whereHas('contract.unit', function ($unitQuery) use ($request) {
+            $unitQuery->where('property_id', $request->integer('property_id'));
+        });
+    }
+
+    if ($request->filled('owner_id')) {
+        $query->whereHas('contract.unit.property', function ($propertyQuery) use ($request) {
+            $propertyQuery->where('owner_id', $request->integer('owner_id'));
+        });
+    }
+
+    return $query->orderBy('id', 'desc')
+        ->get()
+        ->map(function ($file) {
+            $file->file_url = $file->file_path ? url('/storage/' . $file->file_path) : null;
+            $file->download_url = $file->file_url;
+            return $file;
+        });
+});
+
 Route::get('/property-files', function (Request $request) {
     $query = \App\Models\PropertyFile::with(['property.owner']);
 
