@@ -8,6 +8,10 @@ require_once __DIR__ . '/107_visual_deed_model_parser.php';
 require_once __DIR__ . '/108_deed_field_window_parser.php';
 require_once __DIR__ . '/109_deed_mirrored_text_parser.php';
 
+if (!defined('DEED_PARSER_ROUTE_VERSION')) {
+    define('DEED_PARSER_ROUTE_VERSION', 'mirror-force-2026-05-15-1605');
+}
+
 if (!function_exists('deed_route_verified_360650001834')) {
     function deed_route_verified_360650001834(array $base): array
     {
@@ -64,15 +68,19 @@ if (!function_exists('deed_route_preview_response')) {
         $quality = (int) ($payload['deed_parse_quality'] ?? 0);
         $engine = (string) ($payload['deed_parser_engine'] ?? 'unknown');
         $raw = trim((string) ($payload['deed_raw_excerpt'] ?? ''));
+        $version = defined('DEED_PARSER_ROUTE_VERSION') ? DEED_PARSER_ROUTE_VERSION : 'unknown';
 
         $message = 'تم قراءة الصك. راجع البيانات قبل الحفظ.';
         if ($quality < 14) {
             $rawPreview = mb_substr($raw, 0, 1800);
             $message = "تمت قراءة الصك جزئيًا فقط.\n"
+                . "إصدار القارئ: {$version}\n"
                 . "محرك القراءة: {$engine}\n"
                 . "جودة القراءة: {$quality}\n"
                 . "انسخ النص التالي وأرسله لي كما هو:\n{$rawPreview}";
         }
+
+        $payload['deed_parser_route_version'] = $version;
 
         return response()->json([
             'status' => 'ok',
@@ -106,9 +114,13 @@ if (!function_exists('deed_route_best_payload')) {
             if (!isset($mirrored['deed_parser_engine'])) {
                 $mirrored['deed_parser_engine'] = 'mirrored_smalot_pdf_parser';
             }
-            return array_merge($normal, array_filter($mirrored, fn ($value) => $value !== null && $value !== ''));
+            $chosen = array_merge($normal, array_filter($mirrored, fn ($value) => $value !== null && $value !== ''));
+            $chosen['deed_parser_engine'] = $chosen['deed_parser_engine'] ?? 'mirrored_smalot_pdf_parser';
+            $chosen['deed_mirrored_forced'] = $hasMirroredArabic ? 'yes' : 'no';
+            return $chosen;
         }
 
+        $normal['deed_mirrored_forced'] = 'no';
         return $normal;
     }
 }
