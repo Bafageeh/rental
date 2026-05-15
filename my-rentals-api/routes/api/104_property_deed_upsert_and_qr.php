@@ -90,14 +90,23 @@ if (!function_exists('deed_route_best_payload')) {
         $mirrored = function_exists('deed_m_payload') ? deed_m_payload($filePath) : [];
         $normalQuality = (int) ($normal['deed_parse_quality'] ?? count(array_filter($normal)));
         $mirroredQuality = (int) ($mirrored['deed_parse_quality'] ?? count(array_filter($mirrored)));
+        $normalRaw = (string) ($normal['deed_raw_excerpt'] ?? '');
+        $hasMirroredArabic = preg_match('/ةيساسلأا|ةقيثولا|تانايبلا|دويقلا|ةلاحلا|كلاملا/u', $normalRaw) === 1;
 
-        if ($mirroredQuality > $normalQuality) {
-            $normalDoc = $normal['document_number'] ?? $normal['deed_number'] ?? null;
-            $mirroredDoc = $mirrored['document_number'] ?? $mirrored['deed_number'] ?? null;
-            if (!$mirroredDoc && $normalDoc) {
-                $mirrored['document_number'] = $mirrored['deed_number'] = $normalDoc;
+        $normalDoc = $normal['document_number'] ?? $normal['deed_number'] ?? null;
+        $mirroredDoc = $mirrored['document_number'] ?? $mirrored['deed_number'] ?? null;
+        if (!$mirroredDoc && $normalDoc) {
+            $mirrored['document_number'] = $mirrored['deed_number'] = $normalDoc;
+        }
+
+        if ($hasMirroredArabic || $mirroredQuality > $normalQuality) {
+            if (!isset($mirrored['deed_parse_quality'])) {
+                $mirrored['deed_parse_quality'] = $mirroredQuality;
             }
-            return $mirrored;
+            if (!isset($mirrored['deed_parser_engine'])) {
+                $mirrored['deed_parser_engine'] = 'mirrored_smalot_pdf_parser';
+            }
+            return array_merge($normal, array_filter($mirrored, fn ($value) => $value !== null && $value !== ''));
         }
 
         return $normal;
