@@ -27,7 +27,6 @@ type PropertyForm = {
   property_area: string;
   property_type: string;
   usage_type: string;
-  management_type: string;
   floors_count: string;
   parking_spots_count: string;
   elevators_count: string;
@@ -48,11 +47,6 @@ const usageTypes = [
   { value: "mixed", label: "مختلط" },
 ];
 
-const managementTypes = [
-  { value: "owned", label: "مملوك" },
-  { value: "managed", label: "إدارة للغير" },
-];
-
 function firstParam(value: string | string[] | undefined): string {
   if (Array.isArray(value)) return value[0] || "";
   return value || "";
@@ -70,7 +64,6 @@ function emptyForm(ownerId = ""): PropertyForm {
     property_area: "",
     property_type: "building",
     usage_type: "residential",
-    management_type: "owned",
     floors_count: "",
     parking_spots_count: "",
     elevators_count: "",
@@ -195,7 +188,6 @@ export default function PropertyFormScreen() {
         property_area: valueToString(property?.property_area),
         property_type: valueToString(property?.property_type || "building"),
         usage_type: valueToString(property?.usage_type || "residential"),
-        management_type: valueToString(property?.management_type || "owned"),
         floors_count: valueToString(property?.floors_count),
         parking_spots_count: valueToString(property?.parking_spots_count),
         elevators_count: valueToString(property?.elevators_count),
@@ -287,11 +279,9 @@ export default function PropertyFormScreen() {
                 <Field label="عدد المصاعد" value={form.elevators_count} onChangeText={(value) => setField("elevators_count", value)} keyboardType="number-pad" />
               </Section>
 
-              <Section title="الإدارة والاستخدام" icon="shield-checkmark-outline">
+              <Section title="الاستخدام والملاحظات" icon="shield-checkmark-outline">
                 <Text style={styles.fieldLabel}>نوع الاستخدام</Text>
                 <ChoiceGroup options={usageTypes} value={form.usage_type} onChange={(value) => setField("usage_type", value)} />
-                <Text style={styles.fieldLabel}>طريقة الإدارة</Text>
-                <ChoiceGroup options={managementTypes} value={form.management_type} onChange={(value) => setField("management_type", value)} />
                 <Field label="ملاحظات" value={form.notes} onChangeText={(value) => setField("notes", value)} multiline />
               </Section>
 
