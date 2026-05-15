@@ -2,6 +2,8 @@
 
 use App\Http\Controllers\Api\ContractFileController;
 use App\Models\Contract;
+use App\Models\Property;
+use App\Models\Unit;
 use App\Services\GovernmentContractImporter;
 use App\Services\GovernmentContractPdfExtractor;
 use App\Services\OfficialPaymentScheduleSynchronizer;
@@ -16,7 +18,81 @@ use Illuminate\Support\Facades\Route;
 | Laravel uses the first matching route. It lets the existing controller do
 | the upload/extract/import work, then forces the database payments to match
 | the official PDF payment table shown in the preview.
+|
+| Important import rule:
+| When applying an uploaded rent contract, do not create a property or a unit
+| from the PDF. The contract must be linked only to the property/unit context
+| that opened the upload screen.
 */
+
+if (!function_exists('mr_existing_contract_upload_unit_for_property')) {
+    function mr_existing_contract_upload_unit_for_property(int $propertyId): ?Unit
+    {
+        $property = Property::find($propertyId);
+        if (!$property) {
+            return null;
+        }
+
+        $wholePropertyUnit = Unit::where('property_id', $property->id)
+            ->where(function ($query) {
+                $query->where('type', 'whole_property')
+                    ->orWhere('unit_number', 'العقار كامل');
+            })
+            ->orderBy('id')
+            ->first();
+
+        if ($wholePropertyUnit) {
+            return $wholePropertyUnit;
+        }
+
+        $units = Unit::where('property_id', $property->id)
+            ->orderBy('id')
+            ->get();
+
+        if ($units->count() === 1) {
+            return $units->first();
+        }
+
+        return null;
+    }
+}
+
+if (!function_exists('mr_force_contract_upload_existing_target')) {
+    function mr_force_contract_upload_existing_target(Request $request): void
+    {
+        if (!$request->boolean('apply')) {
+            return;
+        }
+
+        $unitId = $request->integer('unit_id') ?: null;
+        if ($unitId) {
+            return;
+        }
+
+        $propertyId = $request->integer('property_id') ?: null;
+        if (!$propertyId) {
+            abort(response()->json([
+                'status' => 'error',
+                'message' => 'لا يمكن اعتماد عقد الإيجار بدون فتح الرفع من شاشة عقار أو وحدة محددة. لن يتم إنشاء عقار أو وحدة من ملف PDF.',
+            ], 422));
+        }
+
+        $targetUnit = mr_existing_contract_upload_unit_for_property($propertyId);
+        if (!$targetUnit) {
+            abort(response()->json([
+                'status' => 'error',
+                'message' => 'لا يمكن اعتماد عقد الإيجار على هذا العقار لأن العقار لا يحتوي وحدة ربط موجودة. افتح الرفع من الوحدة المطلوبة أو أنشئ العقد على وحدة موجودة؛ لن يتم إنشاء وحدة تلقائيًا من ملف PDF.',
+            ], 422));
+        }
+
+        $request->merge([
+            'unit_id' => $targetUnit->id,
+            'property_id' => $targetUnit->property_id ?: $propertyId,
+            'contract_scope' => 'unit',
+            'target_type' => 'unit',
+        ]);
+    }
+}
 
 Route::post('/contract-files/extract', function (
     Request $request,
@@ -24,6 +100,8 @@ Route::post('/contract-files/extract', function (
     GovernmentContractImporter $importer,
     OfficialPaymentScheduleSynchronizer $paymentScheduleSynchronizer
 ) {
+    mr_force_contract_upload_existing_target($request);
+
     /** @var ContractFileController $controller */
     $controller = app(ContractFileController::class);
     $response = $controller->extract($request, $extractor, $importer);
@@ -54,7 +132,7 @@ Route::post('/contract-files/extract', function (
             $payload['import_result']['contract'] = $freshContract;
         }
 
-        $payload['message'] = 'تم رفع العقد واستخراج بياناته وحفظها في السجلات، وتم اعتماد جدول الدفعات من ملف PDF الرسمي.';
+        $payload['message'] = 'تم رفع العقد واستخراج بياناته وحفظها في السجلات، وتم اعتماد جدول الدفعات من ملف PDF الرسمي وربط العقد بالهدف الموجود مسبقًا دون إنشاء عقار أو وحدة.';
     }
 
     return response()->json($payload, $response->getStatusCode());
