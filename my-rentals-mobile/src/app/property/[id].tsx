@@ -139,13 +139,13 @@ function CollapsibleSection({ title, icon, subtitle, children, defaultOpen = fal
   return (
     <View style={styles.sectionCardCompact}>
       <TouchableOpacity style={styles.collapsibleHeader} activeOpacity={0.84} onPress={() => setOpen((value) => !value)}>
-        <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={21} color="#0B3B3C" />
+        <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={18} color="#0B3B3C" />
         <View style={styles.collapsibleTitleBox}>
           <Text style={styles.sectionTitleCompact}>{title}</Text>
           {subtitle ? <Text style={styles.collapsibleHint}>{subtitle}</Text> : null}
         </View>
         <View style={styles.sectionIconBox}>
-          <MaterialCommunityIcons name={icon} size={24} color="#0F766E" />
+          <MaterialCommunityIcons name={icon} size={21} color="#0F766E" />
         </View>
       </TouchableOpacity>
       {open ? <View style={styles.collapsibleBody}>{children}</View> : null}
@@ -166,7 +166,7 @@ function Row({ label, value }: { label: string; value: unknown }) {
 function StatCard({ icon, value, label }: { icon: keyof typeof MaterialCommunityIcons.glyphMap; value: unknown; label: string }) {
   return (
     <View style={styles.statCard}>
-      <View style={styles.statIconBox}><MaterialCommunityIcons name={icon} size={24} color="#0F766E" /></View>
+      <View style={styles.statIconBox}><MaterialCommunityIcons name={icon} size={21} color="#0F766E" /></View>
       <Text style={styles.statValue}>{display(value)}</Text>
       <Text style={styles.statLabel}>{label}</Text>
     </View>
@@ -176,8 +176,16 @@ function StatCard({ icon, value, label }: { icon: keyof typeof MaterialCommunity
 function ServiceButton({ icon, label, onPress, full = false }: { icon: keyof typeof MaterialCommunityIcons.glyphMap; label: string; onPress: () => void; full?: boolean }) {
   return (
     <TouchableOpacity style={[styles.serviceButton, full && styles.serviceButtonFull]} activeOpacity={0.86} onPress={onPress}>
-      <MaterialCommunityIcons name={icon} size={27} color="#0F766E" />
+      <MaterialCommunityIcons name={icon} size={23} color="#0F766E" />
       <Text style={styles.serviceText}>{label}</Text>
+    </TouchableOpacity>
+  );
+}
+
+function HeroActionIcon({ icon, color, onPress }: { icon: keyof typeof Ionicons.glyphMap; color: string; onPress: () => void }) {
+  return (
+    <TouchableOpacity style={styles.heroMenuAction} activeOpacity={0.86} onPress={onPress}>
+      <Ionicons name={icon} size={21} color={color} />
     </TouchableOpacity>
   );
 }
@@ -186,6 +194,7 @@ export default function PropertyDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const navigation = useNavigation();
   const { data, loading, error, reload } = useDetail<PropertyDetail>({ endpoint: `/properties/${id}` });
+  const [heroMenuOpen, setHeroMenuOpen] = useState(false);
   const shouldReturnAfterDelete = !!error && /No query results|not found|غير موجود/i.test(String(error));
 
   useEffect(() => {
@@ -240,6 +249,7 @@ export default function PropertyDetailScreen() {
   const canCreateContract = typeof data.can_create_contract === 'boolean' ? data.can_create_contract : totalContracts === 0;
 
   function openEditProperty() {
+    setHeroMenuOpen(false);
     router.push(`/property-form?id=${propertyId}` as never);
   }
 
@@ -276,6 +286,7 @@ export default function PropertyDetailScreen() {
   }
 
   function confirmDeleteProperty() {
+    setHeroMenuOpen(false);
     Alert.alert('حذف العقار', `هل تريد حذف ${data.name || `عقار #${propertyId}`}؟`, [
       { text: 'إلغاء', style: 'cancel' },
       {
@@ -298,7 +309,16 @@ export default function PropertyDetailScreen() {
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={false} onRefresh={reload} tintColor="#0F766E" />}>
         <View style={styles.heroCard}>
           <View style={styles.heroGlow} />
-          <View style={styles.heroMenuDot}><Ionicons name="ellipsis-vertical" size={19} color="#E0F2F1" /></View>
+          <TouchableOpacity style={styles.heroMenuDot} activeOpacity={0.85} onPress={() => setHeroMenuOpen((value) => !value)}>
+            <Ionicons name="ellipsis-vertical" size={17} color="#E0F2F1" />
+          </TouchableOpacity>
+          {heroMenuOpen ? (
+            <View style={styles.heroMenuPopover}>
+              <HeroActionIcon icon="create-outline" color="#0F766E" onPress={openEditProperty} />
+              <View style={styles.heroMenuSeparator} />
+              <HeroActionIcon icon="trash-outline" color="#DC2626" onPress={confirmDeleteProperty} />
+            </View>
+          ) : null}
           <View style={styles.heroTop}>
             <View style={styles.heroIcon}>
               <Text style={styles.heroEmoji}>{data.property_type === 'villa' ? '🏡' : data.property_type === 'apartment' ? '🏠' : data.property_type === 'land' ? '🧭' : '🏢'}</Text>
@@ -306,21 +326,11 @@ export default function PropertyDetailScreen() {
             <View style={styles.heroTextBox}>
               <Text style={styles.heroTitle}>{data.name || `عقار #${propertyId}`}</Text>
               <View style={styles.heroLocationLine}>
-                <Ionicons name="location-outline" size={15} color="#CBD5E1" />
+                <Ionicons name="location-outline" size={13} color="#CBD5E1" />
                 <Text style={styles.heroSubtitle}>{[data.district, data.city].filter(Boolean).join('، ') || 'لا يوجد موقع مسجل'}</Text>
               </View>
               {data.owner?.name ? <Text style={styles.ownerText}>المالك: {data.owner.name}</Text> : null}
             </View>
-          </View>
-          <View style={styles.heroActions}>
-            <TouchableOpacity style={styles.heroActionButton} activeOpacity={0.86} onPress={openEditProperty}>
-              <Ionicons name="create-outline" size={19} color="#fff" />
-              <Text style={styles.heroActionText}>تعديل</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.heroActionButton, styles.deleteButton]} activeOpacity={0.86} onPress={confirmDeleteProperty}>
-              <Ionicons name="trash-outline" size={19} color="#991B1B" />
-              <Text style={[styles.heroActionText, styles.deleteButtonText]}>حذف</Text>
-            </TouchableOpacity>
           </View>
         </View>
 
@@ -331,6 +341,16 @@ export default function PropertyDetailScreen() {
             <StatCard icon="office-building" value={units.length.toLocaleString('ar-SA')} label="وحدة" />
           </View>
         ) : null}
+
+        <Section title="خدمات العقار">
+          <View style={styles.servicesGrid}>
+            {!isApartmentProperty ? <ServiceButton icon="plus-circle-outline" label="إضافة وحدة" onPress={openAddUnit} /> : null}
+            <ServiceButton icon="file-document-outline" label="العقود" onPress={() => openPropertyService('/contracts')} />
+            <ServiceButton icon="cash-minus" label="المصروفات" onPress={() => openPropertyService('/expenses')} />
+            {canCreateContract ? <ServiceButton icon="file-sign" label="إنشاء / رفع عقد" onPress={openCreateContract} /> : null}
+            <ServiceButton icon="image-multiple-outline" label="الملفات والوسائط" onPress={openRepository} full />
+          </View>
+        </Section>
 
         <View style={styles.financeRow}>
           <View style={styles.financeCard}><Text style={styles.financeValue}>{money(totalRent)}</Text><Text style={styles.financeLabel}>إجمالي الإيجارات</Text></View>
@@ -400,17 +420,7 @@ export default function PropertyDetailScreen() {
             })}
           </CollapsibleSection>
         ) : null}
-
-        <Section title="خدمات العقار">
-          <View style={styles.servicesGrid}>
-            {!isApartmentProperty ? <ServiceButton icon="plus-circle-outline" label="إضافة وحدة" onPress={openAddUnit} /> : null}
-            <ServiceButton icon="file-document-outline" label="العقود" onPress={() => openPropertyService('/contracts')} />
-            <ServiceButton icon="cash-minus" label="المصروفات" onPress={() => openPropertyService('/expenses')} />
-            {canCreateContract ? <ServiceButton icon="file-sign" label="إنشاء / رفع عقد" onPress={openCreateContract} /> : null}
-            <ServiceButton icon="image-multiple-outline" label="الملفات والوسائط" onPress={openRepository} full />
-          </View>
-        </Section>
-        <View style={{ height: 40 }} />
+        <View style={{ height: 32 }} />
       </ScrollView>
     </SafeAreaView>
   );
@@ -418,62 +428,60 @@ export default function PropertyDetailScreen() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#F7F8F6' },
-  content: { padding: 13, paddingBottom: 44 },
-  loadingBox: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40 },
-  loadingText: { marginTop: 8, color: '#64748B', fontWeight: '800' },
-  errorBox: { margin: 16, backgroundColor: '#FEE2E2', borderRadius: 20, padding: 18, alignItems: 'center' },
-  errorTitle: { color: '#991B1B', fontSize: 18, fontWeight: '900' },
-  errorText: { color: '#7F1D1D', marginTop: 8, textAlign: 'center' },
-  retryButton: { marginTop: 12, backgroundColor: '#991B1B', borderRadius: 14, paddingHorizontal: 16, paddingVertical: 10 },
-  retryText: { color: '#fff', fontWeight: '900' },
-  heroCard: { backgroundColor: '#0B1220', borderRadius: 30, padding: 16, marginBottom: 12, overflow: 'hidden', borderWidth: 1, borderColor: '#132237' },
-  heroGlow: { position: 'absolute', width: 240, height: 240, borderRadius: 120, backgroundColor: '#0F766E', opacity: 0.22, right: -72, top: -90 },
-  heroMenuDot: { position: 'absolute', left: 16, top: 16, width: 36, height: 36, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.22)', alignItems: 'center', justifyContent: 'center' },
-  heroTop: { flexDirection: 'row-reverse', alignItems: 'center', gap: 13, paddingTop: 9 },
-  heroIcon: { width: 78, height: 78, borderRadius: 25, backgroundColor: '#ECFDF5', alignItems: 'center', justifyContent: 'center' },
-  heroEmoji: { fontSize: 39 },
-  heroTextBox: { flex: 1, alignItems: 'flex-end', paddingLeft: 24 },
-  heroTitle: { color: '#fff', fontSize: 23, fontWeight: '900', textAlign: 'right', lineHeight: 34 },
-  heroLocationLine: { flexDirection: 'row-reverse', alignItems: 'center', gap: 5, marginTop: 6 },
-  heroSubtitle: { color: '#CBD5E1', fontWeight: '800', textAlign: 'right' },
-  ownerText: { color: '#5EEAD4', fontWeight: '900', marginTop: 8, textAlign: 'right' },
-  heroActions: { flexDirection: 'row-reverse', gap: 10, marginTop: 17 },
-  heroActionButton: { flex: 1, minHeight: 50, borderRadius: 17, backgroundColor: '#0F766E', alignItems: 'center', justifyContent: 'center', flexDirection: 'row-reverse', gap: 7 },
-  heroActionText: { color: '#fff', fontWeight: '900', fontSize: 14 },
-  deleteButton: { backgroundColor: '#FEF2F2', borderWidth: 1, borderColor: '#FECACA' },
-  deleteButtonText: { color: '#991B1B' },
-  statsRow: { flexDirection: 'row-reverse', gap: 8, marginBottom: 12 },
-  statCard: { flex: 1, backgroundColor: '#fff', borderRadius: 20, paddingVertical: 12, paddingHorizontal: 8, alignItems: 'center', borderWidth: 1, borderColor: '#E8EEF0', shadowColor: '#0F172A', shadowOpacity: 0.04, shadowRadius: 12, shadowOffset: { width: 0, height: 5 }, elevation: 1 },
-  statIconBox: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#EEF7F5', alignItems: 'center', justifyContent: 'center', marginBottom: 6 },
-  statValue: { color: '#0F172A', fontSize: 22, fontWeight: '900' },
-  statLabel: { color: '#64748B', fontWeight: '800', marginTop: 2 },
-  sectionCard: { backgroundColor: '#fff', borderRadius: 22, padding: 14, marginBottom: 12, borderWidth: 1, borderColor: '#E8EEF0', shadowColor: '#0F172A', shadowOpacity: 0.035, shadowRadius: 13, shadowOffset: { width: 0, height: 6 }, elevation: 1 },
-  sectionCardCompact: { backgroundColor: '#fff', borderRadius: 21, padding: 12, marginBottom: 11, borderWidth: 1, borderColor: '#E8EEF0', shadowColor: '#0F172A', shadowOpacity: 0.035, shadowRadius: 13, shadowOffset: { width: 0, height: 6 }, elevation: 1 },
-  sectionTitle: { color: '#111827', fontSize: 20, fontWeight: '900', textAlign: 'right', marginBottom: 12 },
-  sectionTitleCompact: { color: '#111827', fontSize: 19, fontWeight: '900', textAlign: 'right' },
-  collapsibleHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, minHeight: 62 },
+  content: { padding: 10, paddingBottom: 36 },
+  loadingBox: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 },
+  loadingText: { marginTop: 8, color: '#64748B', fontWeight: '800', fontSize: 12 },
+  errorBox: { margin: 14, backgroundColor: '#FEE2E2', borderRadius: 18, padding: 15, alignItems: 'center' },
+  errorTitle: { color: '#991B1B', fontSize: 16, fontWeight: '900' },
+  errorText: { color: '#7F1D1D', marginTop: 8, textAlign: 'center', fontSize: 12 },
+  retryButton: { marginTop: 10, backgroundColor: '#991B1B', borderRadius: 13, paddingHorizontal: 14, paddingVertical: 9 },
+  retryText: { color: '#fff', fontWeight: '900', fontSize: 12 },
+  heroCard: { backgroundColor: '#0B1220', borderRadius: 24, padding: 12, marginBottom: 9, overflow: 'visible', borderWidth: 1, borderColor: '#132237' },
+  heroGlow: { position: 'absolute', width: 200, height: 200, borderRadius: 100, backgroundColor: '#0F766E', opacity: 0.2, right: -66, top: -84 },
+  heroMenuDot: { position: 'absolute', left: 12, top: 12, width: 34, height: 34, borderRadius: 17, borderWidth: 1, borderColor: 'rgba(255,255,255,0.22)', alignItems: 'center', justifyContent: 'center', zIndex: 20, backgroundColor: 'rgba(255,255,255,0.04)' },
+  heroMenuPopover: { position: 'absolute', left: 10, top: 52, width: 44, borderRadius: 17, backgroundColor: '#fff', borderWidth: 1, borderColor: '#E5E7EB', overflow: 'hidden', zIndex: 30, shadowColor: '#0F172A', shadowOpacity: 0.18, shadowRadius: 14, shadowOffset: { width: 0, height: 8 }, elevation: 8 },
+  heroMenuAction: { width: 44, height: 42, alignItems: 'center', justifyContent: 'center' },
+  heroMenuSeparator: { height: 1, backgroundColor: '#EEF2F7' },
+  heroTop: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10, paddingTop: 8 },
+  heroIcon: { width: 64, height: 64, borderRadius: 21, backgroundColor: '#ECFDF5', alignItems: 'center', justifyContent: 'center' },
+  heroEmoji: { fontSize: 32 },
+  heroTextBox: { flex: 1, alignItems: 'flex-end', paddingLeft: 28 },
+  heroTitle: { color: '#fff', fontSize: 19, fontWeight: '900', textAlign: 'right', lineHeight: 28 },
+  heroLocationLine: { flexDirection: 'row-reverse', alignItems: 'center', gap: 4, marginTop: 4 },
+  heroSubtitle: { color: '#CBD5E1', fontWeight: '800', textAlign: 'right', fontSize: 12 },
+  ownerText: { color: '#5EEAD4', fontWeight: '900', marginTop: 6, textAlign: 'right', fontSize: 12 },
+  statsRow: { flexDirection: 'row-reverse', gap: 7, marginBottom: 9 },
+  statCard: { flex: 1, backgroundColor: '#fff', borderRadius: 17, paddingVertical: 9, paddingHorizontal: 7, alignItems: 'center', borderWidth: 1, borderColor: '#E8EEF0', shadowColor: '#0F172A', shadowOpacity: 0.035, shadowRadius: 9, shadowOffset: { width: 0, height: 4 }, elevation: 1 },
+  statIconBox: { width: 37, height: 37, borderRadius: 18.5, backgroundColor: '#EEF7F5', alignItems: 'center', justifyContent: 'center', marginBottom: 4 },
+  statValue: { color: '#0F172A', fontSize: 19, fontWeight: '900' },
+  statLabel: { color: '#64748B', fontWeight: '800', marginTop: 1, fontSize: 11 },
+  sectionCard: { backgroundColor: '#fff', borderRadius: 18, padding: 11, marginBottom: 9, borderWidth: 1, borderColor: '#E8EEF0', shadowColor: '#0F172A', shadowOpacity: 0.03, shadowRadius: 10, shadowOffset: { width: 0, height: 5 }, elevation: 1 },
+  sectionCardCompact: { backgroundColor: '#fff', borderRadius: 18, padding: 10, marginBottom: 8, borderWidth: 1, borderColor: '#E8EEF0', shadowColor: '#0F172A', shadowOpacity: 0.03, shadowRadius: 10, shadowOffset: { width: 0, height: 5 }, elevation: 1 },
+  sectionTitle: { color: '#111827', fontSize: 17, fontWeight: '900', textAlign: 'right', marginBottom: 10 },
+  sectionTitleCompact: { color: '#111827', fontSize: 16, fontWeight: '900', textAlign: 'right' },
+  collapsibleHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, minHeight: 48 },
   collapsibleTitleBox: { flex: 1, alignItems: 'flex-end' },
-  collapsibleHint: { color: '#6B7280', fontWeight: '800', fontSize: 12, marginTop: 5, textAlign: 'right' },
-  collapsibleBody: { marginTop: 8, borderTopWidth: 1, borderTopColor: '#F1F5F9', paddingTop: 6 },
-  sectionIconBox: { width: 54, height: 54, borderRadius: 18, backgroundColor: '#EEF7F5', alignItems: 'center', justifyContent: 'center' },
-  servicesGrid: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 9 },
-  serviceButton: { width: '48.5%', minHeight: 72, borderRadius: 18, backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#DDE5EA', alignItems: 'center', justifyContent: 'center', padding: 8, flexDirection: 'row-reverse', gap: 9 },
+  collapsibleHint: { color: '#6B7280', fontWeight: '800', fontSize: 10.5, marginTop: 3, textAlign: 'right' },
+  collapsibleBody: { marginTop: 7, borderTopWidth: 1, borderTopColor: '#F1F5F9', paddingTop: 5 },
+  sectionIconBox: { width: 43, height: 43, borderRadius: 15, backgroundColor: '#EEF7F5', alignItems: 'center', justifyContent: 'center' },
+  servicesGrid: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 7 },
+  serviceButton: { width: '48.8%', minHeight: 57, borderRadius: 15, backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#DDE5EA', alignItems: 'center', justifyContent: 'center', padding: 7, flexDirection: 'row-reverse', gap: 7 },
   serviceButtonFull: { width: '100%' },
-  serviceText: { color: '#111827', fontWeight: '900', textAlign: 'center', fontSize: 13 },
-  financeRow: { flexDirection: 'row-reverse', gap: 8, marginBottom: 12 },
-  financeCard: { flex: 1, backgroundColor: '#fff', borderRadius: 20, padding: 13, alignItems: 'center', borderWidth: 1, borderColor: '#E8EEF0' },
-  financeValue: { color: '#0F766E', fontWeight: '900', fontSize: 16 },
-  financeLabel: { color: '#64748B', fontWeight: '800', marginTop: 5, textAlign: 'center' },
-  infoRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
-  infoLabel: { color: '#64748B', fontWeight: '900', textAlign: 'right', minWidth: 110 },
-  infoValue: { color: '#111827', fontWeight: '900', flex: 1, textAlign: 'left' },
-  unitCard: { backgroundColor: '#F8FAFC', borderRadius: 18, padding: 12, marginBottom: 8, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', borderWidth: 1, borderColor: '#E2E8F0' },
+  serviceText: { color: '#111827', fontWeight: '900', textAlign: 'center', fontSize: 11.5 },
+  financeRow: { flexDirection: 'row-reverse', gap: 7, marginBottom: 9 },
+  financeCard: { flex: 1, backgroundColor: '#fff', borderRadius: 17, padding: 10, alignItems: 'center', borderWidth: 1, borderColor: '#E8EEF0' },
+  financeValue: { color: '#0F766E', fontWeight: '900', fontSize: 14 },
+  financeLabel: { color: '#64748B', fontWeight: '800', marginTop: 3, textAlign: 'center', fontSize: 11 },
+  infoRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
+  infoLabel: { color: '#64748B', fontWeight: '900', textAlign: 'right', minWidth: 96, fontSize: 11.5 },
+  infoValue: { color: '#111827', fontWeight: '900', flex: 1, textAlign: 'left', fontSize: 11.5 },
+  unitCard: { backgroundColor: '#F8FAFC', borderRadius: 15, padding: 10, marginBottom: 7, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', borderWidth: 1, borderColor: '#E2E8F0' },
   unitInfoBox: { flex: 1, alignItems: 'flex-end' },
-  unitTitle: { color: '#111827', fontWeight: '900', fontSize: 16, textAlign: 'right' },
-  unitMeta: { color: '#64748B', fontWeight: '800', marginTop: 3, textAlign: 'right' },
-  unitContractOk: { color: '#16A34A', fontWeight: '900', marginTop: 4, textAlign: 'right' },
-  unitContractEmpty: { color: '#D97706', fontWeight: '900', marginTop: 4, textAlign: 'right' },
-  unitSideBox: { alignItems: 'flex-start', gap: 7 },
-  unitStatus: { backgroundColor: '#E0F2FE', color: '#0369A1', borderRadius: 999, paddingHorizontal: 9, paddingVertical: 5, overflow: 'hidden', fontWeight: '900', fontSize: 11 },
-  unitRent: { color: '#111827', fontWeight: '900' },
+  unitTitle: { color: '#111827', fontWeight: '900', fontSize: 14, textAlign: 'right' },
+  unitMeta: { color: '#64748B', fontWeight: '800', marginTop: 2, textAlign: 'right', fontSize: 11 },
+  unitContractOk: { color: '#16A34A', fontWeight: '900', marginTop: 3, textAlign: 'right', fontSize: 11 },
+  unitContractEmpty: { color: '#D97706', fontWeight: '900', marginTop: 3, textAlign: 'right', fontSize: 11 },
+  unitSideBox: { alignItems: 'flex-start', gap: 6 },
+  unitStatus: { backgroundColor: '#E0F2FE', color: '#0369A1', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 4, overflow: 'hidden', fontWeight: '900', fontSize: 10 },
+  unitRent: { color: '#111827', fontWeight: '900', fontSize: 11 },
 });
