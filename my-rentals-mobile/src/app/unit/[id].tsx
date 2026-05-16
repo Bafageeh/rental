@@ -216,7 +216,7 @@ export default function UnitDetailsRoute() {
           <View style={styles.servicesHeaderRow}>
             <View style={styles.servicesTitleBlock}>
               <Text style={styles.servicesTitle}>خدمات الوحدة</Text>
-              <Text style={styles.servicesHint}>العقود والملفات لهذه الوحدة فقط</Text>
+              <Text style={styles.servicesHint}>العقود والملفات والمصروفات لهذه الوحدة فقط</Text>
             </View>
             <Ionicons name="grid-outline" size={18} color="#6b7280" />
           </View>
@@ -224,6 +224,7 @@ export default function UnitDetailsRoute() {
             <ServiceChip icon="documents-outline" label="العقود" onPress={() => openUnitService("/contracts")} />
             <ServiceChip icon="create-outline" label="إنشاء عقد" onPress={() => openUnitService("/create-contract")} />
             <ServiceChip icon="cloud-upload-outline" label="رفع عقد" onPress={() => openUnitService("/upload-contract")} />
+            <ServiceChip icon="cash-outline" label="المصروفات" onPress={() => openUnitService("/expenses")} />
             <ServiceChip icon="images-outline" label="الوسائط" onPress={() => openUnitService("/files", "mode=media")} />
           </View>
         </View>
