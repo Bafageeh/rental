@@ -290,7 +290,7 @@ const styles = StyleSheet.create({
   heroTitle: { color: "#fff", fontSize: 30, fontWeight: "900", textAlign: "right" },
   heroSubtitle: { color: "#CBD5E1", marginTop: 8, fontWeight: "800", textAlign: "right", lineHeight: 22 },
   heroBadge: { marginTop: 12, backgroundColor: "#D1FAE5", color: "#064E3B", borderRadius: 999, overflow: "hidden", paddingHorizontal: 12, paddingVertical: 6, fontWeight: "900" },
-  floatingAddButton: { position: "absolute", left: 18, bottom: 62, width: 58, height: 58, borderRadius: 29, backgroundColor: "#0F766E", alignItems: "center", justifyContent: "center", shadowColor: "#0F172A", shadowOpacity: 0.22, shadowRadius: 16, shadowOffset: { width: 0, height: 9 }, elevation: 10, zIndex: 60 },
+  floatingAddButton: { position: "absolute", left: 18, bottom: 22, width: 58, height: 58, borderRadius: 29, backgroundColor: "#0F766E", alignItems: "center", justifyContent: "center", shadowColor: "#0F172A", shadowOpacity: 0.22, shadowRadius: 16, shadowOffset: { width: 0, height: 9 }, elevation: 10, zIndex: 60 },
   floatingCloseButton: { backgroundColor: "#7f1d1d" },
   modalOverlay: { position: "absolute", left: 0, right: 0, top: 0, bottom: 0, zIndex: 50, justifyContent: "center", paddingHorizontal: 18 },
   modalBackdrop: { position: "absolute", left: 0, right: 0, top: 0, bottom: 0, backgroundColor: "rgba(15, 23, 42, 0.32)" },
