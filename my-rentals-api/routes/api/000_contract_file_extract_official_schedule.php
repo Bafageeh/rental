@@ -96,6 +96,110 @@ if (!function_exists('mr_force_contract_upload_existing_target')) {
     }
 }
 
+if (!function_exists('mr_contract_file_clean_segment')) {
+    function mr_contract_file_clean_segment(?string $value): string
+    {
+        $value = trim((string) $value);
+
+        if ($value !== '') {
+            try {
+                $decoded = rawurldecode($value);
+                if ($decoded !== '') {
+                    $value = $decoded;
+                }
+            } catch (Throwable $e) {
+                // Keep the original value when decoding fails.
+            }
+        }
+
+        $value = preg_replace('/[\\\\\/\:\*\?"<>\|]+/u', '-', $value) ?? $value;
+        $value = preg_replace('/\s+/u', ' ', trim($value)) ?? trim($value);
+        $value = trim($value, " \t\n\r\0\x0B.-_");
+
+        return $value !== '' ? mb_substr($value, 0, 90) : 'عقد إيجار';
+    }
+}
+
+if (!function_exists('mr_contract_file_unit_is_whole_property')) {
+    function mr_contract_file_unit_is_whole_property(?Unit $unit): bool
+    {
+        if (!$unit) {
+            return false;
+        }
+
+        return ($unit->type ?? null) === 'whole_property'
+            || trim((string) ($unit->unit_number ?? '')) === 'العقار كامل';
+    }
+}
+
+if (!function_exists('mr_contract_file_target_label')) {
+    function mr_contract_file_target_label(?Contract $contract, ?Request $request = null): string
+    {
+        $contract?->loadMissing(['unit.property']);
+        $unit = $contract?->unit;
+        $property = $unit?->property;
+
+        if (!$unit && $request?->integer('unit_id')) {
+            $unit = Unit::with('property')->find($request->integer('unit_id'));
+            $property = $unit?->property;
+        }
+
+        if (!$property && $request?->integer('property_id')) {
+            $property = Property::find($request->integer('property_id'));
+        }
+
+        if ($unit && !mr_contract_file_unit_is_whole_property($unit)) {
+            $unitLabel = $unit->name
+                ?? $unit->unit_name
+                ?? $unit->unit_number
+                ?? ('وحدة ' . $unit->id);
+
+            return mr_contract_file_clean_segment((string) $unitLabel);
+        }
+
+        if ($property) {
+            return mr_contract_file_clean_segment($property->name ?? ('عقار ' . $property->id));
+        }
+
+        if ($unit) {
+            return mr_contract_file_clean_segment($unit->unit_number ?? ('وحدة ' . $unit->id));
+        }
+
+        return 'عقد إيجار';
+    }
+}
+
+if (!function_exists('mr_contract_file_display_name')) {
+    function mr_contract_file_display_name(?Contract $contract, ?Request $request = null): string
+    {
+        return 'عقد إيجار - ' . mr_contract_file_target_label($contract, $request) . '.pdf';
+    }
+}
+
+if (!function_exists('mr_rename_contract_file_for_target')) {
+    function mr_rename_contract_file_for_target(?int $contractFileId, ?int $contractId, Request $request): ?ContractFile
+    {
+        if (!$contractFileId) {
+            return null;
+        }
+
+        $contract = $contractId
+            ? Contract::with(['unit.property', 'tenant'])->find($contractId)
+            : null;
+
+        $fileName = mr_contract_file_display_name($contract, $request);
+
+        $contractFile = ContractFile::find($contractFileId);
+        if (!$contractFile) {
+            return null;
+        }
+
+        $contractFile->update(['file_name' => $fileName]);
+
+        return $contractFile->fresh(['contract.tenant', 'contract.unit.property.owner', 'tenant']);
+    }
+}
+
 if (!function_exists('mr_publish_contract_file_for_download')) {
     function mr_publish_contract_file_for_download(?int $contractFileId): ?ContractFile
     {
@@ -118,7 +222,9 @@ if (!function_exists('mr_publish_contract_file_for_download')) {
         }
 
         $extension = pathinfo($contractFile->file_name ?: $currentPath, PATHINFO_EXTENSION) ?: 'pdf';
-        $publicPath = 'contract-files/' . now()->format('Y/m') . '/' . pathinfo($currentPath, PATHINFO_FILENAME) . '.' . $extension;
+        $baseName = pathinfo($contractFile->file_name ?: 'عقد إيجار', PATHINFO_FILENAME) ?: 'عقد إيجار';
+        $publicFileName = mr_contract_file_clean_segment($baseName) . '.' . strtolower($extension ?: 'pdf');
+        $publicPath = 'contract-files/' . now()->format('Y/m') . '/' . $contractFile->id . '/' . $publicFileName;
 
         Storage::disk('public')->put($publicPath, Storage::disk('local')->get($currentPath));
         $contractFile->update(['file_path' => $publicPath]);
@@ -149,15 +255,17 @@ Route::post('/contract-files/extract', function (
     }
 
     $contractFileId = isset($payload['contract_file']['id']) ? (int) $payload['contract_file']['id'] : null;
+    $payments = $payload['extracted_data']['payments'] ?? [];
+    $contractId = $payload['import_result']['contract']['id'] ?? null;
+
+    mr_rename_contract_file_for_target($contractFileId, $contractId ? (int) $contractId : null, $request);
+
     $publishedContractFile = mr_publish_contract_file_for_download($contractFileId);
     if ($publishedContractFile) {
         $payload['contract_file'] = $publishedContractFile;
         $payload['contract_file']['file_url'] = $publishedContractFile->file_path ? url('/storage/' . $publishedContractFile->file_path) : null;
         $payload['contract_file']['download_url'] = $payload['contract_file']['file_url'];
     }
-
-    $payments = $payload['extracted_data']['payments'] ?? [];
-    $contractId = $payload['import_result']['contract']['id'] ?? null;
 
     if ($contractId && is_array($payments) && !empty($payments)) {
         $synced = $paymentScheduleSynchronizer->sync((int) $contractId, $payments);
