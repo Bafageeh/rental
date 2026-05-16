@@ -78,7 +78,6 @@ function AppTabs() {
       <Tabs.Screen name="payments" options={{ ...hidden, title: "الدفعات" }} />
       <Tabs.Screen name="statistics" options={{ ...hidden, title: "التقارير" }} />
       <Tabs.Screen name="settings" options={{ ...hidden, title: "الإعدادات" }} />
-      <Tabs.Screen name="contracts" options={{ ...hidden, title: "العقود" }} />
       <Tabs.Screen name="tenants" options={{ ...hidden, title: "المستأجرين" }} />
       <Tabs.Screen name="units" options={{ ...hidden, title: "الوحدات" }} />
       <Tabs.Screen name="parking" options={{ ...hidden, title: "المواقف" }} />
