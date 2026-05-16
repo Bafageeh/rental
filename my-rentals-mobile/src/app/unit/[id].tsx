@@ -20,6 +20,7 @@ type FieldItem = { key: string; label: string; value: string | number | null };
 type RelatedItem = { id: number; entity: string; title: string; subtitle?: string; badge?: string | null; route?: string | null; meta?: string[] };
 type RelatedSection = { key: string; title: string; count: number; items: RelatedItem[] };
 type DetailsResponse = { id: number; title: string; entity_title?: string; fields: FieldItem[]; sections: RelatedSection[] };
+type PaymentItem = { status?: string | null; amount?: number | string | null };
 type ContractItem = {
   id: number;
   contract_number?: string | null;
@@ -33,7 +34,7 @@ type ContractItem = {
   unit_number?: string | null;
   tenant?: { name?: string | null; phone?: string | null } | null;
   unit?: { id?: number; unit_number?: string | null; property_id?: number; property?: { id?: number; name?: string | null } | null } | null;
-  payments?: Array<{ status?: string | null; amount?: number | string | null }>;
+  payments?: PaymentItem[];
 };
 
 const unitTabs: Array<{ key: UnitTabKey; label: string; icon: keyof typeof Ionicons.glyphMap }> = [
@@ -70,7 +71,7 @@ function dateOnly(value?: string | null) {
   return match ? match[1] : String(value);
 }
 
-function paymentProgress(payments?: ContractItem["payments"]) {
+function paymentProgress(payments?: PaymentItem[]) {
   if (!payments || payments.length === 0) return { paid: 0, total: 0, pct: 0, overdue: 0 };
   const paid = payments.filter((p) => p.status === "paid").length;
   const overdue = payments.filter((p) => p.status === "overdue").length;
@@ -234,6 +235,13 @@ export default function UnitDetailsRoute() {
   const contractCards = unitContracts.length ? unitContracts : [];
   const relatedCount = useMemo(() => (data?.sections || []).reduce((sum, section) => sum + (section.count || section.items.length || 0), 0), [data?.sections]);
   const contractsCount = unitContracts.length || contractFallbackItems.length;
+  const paymentStats = useMemo(() => {
+    const payments = unitContracts.flatMap((contract) => contract.payments || []);
+    return {
+      total: payments.length,
+      overdue: payments.filter((payment) => payment.status === "overdue").length,
+    };
+  }, [unitContracts]);
 
   function closeMenu() { setMenuOpen(false); }
 
@@ -305,7 +313,7 @@ export default function UnitDetailsRoute() {
         {loading ? <View style={styles.loadingBox}><ActivityIndicator /><Text style={styles.loadingText}>جاري تحميل التفاصيل...</Text></View> : null}
         {error ? <View style={styles.errorBox}><Text style={styles.errorTitle}>تعذر تحميل تفاصيل الوحدة</Text><Text style={styles.errorText}>{error}</Text><TouchableOpacity style={styles.retryButton} onPress={() => load(false)}><Text style={styles.retryText}>إعادة المحاولة</Text></TouchableOpacity></View> : null}
 
-        {!loading && !error && activeTab === "stats" ? <View style={styles.sectionCard}><View style={styles.sectionHeader}><Text style={styles.sectionTitle}>إحصائيات الوحدة</Text><Text style={styles.sectionSubtitle}>ملخص سريع عن الوحدة وارتباطاتها</Text></View><View style={styles.statsGrid}><StatTile icon="documents-outline" label="العقود" value={contractsCount} /><StatTile icon="cash-outline" label="الإيجار" value={unitRent} /><StatTile icon="layers-outline" label="الدور" value={unitFloor} /><StatTile icon="checkmark-circle-outline" label="الحالة" value={unitStatus} /><StatTile icon="link-outline" label="الارتباطات" value={relatedCount} /><StatTile icon="list-outline" label="حقول البيانات" value={primaryFields.length} /></View></View> : null}
+        {!loading && !error && activeTab === "stats" ? <View style={styles.sectionCard}><View style={styles.sectionHeader}><Text style={styles.sectionTitle}>إحصائيات الوحدة</Text><Text style={styles.sectionSubtitle}>ملخص سريع عن الوحدة وارتباطاتها</Text></View><View style={styles.statsGrid}><StatTile icon="documents-outline" label="العقود" value={contractsCount} /><StatTile icon="receipt-outline" label="عدد الدفعات" value={paymentStats.total} /><StatTile icon="alert-circle-outline" label="دفعات متأخرة" value={paymentStats.overdue} /><StatTile icon="cash-outline" label="الإيجار" value={unitRent} /><StatTile icon="layers-outline" label="الدور" value={unitFloor} /><StatTile icon="checkmark-circle-outline" label="الحالة" value={unitStatus} /><StatTile icon="link-outline" label="الارتباطات" value={relatedCount} /><StatTile icon="list-outline" label="حقول البيانات" value={primaryFields.length} /></View></View> : null}
 
         {!loading && !error && activeTab === "details" ? <>{<View style={styles.sectionCard}><View style={styles.sectionHeader}><Text style={styles.sectionTitle}>البيانات الأساسية</Text><Text style={styles.sectionSubtitle}>{primaryFields.length} حقل</Text></View>{primaryFields.map((field) => <View key={field.key} style={styles.fieldRow}><Text style={styles.fieldValue}>{valueOrDash(field.value)}</Text><Text style={styles.fieldLabel}>{field.label}</Text></View>)}</View>}{otherSections.map((section) => <View key={section.key} style={styles.sectionCard}><View style={styles.sectionHeader}><Text style={styles.sectionTitle}>{section.title}</Text><Text style={styles.sectionSubtitle}>{section.count} عنصر</Text></View>{section.items.length ? section.items.map((item) => <TouchableOpacity key={`${item.entity}-${item.id}`} style={styles.relatedCard} activeOpacity={0.86} onPress={() => router.push(relationRoute(item) as never)}><View style={styles.relatedTopRow}>{item.badge ? <Text style={styles.badge}>{item.badge}</Text> : <View />}<View style={styles.relatedTitleWrap}><Text numberOfLines={1} style={styles.relatedTitle}>{item.title}</Text>{item.subtitle ? <Text numberOfLines={2} style={styles.relatedSubtitle}>{item.subtitle}</Text> : null}</View></View></TouchableOpacity>) : <Text style={styles.emptyText}>لا توجد عناصر مرتبطة.</Text>}</View>)}</> : null}
 
