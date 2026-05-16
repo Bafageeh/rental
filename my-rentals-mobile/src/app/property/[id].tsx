@@ -182,10 +182,11 @@ function ServiceButton({ icon, label, onPress, full = false }: { icon: keyof typ
   );
 }
 
-function HeroActionIcon({ icon, color, onPress }: { icon: keyof typeof Ionicons.glyphMap; color: string; onPress: () => void }) {
+function HeroActionIcon({ icon, label, color, onPress }: { icon: keyof typeof Ionicons.glyphMap; label: string; color: string; onPress: () => void }) {
   return (
     <TouchableOpacity style={styles.heroMenuAction} activeOpacity={0.86} onPress={onPress}>
-      <Ionicons name={icon} size={21} color={color} />
+      <Ionicons name={icon} size={20} color={color} />
+      <Text style={[styles.heroMenuActionText, { color }]}>{label}</Text>
     </TouchableOpacity>
   );
 }
@@ -308,15 +309,14 @@ export default function PropertyDetailScreen() {
     <SafeAreaView style={styles.safe} edges={['top']}>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={false} onRefresh={reload} tintColor="#0F766E" />}>
         <View style={styles.heroCard}>
-          <View style={styles.heroGlow} />
           <TouchableOpacity style={styles.heroMenuDot} activeOpacity={0.85} onPress={() => setHeroMenuOpen((value) => !value)}>
             <Ionicons name="ellipsis-vertical" size={17} color="#E0F2F1" />
           </TouchableOpacity>
           {heroMenuOpen ? (
             <View style={styles.heroMenuPopover}>
-              <HeroActionIcon icon="create-outline" color="#0F766E" onPress={openEditProperty} />
+              <HeroActionIcon icon="create-outline" label="تعديل" color="#0F766E" onPress={openEditProperty} />
               <View style={styles.heroMenuSeparator} />
-              <HeroActionIcon icon="trash-outline" color="#DC2626" onPress={confirmDeleteProperty} />
+              <HeroActionIcon icon="trash-outline" label="حذف" color="#DC2626" onPress={confirmDeleteProperty} />
             </View>
           ) : null}
           <View style={styles.heroTop}>
@@ -437,10 +437,10 @@ const styles = StyleSheet.create({
   retryButton: { marginTop: 10, backgroundColor: '#991B1B', borderRadius: 13, paddingHorizontal: 14, paddingVertical: 9 },
   retryText: { color: '#fff', fontWeight: '900', fontSize: 12 },
   heroCard: { backgroundColor: '#0B1220', borderRadius: 24, padding: 12, marginBottom: 9, overflow: 'visible', borderWidth: 1, borderColor: '#132237' },
-  heroGlow: { position: 'absolute', width: 200, height: 200, borderRadius: 100, backgroundColor: '#0F766E', opacity: 0.2, right: -66, top: -84 },
   heroMenuDot: { position: 'absolute', left: 12, top: 12, width: 34, height: 34, borderRadius: 17, borderWidth: 1, borderColor: 'rgba(255,255,255,0.22)', alignItems: 'center', justifyContent: 'center', zIndex: 20, backgroundColor: 'rgba(255,255,255,0.04)' },
-  heroMenuPopover: { position: 'absolute', left: 10, top: 52, width: 44, borderRadius: 17, backgroundColor: '#fff', borderWidth: 1, borderColor: '#E5E7EB', overflow: 'hidden', zIndex: 30, shadowColor: '#0F172A', shadowOpacity: 0.18, shadowRadius: 14, shadowOffset: { width: 0, height: 8 }, elevation: 8 },
-  heroMenuAction: { width: 44, height: 42, alignItems: 'center', justifyContent: 'center' },
+  heroMenuPopover: { position: 'absolute', left: 10, top: 52, width: 112, borderRadius: 17, backgroundColor: '#fff', borderWidth: 1, borderColor: '#E5E7EB', overflow: 'hidden', zIndex: 30, shadowColor: '#0F172A', shadowOpacity: 0.18, shadowRadius: 14, shadowOffset: { width: 0, height: 8 }, elevation: 8 },
+  heroMenuAction: { height: 42, alignItems: 'center', justifyContent: 'flex-start', flexDirection: 'row-reverse', gap: 8, paddingHorizontal: 12 },
+  heroMenuActionText: { fontWeight: '900', fontSize: 12, textAlign: 'right' },
   heroMenuSeparator: { height: 1, backgroundColor: '#EEF2F7' },
   heroTop: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10, paddingTop: 8 },
   heroIcon: { width: 64, height: 64, borderRadius: 21, backgroundColor: '#ECFDF5', alignItems: 'center', justifyContent: 'center' },
