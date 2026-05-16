@@ -339,7 +339,7 @@ export default function PropertyDetailScreen() {
           <View style={styles.financeCard}><Text style={styles.financeValue}>{money(totalExpenses)}</Text><Text style={styles.financeLabel}>المصروفات</Text></View>
         </View>
 
-        <Section title="تفاصيل العقار">
+        <CollapsibleSection title="تفاصيل العقار">
           <Row label="النوع" value={typeMap[String(data.property_type || '')] || data.property_type} />
           <Row label="الاستخدام" value={usageMap[String(data.usage_type || '')] || data.usage_type} />
           <Row label="الإدارة" value={mgmtMap[String(data.management_type || '')] || data.management_type} />
@@ -351,7 +351,7 @@ export default function PropertyDetailScreen() {
           <Row label="المصاعد" value={data.elevators_count} />
           <Row label="العنوان" value={data.address} />
           <Row label="ملاحظات" value={data.notes} />
-        </Section>
+        </CollapsibleSection>
 
         <CollapsibleSection title="بيانات الوثيقة والصك">
           <Row label="تاريخ الوثيقة" value={data.document_date_hijri} />
