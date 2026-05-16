@@ -73,6 +73,7 @@ export default function UnitDetailsRoute() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
+  const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
     globalThis.__RENTAL_EDIT_CONTEXT__ = { resource: "units", id };
@@ -123,7 +124,12 @@ export default function UnitDetailsRoute() {
     [data?.sections],
   );
 
+  function closeMenu() {
+    setMenuOpen(false);
+  }
+
   function openEditScreen() {
+    closeMenu();
     router.push({
       pathname: "/unit-edit/[id]",
       params: {
@@ -135,6 +141,7 @@ export default function UnitDetailsRoute() {
   }
 
   function openUnitService(path: string, extraQuery = "") {
+    closeMenu();
     const unitName = encodeURIComponent(title || `وحدة ${id}`);
     const suffix = extraQuery ? `&${extraQuery}` : "";
     router.push(`${path}?unit_id=${id}&unit_name=${unitName}${suffix}` as never);
@@ -168,6 +175,7 @@ export default function UnitDetailsRoute() {
   }
 
   function deleteUnit() {
+    closeMenu();
     Alert.alert(
       "حذف الوحدة",
       "سيتم حذف الوحدة. إذا كانت عليها عقود أو دفعات أو ملفات مرتبطة سيظهر لك تأكيد إضافي لحذفها معها.",
@@ -200,32 +208,6 @@ export default function UnitDetailsRoute() {
           <View style={styles.headerStatsRow}>
             <Text style={styles.statPill}>العقود: {relatedCount}</Text>
             <Text style={styles.statPill}>رقم السجل: {valueOrDash(id)}</Text>
-          </View>
-        </View>
-
-        <View style={styles.actionsBox}>
-          <TouchableOpacity style={[styles.roundAction, styles.deleteAction]} onPress={deleteUnit} activeOpacity={0.85}>
-            <Text style={styles.roundActionText}>🗑️</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={[styles.roundAction, styles.editAction]} onPress={openEditScreen} activeOpacity={0.85}>
-            <Text style={styles.roundActionText}>✏️</Text>
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.servicesCard}>
-          <View style={styles.servicesHeaderRow}>
-            <View style={styles.servicesTitleBlock}>
-              <Text style={styles.servicesTitle}>خدمات الوحدة</Text>
-              <Text style={styles.servicesHint}>العقود والملفات والمصروفات لهذه الوحدة فقط</Text>
-            </View>
-            <Ionicons name="grid-outline" size={18} color="#6b7280" />
-          </View>
-          <View style={styles.servicesGrid}>
-            <ServiceChip icon="documents-outline" label="العقود" onPress={() => openUnitService("/contracts")} />
-            <ServiceChip icon="create-outline" label="إنشاء عقد" onPress={() => openUnitService("/create-contract")} />
-            <ServiceChip icon="cloud-upload-outline" label="رفع عقد" onPress={() => openUnitService("/upload-contract")} />
-            <ServiceChip icon="cash-outline" label="المصروفات" onPress={() => openUnitService("/expenses")} />
-            <ServiceChip icon="images-outline" label="الوسائط" onPress={() => openUnitService("/files", "mode=media")} />
           </View>
         </View>
 
@@ -283,17 +265,31 @@ export default function UnitDetailsRoute() {
           </>
         ) : null}
       </ScrollView>
+
+      {menuOpen ? <TouchableOpacity style={styles.floatingBackdrop} activeOpacity={1} onPress={closeMenu} /> : null}
+      {menuOpen ? (
+        <View style={styles.floatingMenu}>
+          <FloatingMenuAction icon="create-outline" label="تعديل" color="#0F766E" onPress={openEditScreen} />
+          <FloatingMenuAction icon="trash-outline" label="حذف" color="#DC2626" onPress={deleteUnit} />
+          <FloatingMenuAction icon="documents-outline" label="العقود" onPress={() => openUnitService("/contracts")} />
+          <FloatingMenuAction icon="create-outline" label="إنشاء عقد" onPress={() => openUnitService("/create-contract")} />
+          <FloatingMenuAction icon="cloud-upload-outline" label="رفع عقد" onPress={() => openUnitService("/upload-contract")} />
+          <FloatingMenuAction icon="cash-outline" label="المصروفات" onPress={() => openUnitService("/expenses")} />
+          <FloatingMenuAction icon="images-outline" label="الوسائط" onPress={() => openUnitService("/files", "mode=media")} />
+        </View>
+      ) : null}
+      <TouchableOpacity style={styles.floatingButton} activeOpacity={0.88} onPress={() => setMenuOpen((value) => !value)}>
+        <Ionicons name={menuOpen ? "close" : "ellipsis-vertical"} size={24} color="#fff" />
+      </TouchableOpacity>
     </SafeAreaView>
   );
 }
 
-function ServiceChip({ icon, label, onPress }: { icon: string; label: string; onPress: () => void }) {
+function FloatingMenuAction({ icon, label, color = "#0F172A", onPress }: { icon: string; label: string; color?: string; onPress: () => void }) {
   return (
-    <TouchableOpacity style={styles.serviceChip} onPress={onPress} activeOpacity={0.86} accessibilityRole="button" accessibilityLabel={label}>
-      <View style={styles.serviceIconWrap}>
-        <Ionicons name={icon as any} size={18} color="#4b5563" />
-      </View>
-      <Text numberOfLines={1} style={styles.serviceText}>{label}</Text>
+    <TouchableOpacity style={styles.floatingMenuAction} activeOpacity={0.86} onPress={onPress} accessibilityRole="button" accessibilityLabel={label}>
+      <Ionicons name={icon as any} size={20} color={color} />
+      <Text style={[styles.floatingMenuText, { color }]}>{label}</Text>
     </TouchableOpacity>
   );
 }
@@ -310,20 +306,6 @@ const styles = StyleSheet.create({
   title: { color: "#fff", fontSize: 24, lineHeight: 32, fontWeight: "900", textAlign: "right" },
   headerStatsRow: { flexDirection: "row-reverse", gap: 8, marginTop: 12, flexWrap: "wrap" },
   statPill: { overflow: "hidden", backgroundColor: "rgba(255,255,255,0.12)", color: "#fff", borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6, fontWeight: "800", fontSize: 12 },
-  actionsBox: { alignSelf: "flex-start", flexDirection: "row", gap: 8, backgroundColor: "#fff", borderRadius: 18, padding: 5, marginBottom: 10, borderWidth: 1, borderColor: "#EDECE9" },
-  roundAction: { width: 54, height: 54, borderRadius: 27, alignItems: "center", justifyContent: "center" },
-  editAction: { backgroundColor: "#0F9B6F" },
-  deleteAction: { backgroundColor: "#dc2626" },
-  roundActionText: { fontSize: 22 },
-  servicesCard: { backgroundColor: "#fff", borderRadius: 17, padding: 10, marginBottom: 10, borderWidth: 1, borderColor: "#EDECE9" },
-  servicesHeaderRow: { flexDirection: "row-reverse", alignItems: "center", justifyContent: "space-between", marginBottom: 8, gap: 8 },
-  servicesTitleBlock: { flex: 1, alignItems: "flex-end" },
-  servicesTitle: { color: "#111827", fontSize: 15, fontWeight: "900", textAlign: "right" },
-  servicesHint: { color: "#6b7280", fontSize: 11, fontWeight: "800", textAlign: "right", marginTop: 1 },
-  servicesGrid: { flexDirection: "row-reverse", flexWrap: "wrap", gap: 7 },
-  serviceChip: { width: "48.5%", minHeight: 46, borderRadius: 14, backgroundColor: "#F7F6F4", borderWidth: 1, borderColor: "#E5E7EB", flexDirection: "row-reverse", alignItems: "center", gap: 7, paddingHorizontal: 9, paddingVertical: 7 },
-  serviceIconWrap: { width: 28, height: 28, borderRadius: 14, backgroundColor: "#ffffff", alignItems: "center", justifyContent: "center" },
-  serviceText: { flex: 1, color: "#111827", fontSize: 12, fontWeight: "900", textAlign: "right" },
   loadingBox: { backgroundColor: "#fff", borderRadius: 20, padding: 18, alignItems: "center", gap: 10 },
   loadingText: { color: "#6b7280", fontWeight: "800" },
   errorBox: { backgroundColor: "#fff1f2", borderRadius: 20, padding: 16, borderWidth: 1, borderColor: "#fecdd3" },
@@ -345,4 +327,9 @@ const styles = StyleSheet.create({
   relatedSubtitle: { marginTop: 5, color: "#4b5563", fontSize: 12, fontWeight: "700", textAlign: "right" },
   badge: { overflow: "hidden", backgroundColor: "#dcfce7", color: "#166534", borderRadius: 999, paddingHorizontal: 9, paddingVertical: 4, fontSize: 11, fontWeight: "900" },
   emptyText: { color: "#6b7280", fontWeight: "800", textAlign: "center", padding: 14 },
+  floatingButton: { position: "absolute", left: 18, top: 14, width: 56, height: 56, borderRadius: 28, backgroundColor: "#0F766E", alignItems: "center", justifyContent: "center", shadowColor: "#0F172A", shadowOpacity: 0.24, shadowRadius: 16, shadowOffset: { width: 0, height: 10 }, elevation: 10, zIndex: 60 },
+  floatingBackdrop: { position: "absolute", left: 0, right: 0, top: 0, bottom: 0, backgroundColor: "transparent", zIndex: 40 },
+  floatingMenu: { position: "absolute", left: 18, top: 78, width: 210, borderRadius: 20, backgroundColor: "#fff", borderWidth: 1, borderColor: "#E5E7EB", paddingVertical: 6, shadowColor: "#0F172A", shadowOpacity: 0.18, shadowRadius: 18, shadowOffset: { width: 0, height: 10 }, elevation: 12, zIndex: 70 },
+  floatingMenuAction: { minHeight: 42, flexDirection: "row-reverse", alignItems: "center", justifyContent: "flex-start", gap: 10, paddingHorizontal: 14 },
+  floatingMenuText: { fontWeight: "900", fontSize: 13, textAlign: "right" },
 });
