@@ -134,15 +134,18 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-function CollapsibleSection({ title, children, defaultOpen = false }: { title: string; children: React.ReactNode; defaultOpen?: boolean }) {
+function CollapsibleSection({ title, icon, subtitle, children, defaultOpen = false }: { title: string; icon: keyof typeof MaterialCommunityIcons.glyphMap; subtitle?: string; children: React.ReactNode; defaultOpen?: boolean }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
-    <View style={styles.sectionCard}>
+    <View style={styles.sectionCardCompact}>
       <TouchableOpacity style={styles.collapsibleHeader} activeOpacity={0.84} onPress={() => setOpen((value) => !value)}>
-        <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={20} color="#0F766E" />
+        <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={21} color="#0B3B3C" />
         <View style={styles.collapsibleTitleBox}>
-          <Text style={styles.sectionTitle}>{title}</Text>
-          <Text style={styles.collapsibleHint}>{open ? 'اضغط للإغلاق' : 'اضغط للفتح'}</Text>
+          <Text style={styles.sectionTitleCompact}>{title}</Text>
+          {subtitle ? <Text style={styles.collapsibleHint}>{subtitle}</Text> : null}
+        </View>
+        <View style={styles.sectionIconBox}>
+          <MaterialCommunityIcons name={icon} size={24} color="#0F766E" />
         </View>
       </TouchableOpacity>
       {open ? <View style={styles.collapsibleBody}>{children}</View> : null}
@@ -157,6 +160,25 @@ function Row({ label, value }: { label: string; value: unknown }) {
       <Text style={styles.infoValue}>{display(value)}</Text>
       <Text style={styles.infoLabel}>{label}</Text>
     </View>
+  );
+}
+
+function StatCard({ icon, value, label }: { icon: keyof typeof MaterialCommunityIcons.glyphMap; value: unknown; label: string }) {
+  return (
+    <View style={styles.statCard}>
+      <View style={styles.statIconBox}><MaterialCommunityIcons name={icon} size={24} color="#0F766E" /></View>
+      <Text style={styles.statValue}>{display(value)}</Text>
+      <Text style={styles.statLabel}>{label}</Text>
+    </View>
+  );
+}
+
+function ServiceButton({ icon, label, onPress, full = false }: { icon: keyof typeof MaterialCommunityIcons.glyphMap; label: string; onPress: () => void; full?: boolean }) {
+  return (
+    <TouchableOpacity style={[styles.serviceButton, full && styles.serviceButtonFull]} activeOpacity={0.86} onPress={onPress}>
+      <MaterialCommunityIcons name={icon} size={27} color="#0F766E" />
+      <Text style={styles.serviceText}>{label}</Text>
+    </TouchableOpacity>
   );
 }
 
@@ -275,20 +297,25 @@ export default function PropertyDetailScreen() {
     <SafeAreaView style={styles.safe} edges={['top']}>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={false} onRefresh={reload} tintColor="#0F766E" />}>
         <View style={styles.heroCard}>
+          <View style={styles.heroGlow} />
+          <View style={styles.heroMenuDot}><Ionicons name="ellipsis-vertical" size={19} color="#E0F2F1" /></View>
           <View style={styles.heroTop}>
             <View style={styles.heroIcon}>
               <Text style={styles.heroEmoji}>{data.property_type === 'villa' ? '🏡' : data.property_type === 'apartment' ? '🏠' : data.property_type === 'land' ? '🧭' : '🏢'}</Text>
             </View>
             <View style={styles.heroTextBox}>
               <Text style={styles.heroTitle}>{data.name || `عقار #${propertyId}`}</Text>
-              <Text style={styles.heroSubtitle}>{[data.district, data.city].filter(Boolean).join('، ') || 'لا يوجد موقع مسجل'}</Text>
+              <View style={styles.heroLocationLine}>
+                <Ionicons name="location-outline" size={15} color="#CBD5E1" />
+                <Text style={styles.heroSubtitle}>{[data.district, data.city].filter(Boolean).join('، ') || 'لا يوجد موقع مسجل'}</Text>
+              </View>
               {data.owner?.name ? <Text style={styles.ownerText}>المالك: {data.owner.name}</Text> : null}
             </View>
           </View>
           <View style={styles.heroActions}>
             <TouchableOpacity style={styles.heroActionButton} activeOpacity={0.86} onPress={openEditProperty}>
               <Ionicons name="create-outline" size={19} color="#fff" />
-              <Text style={styles.heroActionText}>تعديل العقار</Text>
+              <Text style={styles.heroActionText}>تعديل</Text>
             </TouchableOpacity>
             <TouchableOpacity style={[styles.heroActionButton, styles.deleteButton]} activeOpacity={0.86} onPress={confirmDeleteProperty}>
               <Ionicons name="trash-outline" size={19} color="#991B1B" />
@@ -299,47 +326,18 @@ export default function PropertyDetailScreen() {
 
         {!isApartmentProperty ? (
           <View style={styles.statsRow}>
-            <View style={styles.statCard}><Text style={styles.statValue}>{units.length.toLocaleString('ar-SA')}</Text><Text style={styles.statLabel}>وحدة</Text></View>
-            <View style={styles.statCard}><Text style={styles.statValue}>{rented.toLocaleString('ar-SA')}</Text><Text style={styles.statLabel}>مؤجرة</Text></View>
-            <View style={styles.statCard}><Text style={styles.statValue}>{available.toLocaleString('ar-SA')}</Text><Text style={styles.statLabel}>شاغرة</Text></View>
+            <StatCard icon="door-open" value={available.toLocaleString('ar-SA')} label="شاغرة" />
+            <StatCard icon="key-variant" value={rented.toLocaleString('ar-SA')} label="مؤجرة" />
+            <StatCard icon="office-building" value={units.length.toLocaleString('ar-SA')} label="وحدة" />
           </View>
         ) : null}
-
-        <Section title="خدمات العقار">
-          <View style={styles.servicesGrid}>
-            {!isApartmentProperty ? (
-              <TouchableOpacity style={styles.serviceButton} onPress={openAddUnit}>
-                <Ionicons name="add-circle-outline" size={23} color="#0F766E" />
-                <Text style={styles.serviceText}>إضافة وحدة</Text>
-              </TouchableOpacity>
-            ) : null}
-            <TouchableOpacity style={styles.serviceButton} onPress={() => openPropertyService('/expenses')}>
-              <MaterialCommunityIcons name="cash-minus" size={23} color="#0F766E" />
-              <Text style={styles.serviceText}>المصروفات</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.serviceButton} onPress={() => openPropertyService('/contracts')}>
-              <MaterialCommunityIcons name="file-document-outline" size={23} color="#0F766E" />
-              <Text style={styles.serviceText}>العقود</Text>
-            </TouchableOpacity>
-            {canCreateContract ? (
-              <TouchableOpacity style={styles.serviceButton} onPress={openCreateContract}>
-                <MaterialCommunityIcons name="file-sign" size={23} color="#0F766E" />
-                <Text style={styles.serviceText}>إنشاء / رفع عقد</Text>
-              </TouchableOpacity>
-            ) : null}
-            <TouchableOpacity style={styles.serviceButton} onPress={openRepository}>
-              <Ionicons name="images-outline" size={23} color="#0F766E" />
-              <Text style={styles.serviceText}>الملفات والوسائط</Text>
-            </TouchableOpacity>
-          </View>
-        </Section>
 
         <View style={styles.financeRow}>
           <View style={styles.financeCard}><Text style={styles.financeValue}>{money(totalRent)}</Text><Text style={styles.financeLabel}>إجمالي الإيجارات</Text></View>
           <View style={styles.financeCard}><Text style={styles.financeValue}>{money(totalExpenses)}</Text><Text style={styles.financeLabel}>المصروفات</Text></View>
         </View>
 
-        <CollapsibleSection title="تفاصيل العقار">
+        <CollapsibleSection title="تفاصيل العقار" icon="office-building-outline" subtitle="معلومات أساسية عن العقار وموقعه وحدوده">
           <Row label="النوع" value={typeMap[String(data.property_type || '')] || data.property_type} />
           <Row label="الاستخدام" value={usageMap[String(data.usage_type || '')] || data.usage_type} />
           <Row label="الإدارة" value={mgmtMap[String(data.management_type || '')] || data.management_type} />
@@ -353,7 +351,7 @@ export default function PropertyDetailScreen() {
           <Row label="ملاحظات" value={data.notes} />
         </CollapsibleSection>
 
-        <CollapsibleSection title="بيانات الوثيقة والصك">
+        <CollapsibleSection title="بيانات الوثيقة والصك" icon="file-document-outline" subtitle="الوثائق الرسمية وتفاصيل الصك">
           <Row label="تاريخ الوثيقة" value={data.document_date_hijri} />
           <Row label="التاريخ الميلادي" value={data.document_date_gregorian} />
           <Row label="الحالة" value={data.document_status} />
@@ -383,7 +381,7 @@ export default function PropertyDetailScreen() {
         ) : null}
 
         {!isApartmentProperty && units.length > 0 ? (
-          <CollapsibleSection title="الوحدات">
+          <CollapsibleSection title="الوحدات" icon="home-city-outline" subtitle="تفاصيل الوحدات المرتبطة بالعقار">
             {units.map((unit) => {
               const hasContract = unitContractsCount(unit) > 0;
               return (
@@ -402,6 +400,16 @@ export default function PropertyDetailScreen() {
             })}
           </CollapsibleSection>
         ) : null}
+
+        <Section title="خدمات العقار">
+          <View style={styles.servicesGrid}>
+            {!isApartmentProperty ? <ServiceButton icon="plus-circle-outline" label="إضافة وحدة" onPress={openAddUnit} /> : null}
+            <ServiceButton icon="file-document-outline" label="العقود" onPress={() => openPropertyService('/contracts')} />
+            <ServiceButton icon="cash-minus" label="المصروفات" onPress={() => openPropertyService('/expenses')} />
+            {canCreateContract ? <ServiceButton icon="file-sign" label="إنشاء / رفع عقد" onPress={openCreateContract} /> : null}
+            <ServiceButton icon="image-multiple-outline" label="الملفات والوسائط" onPress={openRepository} full />
+          </View>
+        </Section>
         <View style={{ height: 40 }} />
       </ScrollView>
     </SafeAreaView>
@@ -409,8 +417,8 @@ export default function PropertyDetailScreen() {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#F7F6F4' },
-  content: { padding: 14, paddingBottom: 44 },
+  safe: { flex: 1, backgroundColor: '#F7F8F6' },
+  content: { padding: 13, paddingBottom: 44 },
   loadingBox: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40 },
   loadingText: { marginTop: 8, color: '#64748B', fontWeight: '800' },
   errorBox: { margin: 16, backgroundColor: '#FEE2E2', borderRadius: 20, padding: 18, alignItems: 'center' },
@@ -418,35 +426,43 @@ const styles = StyleSheet.create({
   errorText: { color: '#7F1D1D', marginTop: 8, textAlign: 'center' },
   retryButton: { marginTop: 12, backgroundColor: '#991B1B', borderRadius: 14, paddingHorizontal: 16, paddingVertical: 10 },
   retryText: { color: '#fff', fontWeight: '900' },
-  heroCard: { backgroundColor: '#111827', borderRadius: 28, padding: 16, marginBottom: 12 },
-  heroTop: { flexDirection: 'row-reverse', alignItems: 'center', gap: 12 },
-  heroIcon: { width: 62, height: 62, borderRadius: 23, backgroundColor: '#ECFDF5', alignItems: 'center', justifyContent: 'center' },
-  heroEmoji: { fontSize: 31 },
-  heroTextBox: { flex: 1, alignItems: 'flex-end' },
-  heroTitle: { color: '#fff', fontSize: 23, fontWeight: '900', textAlign: 'right' },
-  heroSubtitle: { color: '#CBD5E1', fontWeight: '800', marginTop: 5, textAlign: 'right' },
-  ownerText: { color: '#5EEAD4', fontWeight: '900', marginTop: 5, textAlign: 'right' },
-  heroActions: { flexDirection: 'row-reverse', gap: 8, marginTop: 14 },
-  heroActionButton: { flex: 1, minHeight: 45, borderRadius: 16, backgroundColor: '#0F766E', alignItems: 'center', justifyContent: 'center', flexDirection: 'row-reverse', gap: 6 },
-  heroActionText: { color: '#fff', fontWeight: '900', fontSize: 12 },
+  heroCard: { backgroundColor: '#0B1220', borderRadius: 30, padding: 16, marginBottom: 12, overflow: 'hidden', borderWidth: 1, borderColor: '#132237' },
+  heroGlow: { position: 'absolute', width: 240, height: 240, borderRadius: 120, backgroundColor: '#0F766E', opacity: 0.22, right: -72, top: -90 },
+  heroMenuDot: { position: 'absolute', left: 16, top: 16, width: 36, height: 36, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.22)', alignItems: 'center', justifyContent: 'center' },
+  heroTop: { flexDirection: 'row-reverse', alignItems: 'center', gap: 13, paddingTop: 9 },
+  heroIcon: { width: 78, height: 78, borderRadius: 25, backgroundColor: '#ECFDF5', alignItems: 'center', justifyContent: 'center' },
+  heroEmoji: { fontSize: 39 },
+  heroTextBox: { flex: 1, alignItems: 'flex-end', paddingLeft: 24 },
+  heroTitle: { color: '#fff', fontSize: 23, fontWeight: '900', textAlign: 'right', lineHeight: 34 },
+  heroLocationLine: { flexDirection: 'row-reverse', alignItems: 'center', gap: 5, marginTop: 6 },
+  heroSubtitle: { color: '#CBD5E1', fontWeight: '800', textAlign: 'right' },
+  ownerText: { color: '#5EEAD4', fontWeight: '900', marginTop: 8, textAlign: 'right' },
+  heroActions: { flexDirection: 'row-reverse', gap: 10, marginTop: 17 },
+  heroActionButton: { flex: 1, minHeight: 50, borderRadius: 17, backgroundColor: '#0F766E', alignItems: 'center', justifyContent: 'center', flexDirection: 'row-reverse', gap: 7 },
+  heroActionText: { color: '#fff', fontWeight: '900', fontSize: 14 },
   deleteButton: { backgroundColor: '#FEF2F2', borderWidth: 1, borderColor: '#FECACA' },
   deleteButtonText: { color: '#991B1B' },
   statsRow: { flexDirection: 'row-reverse', gap: 8, marginBottom: 12 },
-  statCard: { flex: 1, backgroundColor: '#fff', borderRadius: 20, padding: 14, alignItems: 'center', borderWidth: 1, borderColor: '#ECEFF3' },
-  statValue: { color: '#111827', fontSize: 20, fontWeight: '900' },
-  statLabel: { color: '#64748B', fontWeight: '800', marginTop: 4 },
-  sectionCard: { backgroundColor: '#fff', borderRadius: 22, padding: 14, marginBottom: 12, borderWidth: 1, borderColor: '#ECEFF3' },
-  sectionTitle: { color: '#111827', fontSize: 18, fontWeight: '900', textAlign: 'right', marginBottom: 8 },
-  collapsibleHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
+  statCard: { flex: 1, backgroundColor: '#fff', borderRadius: 20, paddingVertical: 12, paddingHorizontal: 8, alignItems: 'center', borderWidth: 1, borderColor: '#E8EEF0', shadowColor: '#0F172A', shadowOpacity: 0.04, shadowRadius: 12, shadowOffset: { width: 0, height: 5 }, elevation: 1 },
+  statIconBox: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#EEF7F5', alignItems: 'center', justifyContent: 'center', marginBottom: 6 },
+  statValue: { color: '#0F172A', fontSize: 22, fontWeight: '900' },
+  statLabel: { color: '#64748B', fontWeight: '800', marginTop: 2 },
+  sectionCard: { backgroundColor: '#fff', borderRadius: 22, padding: 14, marginBottom: 12, borderWidth: 1, borderColor: '#E8EEF0', shadowColor: '#0F172A', shadowOpacity: 0.035, shadowRadius: 13, shadowOffset: { width: 0, height: 6 }, elevation: 1 },
+  sectionCardCompact: { backgroundColor: '#fff', borderRadius: 21, padding: 12, marginBottom: 11, borderWidth: 1, borderColor: '#E8EEF0', shadowColor: '#0F172A', shadowOpacity: 0.035, shadowRadius: 13, shadowOffset: { width: 0, height: 6 }, elevation: 1 },
+  sectionTitle: { color: '#111827', fontSize: 20, fontWeight: '900', textAlign: 'right', marginBottom: 12 },
+  sectionTitleCompact: { color: '#111827', fontSize: 19, fontWeight: '900', textAlign: 'right' },
+  collapsibleHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, minHeight: 62 },
   collapsibleTitleBox: { flex: 1, alignItems: 'flex-end' },
-  collapsibleHint: { color: '#94A3B8', fontWeight: '800', fontSize: 11, marginTop: -4, textAlign: 'right' },
-  collapsibleBody: { marginTop: 8 },
-  servicesGrid: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 8 },
-  serviceButton: { width: '48%', minHeight: 76, borderRadius: 18, backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#E2E8F0', alignItems: 'center', justifyContent: 'center', padding: 8 },
-  serviceText: { color: '#111827', fontWeight: '900', textAlign: 'center', marginTop: 5, fontSize: 12 },
+  collapsibleHint: { color: '#6B7280', fontWeight: '800', fontSize: 12, marginTop: 5, textAlign: 'right' },
+  collapsibleBody: { marginTop: 8, borderTopWidth: 1, borderTopColor: '#F1F5F9', paddingTop: 6 },
+  sectionIconBox: { width: 54, height: 54, borderRadius: 18, backgroundColor: '#EEF7F5', alignItems: 'center', justifyContent: 'center' },
+  servicesGrid: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 9 },
+  serviceButton: { width: '48.5%', minHeight: 72, borderRadius: 18, backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#DDE5EA', alignItems: 'center', justifyContent: 'center', padding: 8, flexDirection: 'row-reverse', gap: 9 },
+  serviceButtonFull: { width: '100%' },
+  serviceText: { color: '#111827', fontWeight: '900', textAlign: 'center', fontSize: 13 },
   financeRow: { flexDirection: 'row-reverse', gap: 8, marginBottom: 12 },
-  financeCard: { flex: 1, backgroundColor: '#fff', borderRadius: 20, padding: 14, alignItems: 'center', borderWidth: 1, borderColor: '#ECEFF3' },
-  financeValue: { color: '#0F766E', fontWeight: '900', fontSize: 17 },
+  financeCard: { flex: 1, backgroundColor: '#fff', borderRadius: 20, padding: 13, alignItems: 'center', borderWidth: 1, borderColor: '#E8EEF0' },
+  financeValue: { color: '#0F766E', fontWeight: '900', fontSize: 16 },
   financeLabel: { color: '#64748B', fontWeight: '800', marginTop: 5, textAlign: 'center' },
   infoRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
   infoLabel: { color: '#64748B', fontWeight: '900', textAlign: 'right', minWidth: 110 },
