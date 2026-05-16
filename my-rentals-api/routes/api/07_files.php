@@ -17,12 +17,82 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /*
 |--------------------------------------------------------------------------
 | Property Files & Unit Media
 |--------------------------------------------------------------------------
 */
+
+if (!function_exists('mr_file_storage_path')) {
+    function mr_file_storage_path(?string $path): ?string
+    {
+        if (!$path) {
+            return null;
+        }
+
+        $path = trim(str_replace('\\\\', '/', $path));
+        $path = preg_replace('#^https?://[^/]+/#i', '', $path) ?: $path;
+        $path = preg_replace('#^/?storage/#', '', $path) ?: $path;
+        $path = preg_replace('#^/?public/#', '', $path) ?: $path;
+        $path = ltrim($path, '/');
+
+        try {
+            $decoded = rawurldecode($path);
+            if ($decoded !== '') {
+                $path = $decoded;
+            }
+        } catch (Throwable $e) {
+            // Keep original path when decoding fails.
+        }
+
+        return $path ?: null;
+    }
+}
+
+if (!function_exists('mr_file_download_url')) {
+    function mr_file_download_url(string $type, int $id): string
+    {
+        return url('/api/file-download/' . $type . '/' . $id);
+    }
+}
+
+if (!function_exists('mr_file_response')) {
+    function mr_file_response(?string $path, ?string $downloadName = null, ?string $mimeType = null): StreamedResponse|\Illuminate\Http\JsonResponse
+    {
+        $normalizedPath = mr_file_storage_path($path);
+        if (!$normalizedPath) {
+            return response()->json(['message' => 'لا يوجد مسار ملف محفوظ.'], 404);
+        }
+
+        foreach (['public', 'local'] as $disk) {
+            if (Storage::disk($disk)->exists($normalizedPath)) {
+                $name = $downloadName ?: basename($normalizedPath);
+                $headers = [];
+                if ($mimeType) {
+                    $headers['Content-Type'] = $mimeType;
+                }
+                return Storage::disk($disk)->download($normalizedPath, $name, $headers);
+            }
+        }
+
+        return response()->json(['message' => 'الملف غير موجود على التخزين.'], 404);
+    }
+}
+
+Route::get('/file-download/contract/{file}', function (\App\Models\ContractFile $file) {
+    return mr_file_response($file->file_path, $file->file_name ?: 'contract.pdf', $file->mime_type ?: $file->file_type ?: 'application/pdf');
+});
+
+Route::get('/file-download/property/{file}', function (\App\Models\PropertyFile $file) {
+    return mr_file_response($file->file_path, $file->file_name ?: 'property-file', $file->file_type ?: null);
+});
+
+Route::get('/file-download/unit-media/{media}', function (\App\Models\UnitMedia $media) {
+    return mr_file_response($media->file_path, $media->file_name ?: 'unit-media', $media->file_type ?: null);
+});
 
 Route::get('/contract-files', function (Request $request) {
     $query = \App\Models\ContractFile::with(['contract.tenant', 'contract.unit.property.owner', 'tenant']);
@@ -52,7 +122,7 @@ Route::get('/contract-files', function (Request $request) {
     return $query->orderBy('id', 'desc')
         ->get()
         ->map(function ($file) {
-            $file->file_url = $file->file_path ? url('/storage/' . $file->file_path) : null;
+            $file->file_url = $file->file_path ? mr_file_download_url('contract', (int) $file->id) : null;
             $file->download_url = $file->file_url;
             return $file;
         });
@@ -74,7 +144,7 @@ Route::get('/property-files', function (Request $request) {
     return $query->orderBy('id', 'desc')
         ->get()
         ->map(function ($file) {
-            $file->file_url = $file->file_path ? url('/storage/' . $file->file_path) : null;
+            $file->file_url = $file->file_path ? mr_file_download_url('property', (int) $file->id) : null;
             return $file;
         });
 });
@@ -142,7 +212,7 @@ Route::get('/unit-media', function (Request $request) {
     return $query->orderBy('id', 'desc')
         ->get()
         ->map(function ($media) {
-            $media->file_url = $media->file_path ? url('/storage/' . $media->file_path) : null;
+            $media->file_url = $media->file_path ? mr_file_download_url('unit-media', (int) $media->id) : null;
             return $media;
         });
 });
