@@ -117,12 +117,12 @@ function normalizeContractsResponse(result: any): ContractItem[] {
   return [];
 }
 
-function StatTile({ icon, label, value }: { icon: keyof typeof Ionicons.glyphMap; label: string; value: string | number }) {
+function StatTile({ icon, label, value, danger = false }: { icon: keyof typeof Ionicons.glyphMap; label: string; value: string | number; danger?: boolean }) {
   return (
-    <View style={styles.statTile}>
-      <View style={styles.statIconBox}><Ionicons name={icon} size={22} color="#0F766E" /></View>
-      <Text style={styles.statTileValue}>{valueOrDash(value)}</Text>
-      <Text style={styles.statTileLabel}>{label}</Text>
+    <View style={[styles.statTile, danger ? styles.statTileDanger : null]}>
+      <View style={[styles.statIconBox, danger ? styles.statIconBoxDanger : null]}><Ionicons name={icon} size={22} color={danger ? "#DC2626" : "#0F766E"} /></View>
+      <Text style={[styles.statTileValue, danger ? styles.statTileValueDanger : null]}>{valueOrDash(value)}</Text>
+      <Text style={[styles.statTileLabel, danger ? styles.statTileLabelDanger : null]}>{label}</Text>
     </View>
   );
 }
@@ -313,7 +313,7 @@ export default function UnitDetailsRoute() {
         {loading ? <View style={styles.loadingBox}><ActivityIndicator /><Text style={styles.loadingText}>جاري تحميل التفاصيل...</Text></View> : null}
         {error ? <View style={styles.errorBox}><Text style={styles.errorTitle}>تعذر تحميل تفاصيل الوحدة</Text><Text style={styles.errorText}>{error}</Text><TouchableOpacity style={styles.retryButton} onPress={() => load(false)}><Text style={styles.retryText}>إعادة المحاولة</Text></TouchableOpacity></View> : null}
 
-        {!loading && !error && activeTab === "stats" ? <View style={styles.sectionCard}><View style={styles.sectionHeader}><Text style={styles.sectionTitle}>إحصائيات الوحدة</Text><Text style={styles.sectionSubtitle}>ملخص سريع عن الوحدة وارتباطاتها</Text></View><View style={styles.statsGrid}><StatTile icon="documents-outline" label="العقود" value={contractsCount} /><StatTile icon="receipt-outline" label="عدد الدفعات" value={paymentStats.total} /><StatTile icon="alert-circle-outline" label="دفعات متأخرة" value={paymentStats.overdue} /><StatTile icon="cash-outline" label="الإيجار" value={unitRent} /><StatTile icon="layers-outline" label="الدور" value={unitFloor} /><StatTile icon="checkmark-circle-outline" label="الحالة" value={unitStatus} /><StatTile icon="link-outline" label="الارتباطات" value={relatedCount} /><StatTile icon="list-outline" label="حقول البيانات" value={primaryFields.length} /></View></View> : null}
+        {!loading && !error && activeTab === "stats" ? <View style={styles.sectionCard}><View style={styles.sectionHeader}><Text style={styles.sectionTitle}>إحصائيات الوحدة</Text><Text style={styles.sectionSubtitle}>ملخص سريع عن الوحدة وارتباطاتها</Text></View><View style={styles.statsGrid}><StatTile icon="documents-outline" label="العقود" value={contractsCount} /><StatTile icon="receipt-outline" label="عدد الدفعات" value={paymentStats.total} /><StatTile icon="alert-circle-outline" label="دفعات متأخرة" value={paymentStats.overdue} danger={paymentStats.overdue > 0} /><StatTile icon="cash-outline" label="الإيجار" value={unitRent} /><StatTile icon="layers-outline" label="الدور" value={unitFloor} /><StatTile icon="checkmark-circle-outline" label="الحالة" value={unitStatus} /><StatTile icon="link-outline" label="الارتباطات" value={relatedCount} /><StatTile icon="list-outline" label="حقول البيانات" value={primaryFields.length} /></View></View> : null}
 
         {!loading && !error && activeTab === "details" ? <>{<View style={styles.sectionCard}><View style={styles.sectionHeader}><Text style={styles.sectionTitle}>البيانات الأساسية</Text><Text style={styles.sectionSubtitle}>{primaryFields.length} حقل</Text></View>{primaryFields.map((field) => <View key={field.key} style={styles.fieldRow}><Text style={styles.fieldValue}>{valueOrDash(field.value)}</Text><Text style={styles.fieldLabel}>{field.label}</Text></View>)}</View>}{otherSections.map((section) => <View key={section.key} style={styles.sectionCard}><View style={styles.sectionHeader}><Text style={styles.sectionTitle}>{section.title}</Text><Text style={styles.sectionSubtitle}>{section.count} عنصر</Text></View>{section.items.length ? section.items.map((item) => <TouchableOpacity key={`${item.entity}-${item.id}`} style={styles.relatedCard} activeOpacity={0.86} onPress={() => router.push(relationRoute(item) as never)}><View style={styles.relatedTopRow}>{item.badge ? <Text style={styles.badge}>{item.badge}</Text> : <View />}<View style={styles.relatedTitleWrap}><Text numberOfLines={1} style={styles.relatedTitle}>{item.title}</Text>{item.subtitle ? <Text numberOfLines={2} style={styles.relatedSubtitle}>{item.subtitle}</Text> : null}</View></View></TouchableOpacity>) : <Text style={styles.emptyText}>لا توجد عناصر مرتبطة.</Text>}</View>)}</> : null}
 
@@ -362,9 +362,13 @@ const styles = StyleSheet.create({
   sectionSubtitle: { color: "#9ca3af", fontSize: 11, fontWeight: "800", textAlign: "right", marginTop: 2 },
   statsGrid: { flexDirection: "row-reverse", flexWrap: "wrap", gap: 8 },
   statTile: { width: "31.8%", minHeight: 96, backgroundColor: "#F8FAFC", borderWidth: 1, borderColor: "#EEF2F7", borderRadius: 18, alignItems: "center", justifyContent: "center", padding: 8 },
+  statTileDanger: { backgroundColor: "#FEF2F2", borderColor: "#FECACA" },
   statIconBox: { width: 40, height: 40, borderRadius: 15, backgroundColor: "#ECFDF5", alignItems: "center", justifyContent: "center", marginBottom: 6 },
+  statIconBoxDanger: { backgroundColor: "#FEE2E2" },
   statTileValue: { color: "#111827", fontWeight: "900", fontSize: 15, textAlign: "center" },
+  statTileValueDanger: { color: "#DC2626" },
   statTileLabel: { color: "#64748B", fontWeight: "800", fontSize: 11, textAlign: "center", marginTop: 3 },
+  statTileLabelDanger: { color: "#991B1B" },
   fieldRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: "#f3f4f6" },
   fieldLabel: { color: "#6b7280", fontSize: 13, fontWeight: "800", textAlign: "right", width: 116 },
   fieldValue: { flex: 1, color: "#111827", fontSize: 14, fontWeight: "800", textAlign: "right" },
