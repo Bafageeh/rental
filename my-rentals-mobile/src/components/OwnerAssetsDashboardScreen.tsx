@@ -1,6 +1,6 @@
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { ActivityIndicator, Alert, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { apiGetScoped } from "../lib/api";
@@ -19,7 +19,6 @@ const tabs: Array<{ key: TabKey; label: string }> = [
   { key: "contracts", label: "العقود" },
 ];
 const propertyTypeLabels: Record<string, string> = { building: "عمارة", apartment: "شقة", villa: "فيلا", land: "أرض", commercial: "تجاري", mixed: "مختلط" };
-const statusLabels: Record<string, string> = { active: "نشط", ended: "منتهي", cancelled: "ملغى", available: "متاح", rented: "مؤجر", maintenance: "صيانة" };
 
 function asNumber(value: unknown) { const n = Number(value ?? 0); return Number.isFinite(n) ? n : 0; }
 function count(value: unknown) { return Math.round(asNumber(value)).toLocaleString("ar-SA"); }
@@ -80,7 +79,6 @@ export default function OwnerAssetsDashboardScreen({ id }: { id: string | number
   const units = data?.units || [];
   const contracts = data?.contracts || [];
   const ownerReturnTo = encodeURIComponent(`/owner/${ownerId}`);
-  const directOwnerUnits = useMemo(() => units.filter((unit) => !unit.property_id || String(unit.unit_scope || "") === "owner"), [units]);
 
   function openManualProperty() {
     router.push(`/property-form?owner_id=${encodeURIComponent(ownerId)}&owner_name=${ownerNameForUrl}&management_type=owned&owner_private=1&return_to=${ownerReturnTo}` as never);
@@ -121,9 +119,10 @@ export default function OwnerAssetsDashboardScreen({ id }: { id: string | number
         {!loading && !error && activeTab === "summary" ? <View><View style={styles.sectionHeader}><Text style={styles.sectionTitle}>ملخص المالك</Text><Text style={styles.sectionSubtitle}>إحصائيات خاصة بأملاك هذا المالك فقط</Text></View><View style={styles.statsGrid}><StatCard icon="office-building" label="العقارات" value={count(summary.properties_count ?? properties.length)} /><StatCard icon="home-city-outline" label="الوحدات" value={count(summary.units_count ?? units.length)} /><StatCard icon="file-document-check-outline" label="العقود النشطة" value={count(summary.active_contracts_count)} /><SummaryCard icon="cash-check" label="المحصل" value={money(summary.paid_income)} /><SummaryCard icon="cash-clock" label="المستحق" value={money(summary.due_income)} /><SummaryCard icon="chart-line" label="الصافي" value={money(summary.net_income)} /></View></View> : null}
 
         {!loading && !error && activeTab === "properties" ? <View>
-          <View style={styles.addOnlyRow}>
-            <TouchableOpacity style={styles.addIconButton} onPress={openAddPrivateProperty} activeOpacity={0.88} accessibilityRole="button" accessibilityLabel="إضافة عقار للمالك"><Ionicons name="add" size={30} color="#fff" /></TouchableOpacity>
-          </View>
+          <TouchableOpacity style={styles.addPropertyButton} onPress={openAddPrivateProperty} activeOpacity={0.88} accessibilityRole="button" accessibilityLabel="إضافة عقار للمالك">
+            <Ionicons name="add" size={22} color="#fff" />
+            <Text style={styles.addPropertyButtonText}>إضافة عقار</Text>
+          </TouchableOpacity>
 
           {properties.map((property) => {
             const unitCount = Number(property.units_count ?? property.units?.length ?? 0);
@@ -184,8 +183,8 @@ const styles = StyleSheet.create({
   sectionHeader: { alignItems: "flex-end", marginBottom: 10 },
   sectionTitle: { color: "#111827", fontSize: 23, fontWeight: "900", textAlign: "right" },
   sectionSubtitle: { color: "#7A766F", fontWeight: "800", textAlign: "right", marginTop: 4, lineHeight: 20 },
-  addOnlyRow: { minHeight: 58, justifyContent: "center", alignItems: "flex-start", marginBottom: 8 },
-  addIconButton: { width: 58, height: 58, borderRadius: 29, backgroundColor: "#0F766E", alignItems: "center", justifyContent: "center", shadowColor: "#0F172A", shadowOpacity: 0.16, shadowRadius: 12, shadowOffset: { width: 0, height: 7 }, elevation: 4 },
+  addPropertyButton: { minHeight: 56, width: "100%", borderRadius: 18, backgroundColor: "#0F766E", alignItems: "center", justifyContent: "center", flexDirection: "row-reverse", gap: 8, marginBottom: 12, shadowColor: "#0F172A", shadowOpacity: 0.12, shadowRadius: 10, shadowOffset: { width: 0, height: 6 }, elevation: 3 },
+  addPropertyButtonText: { color: "#fff", fontWeight: "900", fontSize: 16 },
   statsGrid: { flexDirection: "row-reverse", flexWrap: "wrap", gap: 8 },
   statCard: { flex: 1, minWidth: "30%", backgroundColor: "#fff", borderRadius: 18, padding: 12, borderWidth: 1, borderColor: "#E7E9EA", minHeight: 94, alignItems: "center", justifyContent: "center", shadowColor: "#0F172A", shadowOpacity: 0.035, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 1 },
   statIconBox: { width: 43, height: 43, borderRadius: 16, backgroundColor: "#ECFDF5", alignItems: "center", justifyContent: "center", marginBottom: 7 },
