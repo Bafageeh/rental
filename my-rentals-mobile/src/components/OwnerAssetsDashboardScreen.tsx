@@ -21,85 +21,36 @@ const tabs: Array<{ key: TabKey; label: string }> = [
 const propertyTypeLabels: Record<string, string> = { building: "عمارة", apartment: "شقة", villa: "فيلا", land: "أرض", commercial: "تجاري", mixed: "مختلط" };
 const statusLabels: Record<string, string> = { active: "نشط", ended: "منتهي", cancelled: "ملغى", available: "متاح", rented: "مؤجر", maintenance: "صيانة" };
 
-function asNumber(value: unknown) {
-  const n = Number(value ?? 0);
-  return Number.isFinite(n) ? n : 0;
-}
-function count(value: unknown) {
-  return Math.round(asNumber(value)).toLocaleString("ar-SA");
-}
-function money(value: unknown) {
-  return `${Math.round(asNumber(value)).toLocaleString("ar-SA")} ريال`;
-}
-function valueOrDash(value: unknown) {
-  return value === null || value === undefined || String(value).trim() === "" ? "-" : String(value);
-}
-function typeText(value?: string | null) {
-  return value ? propertyTypeLabels[value] || value : "عقار";
-}
-function statusText(value?: string | null) {
-  return value ? statusLabels[value] || value : "-";
-}
-function unitName(unit: Unit) {
-  return unit.name || unit.unit_number || `وحدة #${unit.id}`;
-}
+function asNumber(value: unknown) { const n = Number(value ?? 0); return Number.isFinite(n) ? n : 0; }
+function count(value: unknown) { return Math.round(asNumber(value)).toLocaleString("ar-SA"); }
+function money(value: unknown) { return `${Math.round(asNumber(value)).toLocaleString("ar-SA")} ريال`; }
+function valueOrDash(value: unknown) { return value === null || value === undefined || String(value).trim() === "" ? "-" : String(value); }
+function typeText(value?: string | null) { return value ? propertyTypeLabels[value] || value : "عقار"; }
+function statusText(value?: string | null) { return value ? statusLabels[value] || value : "-"; }
 
 function EmptyBox({ text }: { text: string }) {
-  return (
-    <View style={styles.emptyBox}>
-      <MaterialCommunityIcons name="inbox-outline" size={26} color="#94A3B8" />
-      <Text style={styles.emptyText}>{text}</Text>
-    </View>
-  );
+  return <View style={styles.emptyBox}><MaterialCommunityIcons name="inbox-outline" size={26} color="#94A3B8" /><Text style={styles.emptyText}>{text}</Text></View>;
 }
 
 function InfoItem({ icon, label, value }: { icon: keyof typeof Ionicons.glyphMap; label: string; value: unknown }) {
-  return (
-    <View style={styles.infoItem}>
-      <View style={styles.infoIconBox}><Ionicons name={icon} size={17} color="#D9FBEF" /></View>
-      <View style={styles.infoTextBox}>
-        <Text style={styles.infoLabel}>{label}</Text>
-        <Text numberOfLines={1} style={styles.infoValue}>{valueOrDash(value)}</Text>
-      </View>
-    </View>
-  );
+  return <View style={styles.infoItem}><View style={styles.infoIconBox}><Ionicons name={icon} size={17} color="#D9FBEF" /></View><View style={styles.infoTextBox}><Text style={styles.infoLabel}>{label}</Text><Text numberOfLines={1} style={styles.infoValue}>{valueOrDash(value)}</Text></View></View>;
 }
 
 function SummaryCard({ icon, label, value }: { icon: keyof typeof MaterialCommunityIcons.glyphMap; label: string; value: string }) {
-  return (
-    <View style={styles.summaryCard}>
-      <View style={styles.summaryIconBox}><MaterialCommunityIcons name={icon} size={23} color="#0F766E" /></View>
-      <View style={styles.summaryTextBox}>
-        <Text style={styles.summaryLabel}>{label}</Text>
-        <Text style={styles.summaryValue}>{value}</Text>
-      </View>
-    </View>
-  );
+  return <View style={styles.summaryCard}><View style={styles.summaryIconBox}><MaterialCommunityIcons name={icon} size={23} color="#0F766E" /></View><View style={styles.summaryTextBox}><Text style={styles.summaryLabel}>{label}</Text><Text style={styles.summaryValue}>{value}</Text></View></View>;
 }
 
 function StatCard({ icon, label, value }: { icon: keyof typeof MaterialCommunityIcons.glyphMap; label: string; value: string }) {
-  return (
-    <View style={styles.statCard}>
-      <View style={styles.statIconBox}><MaterialCommunityIcons name={icon} size={24} color="#0F766E" /></View>
-      <Text style={styles.statValue}>{value}</Text>
-      <Text style={styles.statLabel}>{label}</Text>
-    </View>
-  );
+  return <View style={styles.statCard}><View style={styles.statIconBox}><MaterialCommunityIcons name={icon} size={24} color="#0F766E" /></View><Text style={styles.statValue}>{value}</Text><Text style={styles.statLabel}>{label}</Text></View>;
 }
 
 function PropertyMetric({ icon, label, value }: { icon: keyof typeof MaterialCommunityIcons.glyphMap; label: string; value: string }) {
-  return (
-    <View style={styles.propertyMetric}>
-      <MaterialCommunityIcons name={icon} size={19} color="#64748B" />
-      <Text style={styles.propertyMetricText}>{label}: {value}</Text>
-    </View>
-  );
+  return <View style={styles.propertyMetric}><MaterialCommunityIcons name={icon} size={19} color="#64748B" /><Text style={styles.propertyMetricText}>{label}: {value}</Text></View>;
 }
 
 export default function OwnerAssetsDashboardScreen({ id }: { id: string | number }) {
   const ownerId = String(id || "");
   const [activeTab, setActiveTab] = useState<TabKey>("properties");
-  const [openPropertyId, setOpenPropertyId] = useState<string | null>(null);
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -121,7 +72,6 @@ export default function OwnerAssetsDashboardScreen({ id }: { id: string | number
   }
 
   useEffect(() => { load(false); }, [ownerId]);
-  useEffect(() => { if (activeTab !== "properties") setOpenPropertyId(null); }, [activeTab]);
 
   const owner = data?.owner;
   const ownerName = owner?.name || "مالك بدون اسم";
@@ -132,14 +82,6 @@ export default function OwnerAssetsDashboardScreen({ id }: { id: string | number
   const contracts = data?.contracts || [];
   const ownerReturnTo = encodeURIComponent(`/owner/${ownerId}`);
   const directOwnerUnits = useMemo(() => units.filter((unit) => !unit.property_id || String(unit.unit_scope || "") === "owner"), [units]);
-  const unitsByPropertyId = useMemo(() => {
-    const map = new Map<string, Unit[]>();
-    units.filter((unit) => unit.property_id && !directOwnerUnits.some((direct) => direct.id === unit.id)).forEach((unit) => {
-      const key = String(unit.property_id);
-      map.set(key, [...(map.get(key) || []), unit]);
-    });
-    return map;
-  }, [units, directOwnerUnits]);
 
   function openManualProperty() {
     router.push(`/property-form?owner_id=${encodeURIComponent(ownerId)}&owner_name=${ownerNameForUrl}&management_type=owned&owner_private=1&return_to=${ownerReturnTo}` as never);
@@ -154,10 +96,6 @@ export default function OwnerAssetsDashboardScreen({ id }: { id: string | number
       { text: "إلغاء", style: "cancel" },
     ]);
   }
-  function toggleProperty(propertyId: number | string) {
-    const key = String(propertyId);
-    setOpenPropertyId((current) => current === key ? null : key);
-  }
 
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
@@ -166,10 +104,7 @@ export default function OwnerAssetsDashboardScreen({ id }: { id: string | number
           <View style={styles.heroDecor} />
           <View style={styles.heroTopRow}>
             <View style={styles.ownerAvatar}><Ionicons name="person-outline" size={30} color="#0F766E" /></View>
-            <View style={styles.heroTitleWrap}>
-              <Text numberOfLines={2} style={styles.ownerName}>{ownerName}</Text>
-              <Text style={styles.ownerCaption}>حساب مالك</Text>
-            </View>
+            <View style={styles.heroTitleWrap}><Text numberOfLines={2} style={styles.ownerName}>{ownerName}</Text><Text style={styles.ownerCaption}>حساب مالك</Text></View>
             <Text style={styles.typeBadge}>مالك</Text>
           </View>
           <View style={styles.infoGrid}>
@@ -179,82 +114,41 @@ export default function OwnerAssetsDashboardScreen({ id }: { id: string | number
           </View>
         </View>
 
-        <View style={styles.tabsWrap}>{tabs.map((tab) => (
-          <TouchableOpacity key={tab.key} style={[styles.tabButton, activeTab === tab.key ? styles.tabButtonActive : null]} onPress={() => setActiveTab(tab.key)} activeOpacity={0.88}>
-            <Text style={[styles.tabText, activeTab === tab.key ? styles.tabTextActive : null]}>{tab.label}</Text>
-          </TouchableOpacity>
-        ))}</View>
+        <View style={styles.tabsWrap}>{tabs.map((tab) => <TouchableOpacity key={tab.key} style={[styles.tabButton, activeTab === tab.key ? styles.tabButtonActive : null]} onPress={() => setActiveTab(tab.key)} activeOpacity={0.88}><Text style={[styles.tabText, activeTab === tab.key ? styles.tabTextActive : null]}>{tab.label}</Text></TouchableOpacity>)}</View>
 
         {loading ? <View style={styles.stateBox}><ActivityIndicator /><Text style={styles.stateText}>جاري تحميل تفاصيل الأملاك...</Text></View> : null}
         {error ? <View style={styles.errorBox}><Text style={styles.errorTitle}>تعذر تحميل تفاصيل الأملاك</Text><Text style={styles.errorText}>{error}</Text><TouchableOpacity style={styles.retryButton} onPress={() => load(false)}><Text style={styles.retryText}>إعادة المحاولة</Text></TouchableOpacity></View> : null}
 
-        {!loading && !error && activeTab === "summary" ? (
-          <View>
-            <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>ملخص المالك</Text><Text style={styles.sectionSubtitle}>إحصائيات خاصة بأملاك هذا المالك فقط</Text></View>
-            <View style={styles.statsGrid}>
-              <StatCard icon="office-building" label="العقارات" value={count(summary.properties_count ?? properties.length)} />
-              <StatCard icon="home-city-outline" label="الوحدات" value={count(summary.units_count ?? units.length)} />
-              <StatCard icon="file-document-check-outline" label="العقود النشطة" value={count(summary.active_contracts_count)} />
-              <SummaryCard icon="cash-check" label="المحصل" value={money(summary.paid_income)} />
-              <SummaryCard icon="cash-clock" label="المستحق" value={money(summary.due_income)} />
-              <SummaryCard icon="chart-line" label="الصافي" value={money(summary.net_income)} />
-            </View>
+        {!loading && !error && activeTab === "summary" ? <View><View style={styles.sectionHeader}><Text style={styles.sectionTitle}>ملخص المالك</Text><Text style={styles.sectionSubtitle}>إحصائيات خاصة بأملاك هذا المالك فقط</Text></View><View style={styles.statsGrid}><StatCard icon="office-building" label="العقارات" value={count(summary.properties_count ?? properties.length)} /><StatCard icon="home-city-outline" label="الوحدات" value={count(summary.units_count ?? units.length)} /><StatCard icon="file-document-check-outline" label="العقود النشطة" value={count(summary.active_contracts_count)} /><SummaryCard icon="cash-check" label="المحصل" value={money(summary.paid_income)} /><SummaryCard icon="cash-clock" label="المستحق" value={money(summary.due_income)} /><SummaryCard icon="chart-line" label="الصافي" value={money(summary.net_income)} /></View></View> : null}
+
+        {!loading && !error && activeTab === "properties" ? <View>
+          <View style={styles.assetsHeaderRow}>
+            <TouchableOpacity style={styles.addIconButton} onPress={openAddPrivateProperty} activeOpacity={0.88} accessibilityRole="button" accessibilityLabel="إضافة عقار للمالك"><Ionicons name="add" size={30} color="#fff" /></TouchableOpacity>
+            <View style={styles.assetsHeaderText}><Text style={styles.sectionTitle}>العقارات</Text><Text style={styles.sectionSubtitle}>اضغط على البطاقة لفتح التفاصيل.</Text></View>
           </View>
-        ) : null}
+          <View style={styles.assetSummaryStrip}><StatCard icon="home-outline" label="عقارات" value={count(properties.length)} /><StatCard icon="office-building-outline" label="إجمالي الوحدات" value={count(units.length)} /><StatCard icon="account-outline" label="مباشرة" value={count(directOwnerUnits.length)} /></View>
 
-        {!loading && !error && activeTab === "properties" ? (
-          <View>
-            <View style={styles.assetsHeaderRow}>
-              <TouchableOpacity style={styles.addIconButton} onPress={openAddPrivateProperty} activeOpacity={0.88} accessibilityRole="button" accessibilityLabel="إضافة عقار للمالك"><Ionicons name="add" size={30} color="#fff" /></TouchableOpacity>
-              <View style={styles.assetsHeaderText}><Text style={styles.sectionTitle}>العقارات والوحدات</Text><Text style={styles.sectionSubtitle}>القائمة مغلقة افتراضيًا، وافتح عقارًا واحدًا فقط في كل مرة.</Text></View>
-            </View>
-            <View style={styles.assetSummaryStrip}>
-              <StatCard icon="home-outline" label="عقارات" value={count(properties.length)} />
-              <StatCard icon="office-building-outline" label="وحدات" value={count(units.length)} />
-              <StatCard icon="account-outline" label="مباشرة" value={count(directOwnerUnits.length)} />
-            </View>
+          {properties.map((property) => {
+            const unitCount = Number(property.units_count ?? property.units?.length ?? 0);
+            return <TouchableOpacity key={property.id} style={styles.propertyCard} activeOpacity={0.9} onPress={() => router.push(`/property/${property.id}` as never)}>
+              <View style={styles.propertyHeader}>
+                <View style={styles.openHintIcon}><Ionicons name="chevron-back" size={20} color="#0F766E" /></View>
+                <View style={styles.propertyTypeIcon}><MaterialCommunityIcons name="office-building-outline" size={22} color="#0F766E" /></View>
+                <View style={styles.propertyTitleBox}><Text numberOfLines={1} style={styles.propertyTitle}>{property.name || "عقار بدون اسم"}</Text><View style={styles.locationLine}><Ionicons name="location-outline" size={13} color="#6B7280" /><Text style={styles.propertyMeta}>{[property.district, property.city].filter(Boolean).join("، ") || "لا يوجد موقع مسجل"}</Text></View><Text style={styles.tapHint}>اضغط على البطاقة لفتح التفاصيل</Text></View>
+                <Text style={styles.propertyType}>{typeText(property.property_type)}</Text>
+              </View>
+              <View style={styles.propertyMetricsRow}>
+                <PropertyMetric icon="home-outline" label="وحدات" value={count(unitCount)} />
+                <PropertyMetric icon="account-key-outline" label="مؤجرة" value={count(property.rented_units_count)} />
+                <PropertyMetric icon="file-document-outline" label="عقود" value={count(property.active_contracts_count)} />
+              </View>
+            </TouchableOpacity>;
+          })}
 
-            {properties.map((property) => {
-              const propertyUnits = property.units?.length ? property.units : unitsByPropertyId.get(String(property.id)) || [];
-              const isOpen = openPropertyId === String(property.id);
-              return (
-                <View key={property.id} style={[styles.propertyCard, isOpen ? styles.propertyCardOpen : null]}>
-                  <TouchableOpacity style={styles.propertyHeader} activeOpacity={0.9} onPress={() => toggleProperty(property.id)}>
-                    <View style={[styles.accordionIconBox, isOpen ? styles.accordionIconBoxOpen : null]}><Ionicons name={isOpen ? "chevron-up" : "chevron-down"} size={20} color={isOpen ? "#fff" : "#0F766E"} /></View>
-                    <View style={styles.propertyTypeIcon}><MaterialCommunityIcons name="office-building-outline" size={22} color="#0F766E" /></View>
-                    <View style={styles.propertyTitleBox}><Text numberOfLines={1} style={styles.propertyTitle}>{property.name || "عقار بدون اسم"}</Text><View style={styles.locationLine}><Ionicons name="location-outline" size={13} color="#6B7280" /><Text style={styles.propertyMeta}>{[property.district, property.city].filter(Boolean).join("، ") || "لا يوجد موقع مسجل"}</Text></View></View>
-                    <Text style={styles.propertyType}>{typeText(property.property_type)}</Text>
-                  </TouchableOpacity>
-                  <View style={styles.propertyMetricsRow}>
-                    <PropertyMetric icon="home-outline" label="وحدات" value={count(propertyUnits.length || property.units_count)} />
-                    <PropertyMetric icon="account-key-outline" label="مؤجرة" value={count(property.rented_units_count)} />
-                    <PropertyMetric icon="file-document-outline" label="عقود" value={count(property.active_contracts_count)} />
-                  </View>
-                  {isOpen ? (
-                    <View style={styles.unitsBox}>
-                      <TouchableOpacity style={styles.propertyDetailsButton} activeOpacity={0.86} onPress={() => router.push(`/property/${property.id}` as never)}><Ionicons name="open-outline" size={18} color="#fff" /><Text style={styles.propertyDetailsText}>فتح تفاصيل العقار</Text></TouchableOpacity>
-                      {propertyUnits.length ? propertyUnits.map((unit) => (
-                        <TouchableOpacity key={unit.id} style={styles.unitRow} activeOpacity={0.85} onPress={() => router.push(`/unit/${unit.id}` as never)}>
-                          <View style={styles.unitIconBox}><MaterialCommunityIcons name="door" size={21} color="#0F766E" /></View>
-                          <View style={styles.unitTextBox}><Text numberOfLines={1} style={styles.unitTitle}>{unitName(unit)}</Text><Text style={styles.unitMeta}>الدور: {valueOrDash(unit.floor)} | الإيجار: {money(unit.rent_amount)}</Text></View>
-                          <Text style={styles.unitStatus}>{statusText(unit.status)}</Text>
-                          <Ionicons name="chevron-back" size={18} color="#64748B" />
-                        </TouchableOpacity>
-                      )) : <EmptyBox text="لا توجد وحدات داخل هذا العقار." />}
-                    </View>
-                  ) : null}
-                </View>
-              );
-            })}
+          {!properties.length ? <EmptyBox text="لا توجد عقارات تابعة لهذا المالك." /> : null}
+        </View> : null}
 
-            {directOwnerUnits.length ? <View><Text style={styles.directTitle}>وحدات مباشرة على المالك</Text>{directOwnerUnits.map((unit) => <TouchableOpacity key={unit.id} style={styles.directUnitCard} activeOpacity={0.9} onPress={() => router.push(`/unit/${unit.id}` as never)}><Text style={styles.unitTitle}>{unitName(unit)}</Text><Text style={styles.unitMeta}>الحالة: {statusText(unit.status)} | الإيجار: {money(unit.rent_amount)}</Text></TouchableOpacity>)}</View> : null}
-            {!properties.length && !directOwnerUnits.length ? <EmptyBox text="لا توجد عقارات أو وحدات تابعة لهذا المالك." /> : null}
-          </View>
-        ) : null}
-
-        {!loading && !error && activeTab === "contracts" ? (
-          <View><View style={styles.sectionHeader}><Text style={styles.sectionTitle}>عقود المالك</Text><Text style={styles.sectionSubtitle}>العقود التابعة لعقارات ووحدات هذا المالك</Text></View>{contracts.length ? contracts.map((contract) => <TouchableOpacity key={contract.id} style={styles.contractCard} activeOpacity={0.9} onPress={() => router.push(`/contract/${contract.id}` as never)}><Text style={styles.contractTitle}>عقد {contract.government_contract_number || contract.contract_number || contract.id}</Text><Text style={styles.contractMeta}>المستأجر: {contract.tenant_name || "-"}</Text><Text style={styles.contractMeta}>{contract.property_name || "عقار"} / وحدة {valueOrDash(contract.unit_number)}</Text><Text style={styles.contractRent}>{money(contract.rent_amount)}</Text></TouchableOpacity>) : <EmptyBox text="لا توجد عقود لهذا المالك." />}</View>
-        ) : null}
+        {!loading && !error && activeTab === "contracts" ? <View><View style={styles.sectionHeader}><Text style={styles.sectionTitle}>عقود المالك</Text><Text style={styles.sectionSubtitle}>العقود التابعة لعقارات ووحدات هذا المالك</Text></View>{contracts.length ? contracts.map((contract) => <TouchableOpacity key={contract.id} style={styles.contractCard} activeOpacity={0.9} onPress={() => router.push(`/contract/${contract.id}` as never)}><Text style={styles.contractTitle}>عقد {contract.government_contract_number || contract.contract_number || contract.id}</Text><Text style={styles.contractMeta}>المستأجر: {contract.tenant_name || "-"}</Text><Text style={styles.contractMeta}>{contract.property_name || "عقار"} / وحدة {valueOrDash(contract.unit_number)}</Text><Text style={styles.contractRent}>{money(contract.rent_amount)}</Text></TouchableOpacity>) : <EmptyBox text="لا توجد عقود لهذا المالك." />}</View> : null}
       </ScrollView>
     </SafeAreaView>
   );
@@ -308,30 +202,18 @@ const styles = StyleSheet.create({
   summaryLabel: { color: "#7A766F", fontWeight: "800", fontSize: 12 },
   summaryValue: { color: "#111827", fontWeight: "900", fontSize: 15, marginTop: 4, textAlign: "right" },
   propertyCard: { backgroundColor: "#fff", borderRadius: 24, padding: 14, marginBottom: 12, borderWidth: 1, borderColor: "#E7E9EA", shadowColor: "#0F172A", shadowOpacity: 0.045, shadowRadius: 12, shadowOffset: { width: 0, height: 5 }, elevation: 2 },
-  propertyCardOpen: { borderColor: "#99F6E4", shadowOpacity: 0.075 },
   propertyHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
-  accordionIconBox: { width: 43, height: 43, borderRadius: 17, backgroundColor: "#ECFDF5", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#A7F3D0" },
-  accordionIconBoxOpen: { backgroundColor: "#0F766E", borderColor: "#0F766E" },
+  openHintIcon: { width: 43, height: 43, borderRadius: 17, backgroundColor: "#ECFDF5", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#A7F3D0" },
   propertyTypeIcon: { width: 43, height: 43, borderRadius: 17, backgroundColor: "#ECFDF5", alignItems: "center", justifyContent: "center" },
   propertyTitleBox: { flex: 1, alignItems: "flex-end", minWidth: 0 },
   propertyTitle: { color: "#111827", fontWeight: "900", fontSize: 19, textAlign: "right" },
   locationLine: { flexDirection: "row-reverse", alignItems: "center", gap: 3, marginTop: 5 },
   propertyMeta: { color: "#6B7280", fontWeight: "800", textAlign: "right", fontSize: 12 },
+  tapHint: { color: "#0F766E", fontWeight: "900", textAlign: "right", fontSize: 11, marginTop: 6 },
   propertyType: { color: "#0F766E", backgroundColor: "#ECFDF5", borderRadius: 999, overflow: "hidden", paddingHorizontal: 12, paddingVertical: 7, fontWeight: "900", fontSize: 12 },
   propertyMetricsRow: { flexDirection: "row-reverse", gap: 7, marginTop: 14 },
   propertyMetric: { flex: 1, minHeight: 45, borderRadius: 15, borderWidth: 1, borderColor: "#E5E7EB", backgroundColor: "#FBFCFC", flexDirection: "row-reverse", alignItems: "center", justifyContent: "center", gap: 6, paddingHorizontal: 6 },
   propertyMetricText: { color: "#475569", fontWeight: "900", fontSize: 11.5, textAlign: "center" },
-  unitsBox: { marginTop: 13, borderTopWidth: 1, borderTopColor: "#F1F5F9", paddingTop: 10 },
-  propertyDetailsButton: { minHeight: 48, borderRadius: 16, backgroundColor: "#111827", alignItems: "center", justifyContent: "center", flexDirection: "row-reverse", gap: 8, marginBottom: 10 },
-  propertyDetailsText: { color: "#fff", fontWeight: "900", fontSize: 14 },
-  unitRow: { flexDirection: "row-reverse", alignItems: "center", gap: 8, backgroundColor: "#F8FAFC", borderRadius: 17, padding: 11, marginTop: 8, borderWidth: 1, borderColor: "#F1F5F9" },
-  unitIconBox: { width: 42, height: 42, borderRadius: 16, backgroundColor: "#ECFDF5", alignItems: "center", justifyContent: "center" },
-  unitTextBox: { flex: 1, alignItems: "flex-end", minWidth: 0 },
-  unitTitle: { color: "#111827", fontWeight: "900", textAlign: "right", fontSize: 15 },
-  unitMeta: { color: "#6B7280", fontWeight: "800", fontSize: 12, marginTop: 4, textAlign: "right" },
-  unitStatus: { color: "#0369A1", backgroundColor: "#E0F2FE", borderRadius: 999, overflow: "hidden", paddingHorizontal: 10, paddingVertical: 6, fontWeight: "900", fontSize: 11 },
-  directTitle: { color: "#111827", fontWeight: "900", fontSize: 17, textAlign: "right", marginVertical: 10 },
-  directUnitCard: { backgroundColor: "#fff", borderRadius: 18, padding: 13, marginBottom: 8, borderWidth: 1, borderColor: "#E7E9EA" },
   emptyBox: { backgroundColor: "#fff", borderRadius: 18, padding: 18, alignItems: "center", borderWidth: 1, borderColor: "#E7E9EA" },
   emptyText: { color: "#7A766F", fontWeight: "900", textAlign: "center", marginTop: 7 },
   contractCard: { backgroundColor: "#fff", borderRadius: 18, padding: 14, marginBottom: 9, borderWidth: 1, borderColor: "#E7E9EA" },
