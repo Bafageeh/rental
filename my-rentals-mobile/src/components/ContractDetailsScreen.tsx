@@ -1,7 +1,7 @@
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
-import { router } from "expo-router";
+import { router, useNavigation } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, RefreshControl, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, BackHandler, RefreshControl, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { apiGet, apiPost } from "../lib/api";
 import ContractPaymentCard from "./ContractPaymentCard";
 
@@ -89,6 +89,7 @@ function prettyDate(value?: string | null, fallback = "-") {
 }
 
 export default function ContractDetailsScreen({ id }: { id: string | number }) {
+  const navigation = useNavigation();
   const [data, setData] = useState<ContractPayload | null>(null);
   const [contract, setContract] = useState<ContractRecord | null>(null);
   const [loading, setLoading] = useState(true);
@@ -120,6 +121,8 @@ export default function ContractDetailsScreen({ id }: { id: string | number }) {
     load(false);
   }, [id]);
 
+  const forcedUnitRoute = contract?.unit?.id ? `/unit/${contract.unit.id}` : "";
+
   useEffect(() => {
     const unitId = contract?.unit?.id;
     if (!unitId) return undefined;
@@ -135,6 +138,29 @@ export default function ContractDetailsScreen({ id }: { id: string | number }) {
       }
     };
   }, [contract?.unit?.id, id]);
+
+  useEffect(() => {
+    if (!forcedUnitRoute) return undefined;
+
+    const goToUnit = () => {
+      router.replace(forcedUnitRoute as never);
+      return true;
+    };
+
+    const hardwareSubscription = BackHandler.addEventListener("hardwareBackPress", goToUnit);
+    const unsubscribeBeforeRemove = navigation.addListener("beforeRemove" as never, (event: any) => {
+      const actionType = String(event?.data?.action?.type || "").toUpperCase();
+      const isBackAction = ["GO_BACK", "POP", "POP_TO_TOP"].includes(actionType);
+      if (!isBackAction) return;
+      event.preventDefault?.();
+      goToUnit();
+    });
+
+    return () => {
+      hardwareSubscription.remove();
+      if (typeof unsubscribeBeforeRemove === "function") unsubscribeBeforeRemove();
+    };
+  }, [forcedUnitRoute, navigation]);
 
   function openEdit() {
     const unitId = contract?.unit?.id;
