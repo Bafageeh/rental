@@ -87,6 +87,15 @@ function StatCard({ icon, label, value }: { icon: keyof typeof MaterialCommunity
   );
 }
 
+function PropertyMetric({ icon, label, value }: { icon: keyof typeof MaterialCommunityIcons.glyphMap; label: string; value: string }) {
+  return (
+    <View style={styles.propertyMetric}>
+      <MaterialCommunityIcons name={icon} size={19} color="#64748B" />
+      <Text style={styles.propertyMetricText}>{label}: {value}</Text>
+    </View>
+  );
+}
+
 export default function OwnerAssetsDashboardScreen({ id }: { id: string | number }) {
   const ownerId = String(id || "");
   const [activeTab, setActiveTab] = useState<TabKey>("properties");
@@ -216,19 +225,20 @@ export default function OwnerAssetsDashboardScreen({ id }: { id: string | number
                     <View style={styles.propertyTitleBox}><Text numberOfLines={1} style={styles.propertyTitle}>{property.name || "عقار بدون اسم"}</Text><View style={styles.locationLine}><Ionicons name="location-outline" size={13} color="#6B7280" /><Text style={styles.propertyMeta}>{[property.district, property.city].filter(Boolean).join("، ") || "لا يوجد موقع مسجل"}</Text></View></View>
                     <Text style={styles.propertyType}>{typeText(property.property_type)}</Text>
                   </TouchableOpacity>
-                  <View style={styles.miniStatsRow}>
-                    <Text style={styles.miniPill}>وحدات: {count(propertyUnits.length || property.units_count)}</Text>
-                    <Text style={styles.miniPill}>مؤجرة: {count(property.rented_units_count)}</Text>
-                    <Text style={styles.miniPill}>عقود: {count(property.active_contracts_count)}</Text>
+                  <View style={styles.propertyMetricsRow}>
+                    <PropertyMetric icon="home-outline" label="وحدات" value={count(propertyUnits.length || property.units_count)} />
+                    <PropertyMetric icon="account-key-outline" label="مؤجرة" value={count(property.rented_units_count)} />
+                    <PropertyMetric icon="file-document-outline" label="عقود" value={count(property.active_contracts_count)} />
                   </View>
                   {isOpen ? (
                     <View style={styles.unitsBox}>
                       <TouchableOpacity style={styles.propertyDetailsButton} activeOpacity={0.86} onPress={() => router.push(`/property/${property.id}` as never)}><Ionicons name="open-outline" size={18} color="#fff" /><Text style={styles.propertyDetailsText}>فتح تفاصيل العقار</Text></TouchableOpacity>
                       {propertyUnits.length ? propertyUnits.map((unit) => (
                         <TouchableOpacity key={unit.id} style={styles.unitRow} activeOpacity={0.85} onPress={() => router.push(`/unit/${unit.id}` as never)}>
-                          <Ionicons name="chevron-back" size={17} color="#64748B" />
-                          <Text style={styles.unitStatus}>{statusText(unit.status)}</Text>
+                          <View style={styles.unitIconBox}><MaterialCommunityIcons name="door" size={21} color="#0F766E" /></View>
                           <View style={styles.unitTextBox}><Text numberOfLines={1} style={styles.unitTitle}>{unitName(unit)}</Text><Text style={styles.unitMeta}>الدور: {valueOrDash(unit.floor)} | الإيجار: {money(unit.rent_amount)}</Text></View>
+                          <Text style={styles.unitStatus}>{statusText(unit.status)}</Text>
+                          <Ionicons name="chevron-back" size={18} color="#64748B" />
                         </TouchableOpacity>
                       )) : <EmptyBox text="لا توجد وحدات داخل هذا العقار." />}
                     </View>
@@ -297,27 +307,29 @@ const styles = StyleSheet.create({
   summaryTextBox: { flex: 1, alignItems: "flex-end" },
   summaryLabel: { color: "#7A766F", fontWeight: "800", fontSize: 12 },
   summaryValue: { color: "#111827", fontWeight: "900", fontSize: 15, marginTop: 4, textAlign: "right" },
-  propertyCard: { backgroundColor: "#fff", borderRadius: 23, padding: 13, marginBottom: 12, borderWidth: 1, borderColor: "#E7E9EA", shadowColor: "#0F172A", shadowOpacity: 0.045, shadowRadius: 12, shadowOffset: { width: 0, height: 5 }, elevation: 2 },
+  propertyCard: { backgroundColor: "#fff", borderRadius: 24, padding: 14, marginBottom: 12, borderWidth: 1, borderColor: "#E7E9EA", shadowColor: "#0F172A", shadowOpacity: 0.045, shadowRadius: 12, shadowOffset: { width: 0, height: 5 }, elevation: 2 },
   propertyCardOpen: { borderColor: "#99F6E4", shadowOpacity: 0.075 },
-  propertyHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 9 },
-  accordionIconBox: { width: 42, height: 42, borderRadius: 17, backgroundColor: "#ECFDF5", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#A7F3D0" },
+  propertyHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
+  accordionIconBox: { width: 43, height: 43, borderRadius: 17, backgroundColor: "#ECFDF5", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#A7F3D0" },
   accordionIconBoxOpen: { backgroundColor: "#0F766E", borderColor: "#0F766E" },
-  propertyTypeIcon: { width: 40, height: 40, borderRadius: 16, backgroundColor: "#ECFDF5", alignItems: "center", justifyContent: "center" },
-  propertyTitleBox: { flex: 1, alignItems: "flex-end" },
-  propertyTitle: { color: "#111827", fontWeight: "900", fontSize: 18, textAlign: "right" },
+  propertyTypeIcon: { width: 43, height: 43, borderRadius: 17, backgroundColor: "#ECFDF5", alignItems: "center", justifyContent: "center" },
+  propertyTitleBox: { flex: 1, alignItems: "flex-end", minWidth: 0 },
+  propertyTitle: { color: "#111827", fontWeight: "900", fontSize: 19, textAlign: "right" },
   locationLine: { flexDirection: "row-reverse", alignItems: "center", gap: 3, marginTop: 5 },
-  propertyMeta: { color: "#6B7280", fontWeight: "800", textAlign: "right" },
-  propertyType: { color: "#0F766E", backgroundColor: "#ECFDF5", borderRadius: 999, overflow: "hidden", paddingHorizontal: 10, paddingVertical: 6, fontWeight: "900" },
-  miniStatsRow: { flexDirection: "row-reverse", flexWrap: "wrap", gap: 7, marginTop: 12 },
-  miniPill: { color: "#374151", backgroundColor: "#F3F4F6", borderRadius: 999, overflow: "hidden", paddingHorizontal: 10, paddingVertical: 6, fontWeight: "800", fontSize: 12 },
+  propertyMeta: { color: "#6B7280", fontWeight: "800", textAlign: "right", fontSize: 12 },
+  propertyType: { color: "#0F766E", backgroundColor: "#ECFDF5", borderRadius: 999, overflow: "hidden", paddingHorizontal: 12, paddingVertical: 7, fontWeight: "900", fontSize: 12 },
+  propertyMetricsRow: { flexDirection: "row-reverse", gap: 7, marginTop: 14 },
+  propertyMetric: { flex: 1, minHeight: 45, borderRadius: 15, borderWidth: 1, borderColor: "#E5E7EB", backgroundColor: "#FBFCFC", flexDirection: "row-reverse", alignItems: "center", justifyContent: "center", gap: 6, paddingHorizontal: 6 },
+  propertyMetricText: { color: "#475569", fontWeight: "900", fontSize: 11.5, textAlign: "center" },
   unitsBox: { marginTop: 13, borderTopWidth: 1, borderTopColor: "#F1F5F9", paddingTop: 10 },
-  propertyDetailsButton: { minHeight: 45, borderRadius: 15, backgroundColor: "#111827", alignItems: "center", justifyContent: "center", flexDirection: "row-reverse", gap: 7, marginBottom: 9 },
-  propertyDetailsText: { color: "#fff", fontWeight: "900", fontSize: 13 },
-  unitRow: { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: "#F8FAFC", borderRadius: 15, padding: 10, marginTop: 7, borderWidth: 1, borderColor: "#F1F5F9" },
-  unitTextBox: { flex: 1, alignItems: "flex-end" },
-  unitTitle: { color: "#111827", fontWeight: "900", textAlign: "right", fontSize: 14 },
+  propertyDetailsButton: { minHeight: 48, borderRadius: 16, backgroundColor: "#111827", alignItems: "center", justifyContent: "center", flexDirection: "row-reverse", gap: 8, marginBottom: 10 },
+  propertyDetailsText: { color: "#fff", fontWeight: "900", fontSize: 14 },
+  unitRow: { flexDirection: "row-reverse", alignItems: "center", gap: 8, backgroundColor: "#F8FAFC", borderRadius: 17, padding: 11, marginTop: 8, borderWidth: 1, borderColor: "#F1F5F9" },
+  unitIconBox: { width: 42, height: 42, borderRadius: 16, backgroundColor: "#ECFDF5", alignItems: "center", justifyContent: "center" },
+  unitTextBox: { flex: 1, alignItems: "flex-end", minWidth: 0 },
+  unitTitle: { color: "#111827", fontWeight: "900", textAlign: "right", fontSize: 15 },
   unitMeta: { color: "#6B7280", fontWeight: "800", fontSize: 12, marginTop: 4, textAlign: "right" },
-  unitStatus: { color: "#0369A1", backgroundColor: "#E0F2FE", borderRadius: 999, overflow: "hidden", paddingHorizontal: 9, paddingVertical: 5, fontWeight: "900", fontSize: 11 },
+  unitStatus: { color: "#0369A1", backgroundColor: "#E0F2FE", borderRadius: 999, overflow: "hidden", paddingHorizontal: 10, paddingVertical: 6, fontWeight: "900", fontSize: 11 },
   directTitle: { color: "#111827", fontWeight: "900", fontSize: 17, textAlign: "right", marginVertical: 10 },
   directUnitCard: { backgroundColor: "#fff", borderRadius: 18, padding: 13, marginBottom: 8, borderWidth: 1, borderColor: "#E7E9EA" },
   emptyBox: { backgroundColor: "#fff", borderRadius: 18, padding: 18, alignItems: "center", borderWidth: 1, borderColor: "#E7E9EA" },
