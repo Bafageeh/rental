@@ -202,7 +202,7 @@ export default function ExpensesScreen() {
   const subtitle = isUnitScoped
     ? `مصروفات الوحدة: ${scopedUnitName || `#${scopedUnitId}`}`
     : scopedPropertyId
-      ? `مصروفات العقار: ${selectedPropertyLabel} — تشمل مصروفات العقار والوحدات التابعة له`
+      ? `مصروفات العقار المباشرة فقط: ${selectedPropertyLabel}`
       : "مصروفات الخدمات والصيانة لكل عقار";
 
   return (
