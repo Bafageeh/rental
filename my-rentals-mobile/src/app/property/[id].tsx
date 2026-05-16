@@ -173,20 +173,11 @@ function StatCard({ icon, value, label }: { icon: keyof typeof MaterialCommunity
   );
 }
 
-function ServiceButton({ icon, label, onPress, full = false }: { icon: keyof typeof MaterialCommunityIcons.glyphMap; label: string; onPress: () => void; full?: boolean }) {
+function FloatingMenuAction({ icon, label, color = '#0F172A', onPress }: { icon: keyof typeof MaterialCommunityIcons.glyphMap; label: string; color?: string; onPress: () => void }) {
   return (
-    <TouchableOpacity style={[styles.serviceButton, full && styles.serviceButtonFull]} activeOpacity={0.86} onPress={onPress}>
-      <MaterialCommunityIcons name={icon} size={23} color="#0F766E" />
-      <Text style={styles.serviceText}>{label}</Text>
-    </TouchableOpacity>
-  );
-}
-
-function HeroActionIcon({ icon, label, color, onPress }: { icon: keyof typeof Ionicons.glyphMap; label: string; color: string; onPress: () => void }) {
-  return (
-    <TouchableOpacity style={styles.heroMenuAction} activeOpacity={0.86} onPress={onPress}>
-      <Ionicons name={icon} size={20} color={color} />
-      <Text style={[styles.heroMenuActionText, { color }]}>{label}</Text>
+    <TouchableOpacity style={styles.floatingMenuAction} activeOpacity={0.86} onPress={onPress}>
+      <MaterialCommunityIcons name={icon} size={21} color={color} />
+      <Text style={[styles.floatingMenuText, { color }]}>{label}</Text>
     </TouchableOpacity>
   );
 }
@@ -195,7 +186,7 @@ export default function PropertyDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const navigation = useNavigation();
   const { data, loading, error, reload } = useDetail<PropertyDetail>({ endpoint: `/properties/${id}` });
-  const [heroMenuOpen, setHeroMenuOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const shouldReturnAfterDelete = !!error && /No query results|not found|غير موجود/i.test(String(error));
 
   useEffect(() => {
@@ -249,16 +240,22 @@ export default function PropertyDetailScreen() {
   const totalContracts = Number(data.property_contracts_count || 0) + Number(data.unit_contracts_count ?? unitContracts);
   const canCreateContract = typeof data.can_create_contract === 'boolean' ? data.can_create_contract : totalContracts === 0;
 
+  function closeMenu() {
+    setMenuOpen(false);
+  }
+
   function openEditProperty() {
-    setHeroMenuOpen(false);
+    closeMenu();
     router.push(`/property-form?id=${propertyId}` as never);
   }
 
   function openRepository() {
+    closeMenu();
     router.push(`/files?property_id=${propertyId}&property_name=${encodedPropertyName}${ownerQuery}` as never);
   }
 
   function openAddUnit() {
+    closeMenu();
     const query = new URLSearchParams();
     if (data.owner?.id) query.set('owner_id', String(data.owner.id));
     query.set('property_type', 'apartment');
@@ -269,10 +266,12 @@ export default function PropertyDetailScreen() {
   }
 
   function openPropertyService(path: string) {
+    closeMenu();
     router.push(`${path}?property_id=${propertyId}&property_name=${encodedPropertyName}${ownerQuery}` as never);
   }
 
   function openCreateContract() {
+    closeMenu();
     Alert.alert('إضافة عقد', 'اختر طريقة إضافة العقد:', [
       {
         text: 'رفع عقد PDF',
@@ -287,7 +286,7 @@ export default function PropertyDetailScreen() {
   }
 
   function confirmDeleteProperty() {
-    setHeroMenuOpen(false);
+    closeMenu();
     Alert.alert('حذف العقار', `هل تريد حذف ${data.name || `عقار #${propertyId}`}؟`, [
       { text: 'إلغاء', style: 'cancel' },
       {
@@ -309,16 +308,6 @@ export default function PropertyDetailScreen() {
     <SafeAreaView style={styles.safe} edges={['top']}>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={false} onRefresh={reload} tintColor="#0F766E" />}>
         <View style={styles.heroCard}>
-          <TouchableOpacity style={styles.heroMenuDot} activeOpacity={0.85} onPress={() => setHeroMenuOpen((value) => !value)}>
-            <Ionicons name="ellipsis-vertical" size={17} color="#E0F2F1" />
-          </TouchableOpacity>
-          {heroMenuOpen ? (
-            <View style={styles.heroMenuPopover}>
-              <HeroActionIcon icon="create-outline" label="تعديل" color="#0F766E" onPress={openEditProperty} />
-              <View style={styles.heroMenuSeparator} />
-              <HeroActionIcon icon="trash-outline" label="حذف" color="#DC2626" onPress={confirmDeleteProperty} />
-            </View>
-          ) : null}
           <View style={styles.heroTop}>
             <View style={styles.heroIcon}>
               <Text style={styles.heroEmoji}>{data.property_type === 'villa' ? '🏡' : data.property_type === 'apartment' ? '🏠' : data.property_type === 'land' ? '🧭' : '🏢'}</Text>
@@ -341,16 +330,6 @@ export default function PropertyDetailScreen() {
             <StatCard icon="office-building" value={units.length.toLocaleString('ar-SA')} label="وحدة" />
           </View>
         ) : null}
-
-        <Section title="خدمات العقار">
-          <View style={styles.servicesGrid}>
-            {!isApartmentProperty ? <ServiceButton icon="plus-circle-outline" label="إضافة وحدة" onPress={openAddUnit} /> : null}
-            <ServiceButton icon="file-document-outline" label="العقود" onPress={() => openPropertyService('/contracts')} />
-            <ServiceButton icon="cash-minus" label="المصروفات" onPress={() => openPropertyService('/expenses')} />
-            {canCreateContract ? <ServiceButton icon="file-sign" label="إنشاء / رفع عقد" onPress={openCreateContract} /> : null}
-            <ServiceButton icon="image-multiple-outline" label="الملفات والوسائط" onPress={openRepository} full />
-          </View>
-        </Section>
 
         <View style={styles.financeRow}>
           <View style={styles.financeCard}><Text style={styles.financeValue}>{money(totalRent)}</Text><Text style={styles.financeLabel}>إجمالي الإيجارات</Text></View>
@@ -420,8 +399,24 @@ export default function PropertyDetailScreen() {
             })}
           </CollapsibleSection>
         ) : null}
-        <View style={{ height: 32 }} />
+        <View style={{ height: 78 }} />
       </ScrollView>
+
+      {menuOpen ? <TouchableOpacity style={styles.floatingBackdrop} activeOpacity={1} onPress={closeMenu} /> : null}
+      {menuOpen ? (
+        <View style={styles.floatingMenu}>
+          <FloatingMenuAction icon="pencil-outline" label="تعديل" color="#0F766E" onPress={openEditProperty} />
+          <FloatingMenuAction icon="trash-can-outline" label="حذف" color="#DC2626" onPress={confirmDeleteProperty} />
+          {!isApartmentProperty ? <FloatingMenuAction icon="plus-circle-outline" label="إضافة وحدة" color="#0F766E" onPress={openAddUnit} /> : null}
+          <FloatingMenuAction icon="file-document-outline" label="العقود" color="#0F766E" onPress={() => openPropertyService('/contracts')} />
+          <FloatingMenuAction icon="cash-minus" label="المصروفات" color="#0F766E" onPress={() => openPropertyService('/expenses')} />
+          {canCreateContract ? <FloatingMenuAction icon="file-sign" label="إنشاء / رفع عقد" color="#0F766E" onPress={openCreateContract} /> : null}
+          <FloatingMenuAction icon="image-multiple-outline" label="الملفات والوسائط" color="#0F766E" onPress={openRepository} />
+        </View>
+      ) : null}
+      <TouchableOpacity style={styles.floatingButton} activeOpacity={0.88} onPress={() => setMenuOpen((value) => !value)}>
+        <Ionicons name={menuOpen ? 'close' : 'ellipsis-vertical'} size={24} color="#fff" />
+      </TouchableOpacity>
     </SafeAreaView>
   );
 }
@@ -437,11 +432,6 @@ const styles = StyleSheet.create({
   retryButton: { marginTop: 10, backgroundColor: '#991B1B', borderRadius: 13, paddingHorizontal: 14, paddingVertical: 9 },
   retryText: { color: '#fff', fontWeight: '900', fontSize: 12 },
   heroCard: { backgroundColor: '#0B1220', borderRadius: 24, padding: 12, marginBottom: 9, overflow: 'visible', borderWidth: 1, borderColor: '#132237' },
-  heroMenuDot: { position: 'absolute', left: 12, top: 12, width: 34, height: 34, borderRadius: 17, borderWidth: 1, borderColor: 'rgba(255,255,255,0.22)', alignItems: 'center', justifyContent: 'center', zIndex: 20, backgroundColor: 'rgba(255,255,255,0.04)' },
-  heroMenuPopover: { position: 'absolute', left: 10, top: 52, width: 112, borderRadius: 17, backgroundColor: '#fff', borderWidth: 1, borderColor: '#E5E7EB', overflow: 'hidden', zIndex: 30, shadowColor: '#0F172A', shadowOpacity: 0.18, shadowRadius: 14, shadowOffset: { width: 0, height: 8 }, elevation: 8 },
-  heroMenuAction: { height: 42, alignItems: 'center', justifyContent: 'flex-start', flexDirection: 'row-reverse', gap: 8, paddingHorizontal: 12 },
-  heroMenuActionText: { fontWeight: '900', fontSize: 12, textAlign: 'right' },
-  heroMenuSeparator: { height: 1, backgroundColor: '#EEF2F7' },
   heroTop: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10, paddingTop: 8 },
   heroIcon: { width: 64, height: 64, borderRadius: 21, backgroundColor: '#ECFDF5', alignItems: 'center', justifyContent: 'center' },
   heroEmoji: { fontSize: 32 },
@@ -464,10 +454,6 @@ const styles = StyleSheet.create({
   collapsibleHint: { color: '#6B7280', fontWeight: '800', fontSize: 10.5, marginTop: 3, textAlign: 'right' },
   collapsibleBody: { marginTop: 7, borderTopWidth: 1, borderTopColor: '#F1F5F9', paddingTop: 5 },
   sectionIconBox: { width: 43, height: 43, borderRadius: 15, backgroundColor: '#EEF7F5', alignItems: 'center', justifyContent: 'center' },
-  servicesGrid: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 7 },
-  serviceButton: { width: '48.8%', minHeight: 57, borderRadius: 15, backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#DDE5EA', alignItems: 'center', justifyContent: 'center', padding: 7, flexDirection: 'row-reverse', gap: 7 },
-  serviceButtonFull: { width: '100%' },
-  serviceText: { color: '#111827', fontWeight: '900', textAlign: 'center', fontSize: 11.5 },
   financeRow: { flexDirection: 'row-reverse', gap: 7, marginBottom: 9 },
   financeCard: { flex: 1, backgroundColor: '#fff', borderRadius: 17, padding: 10, alignItems: 'center', borderWidth: 1, borderColor: '#E8EEF0' },
   financeValue: { color: '#0F766E', fontWeight: '900', fontSize: 14 },
@@ -484,4 +470,9 @@ const styles = StyleSheet.create({
   unitSideBox: { alignItems: 'flex-start', gap: 6 },
   unitStatus: { backgroundColor: '#E0F2FE', color: '#0369A1', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 4, overflow: 'hidden', fontWeight: '900', fontSize: 10 },
   unitRent: { color: '#111827', fontWeight: '900', fontSize: 11 },
+  floatingButton: { position: 'absolute', right: 18, bottom: 82, width: 56, height: 56, borderRadius: 28, backgroundColor: '#0F766E', alignItems: 'center', justifyContent: 'center', shadowColor: '#0F172A', shadowOpacity: 0.24, shadowRadius: 16, shadowOffset: { width: 0, height: 10 }, elevation: 10, zIndex: 60 },
+  floatingBackdrop: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, backgroundColor: 'transparent', zIndex: 40 },
+  floatingMenu: { position: 'absolute', right: 18, bottom: 148, width: 210, borderRadius: 20, backgroundColor: '#fff', borderWidth: 1, borderColor: '#E5E7EB', paddingVertical: 6, shadowColor: '#0F172A', shadowOpacity: 0.18, shadowRadius: 18, shadowOffset: { width: 0, height: 10 }, elevation: 12, zIndex: 70 },
+  floatingMenuAction: { minHeight: 42, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'flex-start', gap: 10, paddingHorizontal: 14 },
+  floatingMenuText: { fontWeight: '900', fontSize: 13, textAlign: 'right' },
 });
