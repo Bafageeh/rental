@@ -470,9 +470,9 @@ const styles = StyleSheet.create({
   unitSideBox: { alignItems: 'flex-start', gap: 6 },
   unitStatus: { backgroundColor: '#E0F2FE', color: '#0369A1', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 4, overflow: 'hidden', fontWeight: '900', fontSize: 10 },
   unitRent: { color: '#111827', fontWeight: '900', fontSize: 11 },
-  floatingButton: { position: 'absolute', right: 18, bottom: 82, width: 56, height: 56, borderRadius: 28, backgroundColor: '#0F766E', alignItems: 'center', justifyContent: 'center', shadowColor: '#0F172A', shadowOpacity: 0.24, shadowRadius: 16, shadowOffset: { width: 0, height: 10 }, elevation: 10, zIndex: 60 },
+  floatingButton: { position: 'absolute', left: 18, top: 14, width: 56, height: 56, borderRadius: 28, backgroundColor: '#0F766E', alignItems: 'center', justifyContent: 'center', shadowColor: '#0F172A', shadowOpacity: 0.24, shadowRadius: 16, shadowOffset: { width: 0, height: 10 }, elevation: 10, zIndex: 60 },
   floatingBackdrop: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, backgroundColor: 'transparent', zIndex: 40 },
-  floatingMenu: { position: 'absolute', right: 18, bottom: 148, width: 210, borderRadius: 20, backgroundColor: '#fff', borderWidth: 1, borderColor: '#E5E7EB', paddingVertical: 6, shadowColor: '#0F172A', shadowOpacity: 0.18, shadowRadius: 18, shadowOffset: { width: 0, height: 10 }, elevation: 12, zIndex: 70 },
+  floatingMenu: { position: 'absolute', left: 18, top: 78, width: 210, borderRadius: 20, backgroundColor: '#fff', borderWidth: 1, borderColor: '#E5E7EB', paddingVertical: 6, shadowColor: '#0F172A', shadowOpacity: 0.18, shadowRadius: 18, shadowOffset: { width: 0, height: 10 }, elevation: 12, zIndex: 70 },
   floatingMenuAction: { minHeight: 42, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'flex-start', gap: 10, paddingHorizontal: 14 },
   floatingMenuText: { fontWeight: '900', fontSize: 13, textAlign: 'right' },
 });
