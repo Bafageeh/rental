@@ -1,5 +1,5 @@
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { router, useLocalSearchParams, useNavigation } from 'expo-router';
 import {
   ActivityIndicator,
@@ -15,6 +15,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useDetail } from '../../hooks/useCrud';
 import { apiPost } from '../../lib/api';
 import { smartBack } from '@/lib/navigationHistory';
+
+type PropertyTabKey = 'stats' | 'details' | 'units';
 
 type PropertyUnit = {
   id: number;
@@ -74,6 +76,12 @@ type PropertyDetail = {
   expenses?: Array<{ id: number; amount?: number | string | null; title?: string | null }>;
 };
 
+const propertyTabs: Array<{ key: PropertyTabKey; label: string; icon: keyof typeof Ionicons.glyphMap }> = [
+  { key: 'stats', label: 'إحصائيات', icon: 'stats-chart-outline' },
+  { key: 'details', label: 'تفاصيل', icon: 'list-outline' },
+  { key: 'units', label: 'الوحدات', icon: 'home-outline' },
+];
+
 const typeMap: Record<string, string> = {
   building: 'عمارة',
   apartment: 'شقة',
@@ -94,6 +102,7 @@ const detailTitleMap: Record<string, string> = {
 };
 const usageMap: Record<string, string> = { residential: 'سكني', commercial: 'تجاري', mixed: 'مختلط' };
 const mgmtMap: Record<string, string> = { owned: 'ملك خاص', managed: 'إدارة للغير' };
+const unitStatusMap: Record<string, string> = { rented: 'مؤجرة', available: 'شاغرة', maintenance: 'صيانة' };
 
 function detailTitleForType(propertyType?: string | null) {
   return detailTitleMap[String(propertyType || '')] || 'تفاصيل العقار';
@@ -113,7 +122,7 @@ function numberValue(value: unknown) {
 }
 
 function money(value: unknown) {
-  return `${numberValue(value).toLocaleString('ar-SA')} ر.س`;
+  return `${Math.round(numberValue(value)).toLocaleString('ar-SA')} ر.س`;
 }
 
 function unitContractsCount(unit: PropertyUnit) {
@@ -134,25 +143,6 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-function CollapsibleSection({ title, icon, subtitle, children, defaultOpen = false }: { title: string; icon: keyof typeof MaterialCommunityIcons.glyphMap; subtitle?: string; children: React.ReactNode; defaultOpen?: boolean }) {
-  const [open, setOpen] = useState(defaultOpen);
-  return (
-    <View style={styles.sectionCardCompact}>
-      <TouchableOpacity style={styles.collapsibleHeader} activeOpacity={0.84} onPress={() => setOpen((value) => !value)}>
-        <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={18} color="#0B3B3C" />
-        <View style={styles.collapsibleTitleBox}>
-          <Text style={styles.sectionTitleCompact}>{title}</Text>
-          {subtitle ? <Text style={styles.collapsibleHint}>{subtitle}</Text> : null}
-        </View>
-        <View style={styles.sectionIconBox}>
-          <MaterialCommunityIcons name={icon} size={21} color="#0F766E" />
-        </View>
-      </TouchableOpacity>
-      {open ? <View style={styles.collapsibleBody}>{children}</View> : null}
-    </View>
-  );
-}
-
 function Row({ label, value }: { label: string; value: unknown }) {
   if (!hasValue(value)) return null;
   return (
@@ -163,13 +153,37 @@ function Row({ label, value }: { label: string; value: unknown }) {
   );
 }
 
-function StatCard({ icon, value, label }: { icon: keyof typeof MaterialCommunityIcons.glyphMap; value: unknown; label: string }) {
+function StatTile({ icon, value, label, danger = false }: { icon: keyof typeof MaterialCommunityIcons.glyphMap; value: unknown; label: string; danger?: boolean }) {
   return (
-    <View style={styles.statCard}>
-      <View style={styles.statIconBox}><MaterialCommunityIcons name={icon} size={21} color="#0F766E" /></View>
-      <Text style={styles.statValue}>{display(value)}</Text>
-      <Text style={styles.statLabel}>{label}</Text>
+    <View style={[styles.statTile, danger ? styles.statTileDanger : null]}>
+      <View style={[styles.statIconBox, danger ? styles.statIconDanger : null]}>
+        <MaterialCommunityIcons name={icon} size={23} color={danger ? '#DC2626' : '#0F766E'} />
+      </View>
+      <Text style={[styles.statValue, danger ? styles.statValueDanger : null]} numberOfLines={1}>{display(value)}</Text>
+      <Text style={[styles.statLabel, danger ? styles.statLabelDanger : null]}>{label}</Text>
     </View>
+  );
+}
+
+function UnitCard({ unit }: { unit: PropertyUnit }) {
+  const hasContract = unitContractsCount(unit) > 0;
+  const status = unitStatusMap[String(unit.status || '')] || unit.status || '-';
+  return (
+    <TouchableOpacity key={unit.id} style={styles.unitCard} activeOpacity={0.9} onPress={() => router.push(`/unit/${unit.id}` as never)}>
+      <View style={styles.unitIconBox}>
+        <MaterialCommunityIcons name="door" size={23} color="#0F766E" />
+      </View>
+      <View style={styles.unitInfoBox}>
+        <Text style={styles.unitTitle}>{unit.unit_number || `وحدة #${unit.id}`}</Text>
+        <Text style={styles.unitMeta}>{unit.type || 'وحدة'} — الدور {display(unit.floor)}</Text>
+        <Text style={hasContract ? styles.unitContractOk : styles.unitContractEmpty}>{hasContract ? `يوجد ${unitContractsCount(unit)} عقد` : 'لا يوجد عقد'}</Text>
+      </View>
+      <View style={styles.unitSideBox}>
+        <Text style={styles.unitStatus}>{status}</Text>
+        <Text style={styles.unitRent}>{money(unit.rent_amount)}</Text>
+        <Ionicons name="chevron-back" size={16} color="#64748B" />
+      </View>
+    </TouchableOpacity>
   );
 }
 
@@ -187,6 +201,7 @@ export default function PropertyDetailScreen() {
   const navigation = useNavigation();
   const { data, loading, error, reload } = useDetail<PropertyDetail>({ endpoint: `/properties/${id}` });
   const [menuOpen, setMenuOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<PropertyTabKey>('stats');
   const shouldReturnAfterDelete = !!error && /No query results|not found|غير موجود/i.test(String(error));
 
   useEffect(() => {
@@ -229,9 +244,7 @@ export default function PropertyDetailScreen() {
   const units = data.units || [];
   const rented = units.filter((unit) => unit.status === 'rented').length;
   const available = units.filter((unit) => unit.status === 'available').length;
-  const totalRent = hasValue(data.total_rent_amount)
-    ? numberValue(data.total_rent_amount)
-    : units.reduce((sum, unit) => sum + numberValue(unit.rent_amount), 0);
+  const totalRent = hasValue(data.total_rent_amount) ? numberValue(data.total_rent_amount) : units.reduce((sum, unit) => sum + numberValue(unit.rent_amount), 0);
   const totalExpenses = (data.expenses || []).reduce((sum, expense) => sum + numberValue(expense.amount), 0);
   const propertyId = data.id;
   const encodedPropertyName = queryValue(data.name || `عقار #${propertyId}`);
@@ -239,21 +252,25 @@ export default function PropertyDetailScreen() {
   const unitContracts = units.reduce((sum, unit) => sum + unitContractsCount(unit), 0);
   const totalContracts = Number(data.property_contracts_count || 0) + Number(data.unit_contracts_count ?? unitContracts);
   const canCreateContract = typeof data.can_create_contract === 'boolean' ? data.can_create_contract : totalContracts === 0;
+  const propertyTypeLabel = typeMap[String(data.property_type || '')] || data.property_type || 'عقار';
 
-  function closeMenu() {
-    setMenuOpen(false);
-  }
+  const detailsRows = useMemo(() => [
+    ['النوع', propertyTypeLabel],
+    ['الاستخدام', usageMap[String(data.usage_type || '')] || data.usage_type],
+    ['الإدارة', mgmtMap[String(data.management_type || '')] || data.management_type],
+    ['رقم الصك', data.deed_number || data.document_number],
+    ['العنوان الوطني المختصر', data.national_short_address],
+    ['المساحة', hasValue(data.property_area) ? `${data.property_area} م²` : null],
+    ['عدد الأدوار', data.floors_count],
+    ['المواقف', data.parking_spots_count],
+    ['المصاعد', data.elevators_count],
+    ['العنوان', data.address],
+    ['ملاحظات', data.notes],
+  ] as Array<[string, unknown]>, [data, propertyTypeLabel]);
 
-  function openEditProperty() {
-    closeMenu();
-    router.push(`/property-form?id=${propertyId}` as never);
-  }
-
-  function openRepository() {
-    closeMenu();
-    router.push(`/files?property_id=${propertyId}&property_name=${encodedPropertyName}${ownerQuery}` as never);
-  }
-
+  function closeMenu() { setMenuOpen(false); }
+  function openEditProperty() { closeMenu(); router.push(`/property-form?id=${propertyId}` as never); }
+  function openRepository() { closeMenu(); router.push(`/files?property_id=${propertyId}&property_name=${encodedPropertyName}${ownerQuery}` as never); }
   function openAddUnit() {
     closeMenu();
     const query = new URLSearchParams();
@@ -264,43 +281,27 @@ export default function PropertyDetailScreen() {
     query.set('source_property_name', data.name || `عقار #${propertyId}`);
     router.push(`/property-form?${query.toString()}` as never);
   }
-
-  function openPropertyService(path: string) {
-    closeMenu();
-    router.push(`${path}?property_id=${propertyId}&property_name=${encodedPropertyName}${ownerQuery}` as never);
-  }
-
+  function openPropertyService(path: string) { closeMenu(); router.push(`${path}?property_id=${propertyId}&property_name=${encodedPropertyName}${ownerQuery}` as never); }
   function openCreateContract() {
     closeMenu();
     Alert.alert('إضافة عقد', 'اختر طريقة إضافة العقد:', [
-      {
-        text: 'رفع عقد PDF',
-        onPress: () => router.push(`/upload-contract?property_id=${propertyId}&property_name=${encodedPropertyName}&contract_scope=property&target_type=property${ownerQuery}` as never),
-      },
-      {
-        text: 'إنشاء عقد يدوي',
-        onPress: () => router.push(`/create-contract?property_id=${propertyId}&property_name=${encodedPropertyName}&contract_scope=property&target_type=property${ownerQuery}` as never),
-      },
+      { text: 'رفع عقد PDF', onPress: () => router.push(`/upload-contract?property_id=${propertyId}&property_name=${encodedPropertyName}&contract_scope=property&target_type=property${ownerQuery}` as never) },
+      { text: 'إنشاء عقد يدوي', onPress: () => router.push(`/create-contract?property_id=${propertyId}&property_name=${encodedPropertyName}&contract_scope=property&target_type=property${ownerQuery}` as never) },
       { text: 'إلغاء', style: 'cancel' },
     ]);
   }
-
   function confirmDeleteProperty() {
     closeMenu();
     Alert.alert('حذف العقار', `هل تريد حذف ${data.name || `عقار #${propertyId}`}؟`, [
       { text: 'إلغاء', style: 'cancel' },
-      {
-        text: 'حذف',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await apiPost(`/edit-delete-center/properties/${propertyId}/delete`, {});
-            Alert.alert('تم', 'تم حذف العقار.', [{ text: 'حسنًا', onPress: () => smartBack() }]);
-          } catch (e) {
-            Alert.alert('تعذر الحذف', e instanceof Error ? e.message : 'حدث خطأ غير متوقع');
-          }
-        },
-      },
+      { text: 'حذف', style: 'destructive', onPress: async () => {
+        try {
+          await apiPost(`/edit-delete-center/properties/${propertyId}/delete`, {});
+          Alert.alert('تم', 'تم حذف العقار.', [{ text: 'حسنًا', onPress: () => smartBack() }]);
+        } catch (e) {
+          Alert.alert('تعذر الحذف', e instanceof Error ? e.message : 'حدث خطأ غير متوقع');
+        }
+      } },
     ]);
   }
 
@@ -309,10 +310,9 @@ export default function PropertyDetailScreen() {
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={false} onRefresh={reload} tintColor="#0F766E" />}>
         <View style={styles.heroCard}>
           <View style={styles.heroTop}>
-            <View style={styles.heroIcon}>
-              <Text style={styles.heroEmoji}>{data.property_type === 'villa' ? '🏡' : data.property_type === 'apartment' ? '🏠' : data.property_type === 'land' ? '🧭' : '🏢'}</Text>
-            </View>
+            <View style={styles.heroIcon}><Text style={styles.heroEmoji}>{data.property_type === 'villa' ? '🏡' : data.property_type === 'apartment' ? '🏠' : data.property_type === 'land' ? '🧭' : '🏢'}</Text></View>
             <View style={styles.heroTextBox}>
+              <Text style={styles.heroType}>{propertyTypeLabel}</Text>
               <Text style={styles.heroTitle}>{data.name || `عقار #${propertyId}`}</Text>
               <View style={styles.heroLocationLine}>
                 <Ionicons name="location-outline" size={13} color="#CBD5E1" />
@@ -323,81 +323,85 @@ export default function PropertyDetailScreen() {
           </View>
         </View>
 
-        {!isApartmentProperty ? (
-          <View style={styles.statsRow}>
-            <StatCard icon="door-open" value={available.toLocaleString('ar-SA')} label="شاغرة" />
-            <StatCard icon="key-variant" value={rented.toLocaleString('ar-SA')} label="مؤجرة" />
-            <StatCard icon="office-building" value={units.length.toLocaleString('ar-SA')} label="وحدة" />
+        <View style={styles.tabsWrap}>
+          {propertyTabs.map((tab) => {
+            const isActive = activeTab === tab.key;
+            return (
+              <TouchableOpacity key={tab.key} style={[styles.tabButton, isActive ? styles.tabButtonActive : null]} activeOpacity={0.88} onPress={() => setActiveTab(tab.key)}>
+                <Ionicons name={tab.icon} size={17} color={isActive ? '#0F172A' : '#64748B'} />
+                <Text style={[styles.tabText, isActive ? styles.tabTextActive : null]}>{tab.label}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        {activeTab === 'stats' ? (
+          <View style={styles.sectionCard}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>إحصائيات العقار</Text>
+              <Text style={styles.sectionSubtitle}>ملخص سريع عن هذا العقار فقط</Text>
+            </View>
+            <View style={styles.statsGrid}>
+              <StatTile icon="cash-multiple" value={money(totalRent)} label="إجمالي الإيجارات" />
+              <StatTile icon="cash-minus" value={money(totalExpenses)} label="المصروفات" danger={totalExpenses > 0} />
+              <StatTile icon="office-building" value={units.length.toLocaleString('ar-SA')} label="عدد الوحدات" />
+              <StatTile icon="key-variant" value={rented.toLocaleString('ar-SA')} label="مؤجرة" />
+              <StatTile icon="door-open" value={available.toLocaleString('ar-SA')} label="شاغرة" />
+              <StatTile icon="file-document-check-outline" value={totalContracts.toLocaleString('ar-SA')} label="العقود" />
+            </View>
           </View>
         ) : null}
 
-        <View style={styles.financeRow}>
-          <View style={styles.financeCard}><Text style={styles.financeValue}>{money(totalRent)}</Text><Text style={styles.financeLabel}>إجمالي الإيجارات</Text></View>
-          <View style={styles.financeCard}><Text style={styles.financeValue}>{money(totalExpenses)}</Text><Text style={styles.financeLabel}>المصروفات</Text></View>
-        </View>
+        {activeTab === 'details' ? (
+          <>
+            <Section title="تفاصيل العقار">
+              {detailsRows.map(([label, value]) => <Row key={label} label={label} value={value} />)}
+            </Section>
 
-        <CollapsibleSection title="تفاصيل العقار" icon="office-building-outline" subtitle="معلومات أساسية عن العقار وموقعه وحدوده">
-          <Row label="النوع" value={typeMap[String(data.property_type || '')] || data.property_type} />
-          <Row label="الاستخدام" value={usageMap[String(data.usage_type || '')] || data.usage_type} />
-          <Row label="الإدارة" value={mgmtMap[String(data.management_type || '')] || data.management_type} />
-          <Row label="رقم الصك" value={data.deed_number || data.document_number} />
-          <Row label="العنوان الوطني المختصر" value={data.national_short_address} />
-          <Row label="المساحة" value={hasValue(data.property_area) ? `${data.property_area} م²` : null} />
-          <Row label="عدد الأدوار" value={data.floors_count} />
-          <Row label="المواقف" value={data.parking_spots_count} />
-          <Row label="المصاعد" value={data.elevators_count} />
-          <Row label="العنوان" value={data.address} />
-          <Row label="ملاحظات" value={data.notes} />
-        </CollapsibleSection>
+            <Section title="بيانات الوثيقة والصك">
+              <Row label="تاريخ الوثيقة" value={data.document_date_hijri} />
+              <Row label="التاريخ الميلادي" value={data.document_date_gregorian} />
+              <Row label="الحالة" value={data.document_status} />
+              <Row label="القيود" value={data.document_restrictions} />
+              <Row label="تاريخ الوثيقة السابقة" value={data.previous_document_date_hijri} />
+              <Row label="رقم الوثيقة السابقة" value={data.previous_document_number} />
+              <Row label="نوع العملية" value={data.operation_type} />
+              <Row label="رقم الهوية العقارية" value={data.real_estate_identity_number} />
+              <Row label="نوع العقار في الصك" value={data.deed_property_type_text} />
+              <Row label="نوع الاستخدام" value={data.deed_usage_text} />
+              <Row label="رقم القطعة" value={data.plot_number} />
+              <Row label="رقم المخطط" value={data.plan_number} />
+              <Row label="البلك" value={data.block_number} />
+              <Row label="المجاورة / الجزء" value={data.deed_neighboring_part} />
+              <Row label="الموقع" value={data.deed_location_text} />
+              <Row label="نموذج العقار" value={data.deed_property_model} />
+              <Row label="وصف الحدود" value={data.deed_boundaries_description} />
+            </Section>
 
-        <CollapsibleSection title="بيانات الوثيقة والصك" icon="file-document-outline" subtitle="الوثائق الرسمية وتفاصيل الصك">
-          <Row label="تاريخ الوثيقة" value={data.document_date_hijri} />
-          <Row label="التاريخ الميلادي" value={data.document_date_gregorian} />
-          <Row label="الحالة" value={data.document_status} />
-          <Row label="القيود" value={data.document_restrictions} />
-          <Row label="تاريخ الوثيقة السابقة" value={data.previous_document_date_hijri} />
-          <Row label="رقم الوثيقة السابقة" value={data.previous_document_number} />
-          <Row label="نوع العملية" value={data.operation_type} />
-          <Row label="رقم الهوية العقارية" value={data.real_estate_identity_number} />
-          <Row label="نوع العقار في الصك" value={data.deed_property_type_text} />
-          <Row label="نوع الاستخدام" value={data.deed_usage_text} />
-          <Row label="رقم القطعة" value={data.plot_number} />
-          <Row label="رقم المخطط" value={data.plan_number} />
-          <Row label="البلك" value={data.block_number} />
-          <Row label="المجاورة / الجزء" value={data.deed_neighboring_part} />
-          <Row label="الموقع" value={data.deed_location_text} />
-          <Row label="نموذج العقار" value={data.deed_property_model} />
-          <Row label="وصف الحدود" value={data.deed_boundaries_description} />
-        </CollapsibleSection>
-
-        {(hasValue(data.deed_mortgage_status) || hasValue(data.deed_mortgagee_name) || hasValue(data.deed_mortgage_amount)) ? (
-          <Section title="بيانات الرهن / القيود المالية">
-            <Row label="حالة الرهن" value={data.deed_mortgage_status} />
-            <Row label="الجهة المرتهنة" value={data.deed_mortgagee_name} />
-            <Row label="قيمة الرهن" value={hasValue(data.deed_mortgage_amount) ? money(data.deed_mortgage_amount) : null} />
-            <Row label="تاريخ الاستحقاق" value={data.deed_mortgage_due_date} />
-          </Section>
+            {(hasValue(data.deed_mortgage_status) || hasValue(data.deed_mortgagee_name) || hasValue(data.deed_mortgage_amount)) ? (
+              <Section title="بيانات الرهن / القيود المالية">
+                <Row label="حالة الرهن" value={data.deed_mortgage_status} />
+                <Row label="الجهة المرتهنة" value={data.deed_mortgagee_name} />
+                <Row label="قيمة الرهن" value={hasValue(data.deed_mortgage_amount) ? money(data.deed_mortgage_amount) : null} />
+                <Row label="تاريخ الاستحقاق" value={data.deed_mortgage_due_date} />
+              </Section>
+            ) : null}
+          </>
         ) : null}
 
-        {!isApartmentProperty && units.length > 0 ? (
-          <CollapsibleSection title="الوحدات" icon="home-city-outline" subtitle="تفاصيل الوحدات المرتبطة بالعقار">
-            {units.map((unit) => {
-              const hasContract = unitContractsCount(unit) > 0;
-              return (
-                <TouchableOpacity key={unit.id} style={styles.unitCard} activeOpacity={0.9} onPress={() => router.push(`/unit/${unit.id}` as never)}>
-                  <View style={styles.unitInfoBox}>
-                    <Text style={styles.unitTitle}>{unit.unit_number || `وحدة #${unit.id}`}</Text>
-                    <Text style={styles.unitMeta}>{unit.type || 'وحدة'} — الدور {display(unit.floor)}</Text>
-                    <Text style={hasContract ? styles.unitContractOk : styles.unitContractEmpty}>{hasContract ? `يوجد ${unitContractsCount(unit)} عقد` : 'لا يوجد عقد'}</Text>
-                  </View>
-                  <View style={styles.unitSideBox}>
-                    <Text style={styles.unitStatus}>{unit.status || '-'}</Text>
-                    <Text style={styles.unitRent}>{money(unit.rent_amount)}</Text>
-                  </View>
-                </TouchableOpacity>
-              );
-            })}
-          </CollapsibleSection>
+        {activeTab === 'units' ? (
+          <View style={styles.sectionCard}>
+            <View style={styles.sectionHeaderRow}>
+              {!isApartmentProperty ? <TouchableOpacity style={styles.smallAddButton} activeOpacity={0.88} onPress={openAddUnit}><Ionicons name="add" size={22} color="#fff" /></TouchableOpacity> : <View />}
+              <View style={styles.sectionHeaderText}>
+                <Text style={styles.sectionTitle}>الوحدات</Text>
+                <Text style={styles.sectionSubtitle}>{units.length.toLocaleString('ar-SA')} وحدة مرتبطة بهذا العقار</Text>
+              </View>
+            </View>
+            {!isApartmentProperty && units.length > 0 ? units.map((unit) => <UnitCard key={unit.id} unit={unit} />) : null}
+            {!isApartmentProperty && units.length === 0 ? <Text style={styles.emptyText}>لا توجد وحدات مضافة لهذا العقار.</Text> : null}
+            {isApartmentProperty ? <Text style={styles.emptyText}>هذا العقار مسجل كشقة مستقلة ولا يحتوي على وحدات داخلية.</Text> : null}
+          </View>
         ) : null}
         <View style={{ height: 78 }} />
       </ScrollView>
@@ -436,40 +440,46 @@ const styles = StyleSheet.create({
   heroIcon: { width: 64, height: 64, borderRadius: 21, backgroundColor: '#ECFDF5', alignItems: 'center', justifyContent: 'center' },
   heroEmoji: { fontSize: 32 },
   heroTextBox: { flex: 1, alignItems: 'flex-end', paddingLeft: 28 },
+  heroType: { color: '#5EEAD4', fontWeight: '900', marginBottom: 3, textAlign: 'right', fontSize: 12 },
   heroTitle: { color: '#fff', fontSize: 19, fontWeight: '900', textAlign: 'right', lineHeight: 28 },
   heroLocationLine: { flexDirection: 'row-reverse', alignItems: 'center', gap: 4, marginTop: 4 },
   heroSubtitle: { color: '#CBD5E1', fontWeight: '800', textAlign: 'right', fontSize: 12 },
   ownerText: { color: '#5EEAD4', fontWeight: '900', marginTop: 6, textAlign: 'right', fontSize: 12 },
-  statsRow: { flexDirection: 'row-reverse', gap: 7, marginBottom: 9 },
-  statCard: { flex: 1, backgroundColor: '#fff', borderRadius: 17, paddingVertical: 9, paddingHorizontal: 7, alignItems: 'center', borderWidth: 1, borderColor: '#E8EEF0', shadowColor: '#0F172A', shadowOpacity: 0.035, shadowRadius: 9, shadowOffset: { width: 0, height: 4 }, elevation: 1 },
-  statIconBox: { width: 37, height: 37, borderRadius: 18.5, backgroundColor: '#EEF7F5', alignItems: 'center', justifyContent: 'center', marginBottom: 4 },
-  statValue: { color: '#0F172A', fontSize: 19, fontWeight: '900' },
-  statLabel: { color: '#64748B', fontWeight: '800', marginTop: 1, fontSize: 11 },
+  tabsWrap: { flexDirection: 'row-reverse', backgroundColor: '#E7E5E0', borderRadius: 19, padding: 5, marginBottom: 10, gap: 4 },
+  tabButton: { flex: 1, minHeight: 47, borderRadius: 16, alignItems: 'center', justifyContent: 'center', gap: 3 },
+  tabButtonActive: { backgroundColor: '#fff', shadowColor: '#0F172A', shadowOpacity: 0.07, shadowRadius: 10, shadowOffset: { width: 0, height: 5 }, elevation: 2 },
+  tabText: { color: '#64748B', fontWeight: '900', fontSize: 12 },
+  tabTextActive: { color: '#111827' },
   sectionCard: { backgroundColor: '#fff', borderRadius: 18, padding: 11, marginBottom: 9, borderWidth: 1, borderColor: '#E8EEF0', shadowColor: '#0F172A', shadowOpacity: 0.03, shadowRadius: 10, shadowOffset: { width: 0, height: 5 }, elevation: 1 },
-  sectionCardCompact: { backgroundColor: '#fff', borderRadius: 18, padding: 10, marginBottom: 8, borderWidth: 1, borderColor: '#E8EEF0', shadowColor: '#0F172A', shadowOpacity: 0.03, shadowRadius: 10, shadowOffset: { width: 0, height: 5 }, elevation: 1 },
-  sectionTitle: { color: '#111827', fontSize: 17, fontWeight: '900', textAlign: 'right', marginBottom: 10 },
-  sectionTitleCompact: { color: '#111827', fontSize: 16, fontWeight: '900', textAlign: 'right' },
-  collapsibleHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, minHeight: 48 },
-  collapsibleTitleBox: { flex: 1, alignItems: 'flex-end' },
-  collapsibleHint: { color: '#6B7280', fontWeight: '800', fontSize: 10.5, marginTop: 3, textAlign: 'right' },
-  collapsibleBody: { marginTop: 7, borderTopWidth: 1, borderTopColor: '#F1F5F9', paddingTop: 5 },
-  sectionIconBox: { width: 43, height: 43, borderRadius: 15, backgroundColor: '#EEF7F5', alignItems: 'center', justifyContent: 'center' },
-  financeRow: { flexDirection: 'row-reverse', gap: 7, marginBottom: 9 },
-  financeCard: { flex: 1, backgroundColor: '#fff', borderRadius: 17, padding: 10, alignItems: 'center', borderWidth: 1, borderColor: '#E8EEF0' },
-  financeValue: { color: '#0F766E', fontWeight: '900', fontSize: 14 },
-  financeLabel: { color: '#64748B', fontWeight: '800', marginTop: 3, textAlign: 'center', fontSize: 11 },
+  sectionHeader: { alignItems: 'flex-end', marginBottom: 10 },
+  sectionHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, gap: 10 },
+  sectionHeaderText: { flex: 1, alignItems: 'flex-end' },
+  sectionTitle: { color: '#111827', fontSize: 17, fontWeight: '900', textAlign: 'right' },
+  sectionSubtitle: { color: '#64748B', fontWeight: '800', fontSize: 11, marginTop: 3, textAlign: 'right' },
+  statsGrid: { flexDirection: 'row-reverse', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 8 },
+  statTile: { width: '48.6%', minHeight: 104, backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#EEF2F7', borderRadius: 18, alignItems: 'center', justifyContent: 'center', padding: 8 },
+  statTileDanger: { backgroundColor: '#FEF2F2', borderColor: '#FECACA' },
+  statIconBox: { width: 40, height: 40, borderRadius: 15, backgroundColor: '#ECFDF5', alignItems: 'center', justifyContent: 'center', marginBottom: 6 },
+  statIconDanger: { backgroundColor: '#FEE2E2' },
+  statValue: { color: '#0F172A', fontSize: 15, fontWeight: '900', textAlign: 'center' },
+  statValueDanger: { color: '#DC2626' },
+  statLabel: { color: '#64748B', fontWeight: '800', marginTop: 3, fontSize: 11, textAlign: 'center' },
+  statLabelDanger: { color: '#991B1B' },
   infoRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
   infoLabel: { color: '#64748B', fontWeight: '900', textAlign: 'right', minWidth: 96, fontSize: 11.5 },
   infoValue: { color: '#111827', fontWeight: '900', flex: 1, textAlign: 'left', fontSize: 11.5 },
-  unitCard: { backgroundColor: '#F8FAFC', borderRadius: 15, padding: 10, marginBottom: 7, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', borderWidth: 1, borderColor: '#E2E8F0' },
+  smallAddButton: { width: 42, height: 42, borderRadius: 21, backgroundColor: '#0F766E', alignItems: 'center', justifyContent: 'center' },
+  unitCard: { backgroundColor: '#F8FAFC', borderRadius: 17, padding: 11, marginBottom: 8, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', borderWidth: 1, borderColor: '#E2E8F0', gap: 9 },
+  unitIconBox: { width: 43, height: 43, borderRadius: 16, backgroundColor: '#ECFDF5', alignItems: 'center', justifyContent: 'center' },
   unitInfoBox: { flex: 1, alignItems: 'flex-end' },
-  unitTitle: { color: '#111827', fontWeight: '900', fontSize: 14, textAlign: 'right' },
+  unitTitle: { color: '#111827', fontWeight: '900', fontSize: 15, textAlign: 'right' },
   unitMeta: { color: '#64748B', fontWeight: '800', marginTop: 2, textAlign: 'right', fontSize: 11 },
   unitContractOk: { color: '#16A34A', fontWeight: '900', marginTop: 3, textAlign: 'right', fontSize: 11 },
   unitContractEmpty: { color: '#D97706', fontWeight: '900', marginTop: 3, textAlign: 'right', fontSize: 11 },
-  unitSideBox: { alignItems: 'flex-start', gap: 6 },
+  unitSideBox: { alignItems: 'flex-start', gap: 5 },
   unitStatus: { backgroundColor: '#E0F2FE', color: '#0369A1', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 4, overflow: 'hidden', fontWeight: '900', fontSize: 10 },
   unitRent: { color: '#111827', fontWeight: '900', fontSize: 11 },
+  emptyText: { color: '#64748B', fontWeight: '900', textAlign: 'center', paddingVertical: 18 },
   floatingButton: { position: 'absolute', left: 18, top: 14, width: 56, height: 56, borderRadius: 28, backgroundColor: '#0F766E', alignItems: 'center', justifyContent: 'center', shadowColor: '#0F172A', shadowOpacity: 0.24, shadowRadius: 16, shadowOffset: { width: 0, height: 10 }, elevation: 10, zIndex: 60 },
   floatingBackdrop: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, backgroundColor: 'transparent', zIndex: 40 },
   floatingMenu: { position: 'absolute', left: 18, top: 78, width: 210, borderRadius: 20, backgroundColor: '#fff', borderWidth: 1, borderColor: '#E5E7EB', paddingVertical: 6, shadowColor: '#0F172A', shadowOpacity: 0.18, shadowRadius: 18, shadowOffset: { width: 0, height: 10 }, elevation: 12, zIndex: 70 },
