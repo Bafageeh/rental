@@ -88,7 +88,7 @@ if (!function_exists('mr_file_path_variants')) {
 if (!function_exists('mr_file_download_url')) {
     function mr_file_download_url(string $type, int $id): string
     {
-        return url('/api/file-download/' . $type . '/' . $id);
+        return url('/file-download/' . $type . '/' . $id);
     }
 }
 
