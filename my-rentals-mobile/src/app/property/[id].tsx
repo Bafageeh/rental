@@ -412,7 +412,6 @@ export default function PropertyDetailScreen() {
           <FloatingMenuAction icon="pencil-outline" label="تعديل" color="#0F766E" onPress={openEditProperty} />
           <FloatingMenuAction icon="trash-can-outline" label="حذف" color="#DC2626" onPress={confirmDeleteProperty} />
           {!isApartmentProperty ? <FloatingMenuAction icon="plus-circle-outline" label="إضافة وحدة" color="#0F766E" onPress={openAddUnit} /> : null}
-          <FloatingMenuAction icon="file-document-outline" label="العقود" color="#0F766E" onPress={() => openPropertyService('/contracts')} />
           <FloatingMenuAction icon="cash-minus" label="المصروفات" color="#0F766E" onPress={() => openPropertyService('/expenses')} />
           {canCreateContract ? <FloatingMenuAction icon="file-sign" label="إنشاء / رفع عقد" color="#0F766E" onPress={openCreateContract} /> : null}
           <FloatingMenuAction icon="image-multiple-outline" label="الملفات والوسائط" color="#0F766E" onPress={openRepository} />
