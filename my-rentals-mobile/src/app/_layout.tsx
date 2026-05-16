@@ -124,7 +124,6 @@ function AppTabs() {
       <Tabs.Screen name="activity-logs" options={{ ...hidden, title: "سجل النشاط" }} />
       <Tabs.Screen name="activity-feed" options={{ ...hidden, title: "آخر النشاطات" }} />
       <Tabs.Screen name="data-health" options={{ ...hidden, title: "صحة البيانات" }} />
-      <Tabs.Screen name="edit-delete-center" options={{ ...hidden, title: "مركز التعديل" }} />
       <Tabs.Screen name="trash-center" options={{ ...hidden, title: "المحذوفات" }} />
       <Tabs.Screen name="relations-manager" options={{ ...hidden, title: "إدارة" }} />
       <Tabs.Screen name="record-details" options={{ ...hidden, title: "تفاصيل" }} />
