@@ -90,6 +90,7 @@ Route::middleware(['auth.api', 'api.scope'])->group(function () {
         __DIR__ . '/api/101_property_parking_counts_hotfix.php',
         __DIR__ . '/api/111_profile_password.php',
         __DIR__ . '/api/112_profile_properties.php',
+        __DIR__ . '/api/113_expense_scope_fix.php',
     ] as $routeModule) {
         if (is_file($routeModule)) {
             require $routeModule;
