@@ -3,20 +3,10 @@
 // PHASE2_ROUTE_MODULES: generated from routes/api.php on 2026-04-27-083758.
 // Section: Expenses
 
-use App\Http\Controllers\Api\AuthController;
-use App\Http\Controllers\Api\ContractFileController;
-use App\Http\Controllers\Api\DashboardController;
-use App\Http\Controllers\Api\OwnerDashboardController;
-use App\Models\Contract;
-use App\Models\Owner;
-use App\Models\Payment;
 use App\Models\Property;
-use App\Models\Tenant;
 use App\Models\Unit;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
-use Illuminate\Support\Facades\Schema;
 
 /*
 |--------------------------------------------------------------------------
@@ -31,10 +21,15 @@ Route::get('/expense-categories', function () {
 Route::get('/expenses', function (Request $request) {
     $query = \App\Models\PropertyExpense::with([
         'property.owner',
+        'unit',
         'category',
     ]);
 
-    if ($request->filled('property_id')) {
+    if ($request->filled('unit_id')) {
+        $query->where('unit_id', $request->integer('unit_id'));
+    } elseif ($request->filled('property_id')) {
+        // عند عرض مصروفات العقار نعرض مصروف العقار نفسه + مصروفات كل الوحدات التابعة له
+        // لأنها كلها مرتبطة بنفس property_id، سواء كان unit_id فارغًا أو محددًا.
         $query->where('property_id', $request->integer('property_id'));
     }
 
@@ -52,7 +47,8 @@ Route::get('/expenses', function (Request $request) {
 
 Route::post('/expenses', function (Request $request) {
     $data = $request->validate([
-        'property_id' => ['required', 'integer', 'exists:properties,id'],
+        'property_id' => ['required_without:unit_id', 'nullable', 'integer', 'exists:properties,id'],
+        'unit_id' => ['nullable', 'integer', 'exists:units,id'],
         'expense_category_id' => ['nullable', 'integer', 'exists:expense_categories,id'],
         'amount' => ['required', 'numeric', 'min:0'],
         'expense_date' => ['required', 'date'],
@@ -60,8 +56,17 @@ Route::post('/expenses', function (Request $request) {
         'description' => ['nullable', 'string'],
     ]);
 
+    $unit = null;
+    if (!empty($data['unit_id'])) {
+        $unit = Unit::query()->findOrFail((int) $data['unit_id']);
+        $data['property_id'] = $unit->property_id;
+    }
+
+    Property::query()->findOrFail((int) $data['property_id']);
+
     $expense = \App\Models\PropertyExpense::create([
         'property_id' => $data['property_id'],
+        'unit_id' => $unit?->id,
         'expense_category_id' => $data['expense_category_id'] ?? null,
         'amount' => $data['amount'],
         'expense_date' => $data['expense_date'],
@@ -74,6 +79,7 @@ Route::post('/expenses', function (Request $request) {
         'message' => 'تم إضافة المصروف بنجاح',
         'expense' => $expense->fresh()->load([
             'property.owner',
+            'unit',
             'category',
         ]),
     ], 201);
