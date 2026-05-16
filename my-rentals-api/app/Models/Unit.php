@@ -92,4 +92,9 @@ class Unit extends Model
     {
         return $this->hasMany(UnitMedia::class);
     }
+
+    public function expenses(): HasMany
+    {
+        return $this->hasMany(PropertyExpense::class);
+    }
 }
