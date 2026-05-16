@@ -101,7 +101,6 @@ const sections: ProfileSection[] = [
     title: "روابط المدير",
     subtitle: "تظهر فقط لحساب المدير.",
     items: [
-      { icon: "📁", title: "المستندات", subtitle: "صكوك وعقود ومرفقات", path: "/documents", adminOnly: true },
       { icon: "🖼️", title: "الملفات والوسائط", subtitle: "صور وفيديوهات وملفات", path: "/files", adminOnly: true },
       { icon: "⬇️", title: "التصدير", subtitle: "تصدير التقارير والبيانات", path: "/export-center", adminOnly: true },
       { icon: "⚙️", title: "الإعدادات", subtitle: "إعدادات التطبيق العامة", path: "/settings", adminOnly: true },
