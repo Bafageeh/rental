@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { router } from "expo-router";
 import { ActivityIndicator, Alert, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "../context/AuthContext";
 import { apiGet, apiPost } from "../lib/api";
 
@@ -131,11 +132,6 @@ export default function OwnersScreen() {
           <Text style={styles.heroBadge}>{visibleOwners.length.toLocaleString("ar-SA")} مالك</Text>
         </View>
 
-        <TouchableOpacity style={[styles.addOwnerButton, showForm ? styles.closeOwnerButton : null]} onPress={() => setShowForm(!showForm)} activeOpacity={0.85}>
-          <Text style={styles.addOwnerIcon}>{showForm ? "×" : "＋"}</Text>
-          <Text style={styles.addOwnerText}>{showForm ? "إغلاق" : "إضافة مالك جديد"}</Text>
-        </TouchableOpacity>
-
         {showForm ? (
           <View style={styles.formCard}>
             <Text style={styles.formTitle}>بيانات المالك</Text>
@@ -178,7 +174,11 @@ export default function OwnersScreen() {
             </View>
           </TouchableOpacity>
         ))}
+        <View style={{ height: 82 }} />
       </ScrollView>
+      <TouchableOpacity style={[styles.floatingAddButton, showForm ? styles.floatingCloseButton : null]} activeOpacity={0.88} onPress={() => setShowForm(!showForm)}>
+        <Ionicons name={showForm ? "close" : "add"} size={30} color="#fff" />
+      </TouchableOpacity>
     </SafeAreaView>
   );
 }
@@ -192,10 +192,8 @@ const styles = StyleSheet.create({
   heroTitle: { color: "#fff", fontSize: 30, fontWeight: "900", textAlign: "right" },
   heroSubtitle: { color: "#CBD5E1", marginTop: 8, fontWeight: "800", textAlign: "right", lineHeight: 22 },
   heroBadge: { marginTop: 12, backgroundColor: "#D1FAE5", color: "#064E3B", borderRadius: 999, overflow: "hidden", paddingHorizontal: 12, paddingVertical: 6, fontWeight: "900" },
-  addOwnerButton: { minHeight: 52, borderRadius: 18, paddingHorizontal: 14, paddingVertical: 10, alignItems: "center", justifyContent: "center", flexDirection: "row-reverse", gap: 8, backgroundColor: "#0F766E", marginBottom: 12 },
-  closeOwnerButton: { backgroundColor: "#7f1d1d" },
-  addOwnerIcon: { color: "#ffffff", fontSize: 22, lineHeight: 24, fontWeight: "900" },
-  addOwnerText: { color: "#ffffff", fontSize: 15, fontWeight: "900" },
+  floatingAddButton: { position: "absolute", left: 18, bottom: 82, width: 58, height: 58, borderRadius: 29, backgroundColor: "#0F766E", alignItems: "center", justifyContent: "center", shadowColor: "#0F172A", shadowOpacity: 0.22, shadowRadius: 16, shadowOffset: { width: 0, height: 9 }, elevation: 10, zIndex: 30 },
+  floatingCloseButton: { backgroundColor: "#7f1d1d" },
   formCard: { backgroundColor: "#ffffff", borderRadius: 22, padding: 14, marginBottom: 12, borderWidth: 1, borderColor: "#EDECE9" },
   formTitle: { fontSize: 17, fontWeight: "900", color: "#111827", textAlign: "right", marginBottom: 10 },
   input: { backgroundColor: "#F7F6F4", borderWidth: 1, borderColor: "#DDDBD6", borderRadius: 14, padding: 12, marginBottom: 10, color: "#111827" },
