@@ -198,17 +198,6 @@ export default function OwnersScreen() {
           <Text style={styles.heroBadge}>{visibleOwners.length.toLocaleString("ar-SA")} مالك</Text>
         </View>
 
-        {showForm ? (
-          <View style={styles.formCard}>
-            <Text style={styles.formTitle}>{editingOwnerId ? "تعديل بيانات المالك" : "بيانات المالك"}</Text>
-            <TextInput style={styles.input} placeholder="اسم المالك" value={name} onChangeText={setName} textAlign="right" />
-            <TextInput style={styles.input} placeholder="رقم الجوال" value={phone} onChangeText={setPhone} keyboardType="phone-pad" textAlign="right" />
-            <TextInput style={styles.input} placeholder="البريد الإلكتروني" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" textAlign="right" />
-            <TextInput style={styles.input} placeholder="رقم الهوية / السجل" value={nationalId} onChangeText={setNationalId} keyboardType="number-pad" textAlign="right" />
-            <TouchableOpacity style={styles.saveButton} onPress={saveOwner} disabled={saving} activeOpacity={0.85}><Text style={styles.saveButtonText}>{saving ? "جاري الحفظ..." : editingOwnerId ? "حفظ التعديل" : "حفظ المالك"}</Text></TouchableOpacity>
-          </View>
-        ) : null}
-
         {error ? (
           <View style={styles.errorBox}>
             <Text style={styles.errorTitle}>تعذر تحميل الملاك</Text>
@@ -263,6 +252,28 @@ export default function OwnersScreen() {
         ))}
         <View style={{ height: 82 }} />
       </ScrollView>
+
+      {showForm ? (
+        <View style={styles.modalOverlay}>
+          <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={closeForm} />
+          <View style={styles.floatingFormCard}>
+            <View style={styles.formHeader}>
+              <TouchableOpacity style={styles.formCloseButton} activeOpacity={0.85} onPress={closeForm}>
+                <Ionicons name="close" size={20} color="#0F172A" />
+              </TouchableOpacity>
+              <Text style={styles.formTitle}>{editingOwnerId ? "تعديل بيانات المالك" : "إضافة مالك جديد"}</Text>
+            </View>
+            <TextInput style={styles.input} placeholder="اسم المالك" value={name} onChangeText={setName} textAlign="right" />
+            <TextInput style={styles.input} placeholder="رقم الجوال" value={phone} onChangeText={setPhone} keyboardType="phone-pad" textAlign="right" />
+            <TextInput style={styles.input} placeholder="البريد الإلكتروني" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" textAlign="right" />
+            <TextInput style={styles.input} placeholder="رقم الهوية / السجل" value={nationalId} onChangeText={setNationalId} keyboardType="number-pad" textAlign="right" />
+            <TouchableOpacity style={styles.saveButton} onPress={saveOwner} disabled={saving} activeOpacity={0.85}>
+              <Text style={styles.saveButtonText}>{saving ? "جاري الحفظ..." : editingOwnerId ? "حفظ التعديل" : "حفظ المالك"}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      ) : null}
+
       <TouchableOpacity style={[styles.floatingAddButton, showForm ? styles.floatingCloseButton : null]} activeOpacity={0.88} onPress={showForm ? closeForm : openAddOwnerForm}>
         <Ionicons name={showForm ? "close" : "add"} size={30} color="#fff" />
       </TouchableOpacity>
@@ -279,10 +290,14 @@ const styles = StyleSheet.create({
   heroTitle: { color: "#fff", fontSize: 30, fontWeight: "900", textAlign: "right" },
   heroSubtitle: { color: "#CBD5E1", marginTop: 8, fontWeight: "800", textAlign: "right", lineHeight: 22 },
   heroBadge: { marginTop: 12, backgroundColor: "#D1FAE5", color: "#064E3B", borderRadius: 999, overflow: "hidden", paddingHorizontal: 12, paddingVertical: 6, fontWeight: "900" },
-  floatingAddButton: { position: "absolute", left: 18, bottom: 82, width: 58, height: 58, borderRadius: 29, backgroundColor: "#0F766E", alignItems: "center", justifyContent: "center", shadowColor: "#0F172A", shadowOpacity: 0.22, shadowRadius: 16, shadowOffset: { width: 0, height: 9 }, elevation: 10, zIndex: 30 },
+  floatingAddButton: { position: "absolute", left: 18, bottom: 82, width: 58, height: 58, borderRadius: 29, backgroundColor: "#0F766E", alignItems: "center", justifyContent: "center", shadowColor: "#0F172A", shadowOpacity: 0.22, shadowRadius: 16, shadowOffset: { width: 0, height: 9 }, elevation: 10, zIndex: 60 },
   floatingCloseButton: { backgroundColor: "#7f1d1d" },
-  formCard: { backgroundColor: "#ffffff", borderRadius: 22, padding: 14, marginBottom: 12, borderWidth: 1, borderColor: "#EDECE9" },
-  formTitle: { fontSize: 17, fontWeight: "900", color: "#111827", textAlign: "right", marginBottom: 10 },
+  modalOverlay: { position: "absolute", left: 0, right: 0, top: 0, bottom: 0, zIndex: 50, justifyContent: "center", paddingHorizontal: 18 },
+  modalBackdrop: { position: "absolute", left: 0, right: 0, top: 0, bottom: 0, backgroundColor: "rgba(15, 23, 42, 0.32)" },
+  floatingFormCard: { backgroundColor: "#ffffff", borderRadius: 26, padding: 16, borderWidth: 1, borderColor: "#EDECE9", shadowColor: "#0F172A", shadowOpacity: 0.22, shadowRadius: 22, shadowOffset: { width: 0, height: 12 }, elevation: 16 },
+  formHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 12 },
+  formCloseButton: { width: 38, height: 38, borderRadius: 19, backgroundColor: "#F8FAFC", borderWidth: 1, borderColor: "#E5E7EB", alignItems: "center", justifyContent: "center" },
+  formTitle: { fontSize: 18, fontWeight: "900", color: "#111827", textAlign: "right" },
   input: { backgroundColor: "#F7F6F4", borderWidth: 1, borderColor: "#DDDBD6", borderRadius: 14, padding: 12, marginBottom: 10, color: "#111827" },
   saveButton: { backgroundColor: "#16a34a", padding: 13, borderRadius: 14, alignItems: "center" },
   saveButtonText: { color: "#fff", fontWeight: "900" },
