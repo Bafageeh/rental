@@ -18,7 +18,6 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
-use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /*
 |--------------------------------------------------------------------------
@@ -35,7 +34,11 @@ if (!function_exists('mr_file_storage_path')) {
 
         $path = trim(str_replace('\\\\', '/', $path));
         $path = preg_replace('#^https?://[^/]+/#i', '', $path) ?: $path;
+        $path = preg_replace('#^api/file-download/[^/]+/\d+$#', '', $path) ?: $path;
         $path = preg_replace('#^/?storage/#', '', $path) ?: $path;
+        $path = preg_replace('#^/?app/public/#', '', $path) ?: $path;
+        $path = preg_replace('#^/?app/private/#', '', $path) ?: $path;
+        $path = preg_replace('#^/?app/#', '', $path) ?: $path;
         $path = preg_replace('#^/?public/#', '', $path) ?: $path;
         $path = ltrim($path, '/');
 
@@ -52,6 +55,36 @@ if (!function_exists('mr_file_storage_path')) {
     }
 }
 
+if (!function_exists('mr_file_path_variants')) {
+    function mr_file_path_variants(?string $path): array
+    {
+        $normalizedPath = mr_file_storage_path($path);
+        if (!$normalizedPath) {
+            return [];
+        }
+
+        $variants = [
+            $normalizedPath,
+            str_replace('contract-files/', 'contract_files/', $normalizedPath),
+            str_replace('contract_files/', 'contract-files/', $normalizedPath),
+            str_replace('property-files/', 'property_files/', $normalizedPath),
+            str_replace('property_files/', 'property-files/', $normalizedPath),
+            str_replace('unit-media/', 'unit_media/', $normalizedPath),
+            str_replace('unit_media/', 'unit-media/', $normalizedPath),
+        ];
+
+        $basename = basename($normalizedPath);
+        if ($basename && $basename !== $normalizedPath) {
+            $variants[] = 'contract_files/' . $basename;
+            $variants[] = 'contract-files/' . $basename;
+            $variants[] = 'property-files/' . $basename;
+            $variants[] = 'unit-media/' . $basename;
+        }
+
+        return array_values(array_unique(array_filter($variants)));
+    }
+}
+
 if (!function_exists('mr_file_download_url')) {
     function mr_file_download_url(string $type, int $id): string
     {
@@ -59,26 +92,109 @@ if (!function_exists('mr_file_download_url')) {
     }
 }
 
-if (!function_exists('mr_file_response')) {
-    function mr_file_response(?string $path, ?string $downloadName = null, ?string $mimeType = null): StreamedResponse|\Illuminate\Http\JsonResponse
+if (!function_exists('mr_download_absolute_file')) {
+    function mr_download_absolute_file(string $absolutePath, ?string $downloadName = null, ?string $mimeType = null)
+    {
+        $name = $downloadName ?: basename($absolutePath);
+        $headers = [];
+        if ($mimeType) {
+            $headers['Content-Type'] = $mimeType;
+        }
+
+        return response()->download($absolutePath, $name, $headers);
+    }
+}
+
+if (!function_exists('mr_find_file_by_basename')) {
+    function mr_find_file_by_basename(?string $path): ?string
     {
         $normalizedPath = mr_file_storage_path($path);
         if (!$normalizedPath) {
+            return null;
+        }
+
+        $basename = basename($normalizedPath);
+        if (!$basename) {
+            return null;
+        }
+
+        $roots = [
+            storage_path('app/public'),
+            storage_path('app/private'),
+            storage_path('app'),
+        ];
+
+        foreach ($roots as $root) {
+            if (!is_dir($root)) {
+                continue;
+            }
+
+            try {
+                $iterator = new RecursiveIteratorIterator(
+                    new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS),
+                    RecursiveIteratorIterator::SELF_FIRST
+                );
+
+                foreach ($iterator as $fileInfo) {
+                    if (!$fileInfo->isFile()) {
+                        continue;
+                    }
+                    if ($fileInfo->getFilename() === $basename) {
+                        return $fileInfo->getPathname();
+                    }
+                }
+            } catch (Throwable $e) {
+                continue;
+            }
+        }
+
+        return null;
+    }
+}
+
+if (!function_exists('mr_file_response')) {
+    function mr_file_response(?string $path, ?string $downloadName = null, ?string $mimeType = null)
+    {
+        $variants = mr_file_path_variants($path);
+        if (empty($variants)) {
             return response()->json(['message' => 'لا يوجد مسار ملف محفوظ.'], 404);
         }
 
         foreach (['public', 'local'] as $disk) {
-            if (Storage::disk($disk)->exists($normalizedPath)) {
-                $name = $downloadName ?: basename($normalizedPath);
-                $headers = [];
-                if ($mimeType) {
-                    $headers['Content-Type'] = $mimeType;
+            foreach ($variants as $candidatePath) {
+                if (Storage::disk($disk)->exists($candidatePath)) {
+                    $name = $downloadName ?: basename($candidatePath);
+                    $headers = [];
+                    if ($mimeType) {
+                        $headers['Content-Type'] = $mimeType;
+                    }
+                    return Storage::disk($disk)->download($candidatePath, $name, $headers);
                 }
-                return Storage::disk($disk)->download($normalizedPath, $name, $headers);
             }
         }
 
-        return response()->json(['message' => 'الملف غير موجود على التخزين.'], 404);
+        foreach ($variants as $candidatePath) {
+            foreach ([
+                storage_path('app/public/' . $candidatePath),
+                storage_path('app/private/' . $candidatePath),
+                storage_path('app/' . $candidatePath),
+                public_path('storage/' . $candidatePath),
+            ] as $absolutePath) {
+                if (is_file($absolutePath)) {
+                    return mr_download_absolute_file($absolutePath, $downloadName, $mimeType);
+                }
+            }
+        }
+
+        $foundByName = mr_find_file_by_basename($path);
+        if ($foundByName && is_file($foundByName)) {
+            return mr_download_absolute_file($foundByName, $downloadName, $mimeType);
+        }
+
+        return response()->json([
+            'message' => 'الملف غير موجود على التخزين.',
+            'checked' => $variants,
+        ], 404);
     }
 }
 
