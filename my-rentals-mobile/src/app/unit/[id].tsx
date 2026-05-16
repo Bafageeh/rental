@@ -14,6 +14,8 @@ import {
 } from "react-native";
 import { apiGet, apiPost } from "../../lib/api";
 
+type UnitTabKey = "stats" | "details" | "contracts";
+
 type FieldItem = {
   key: string;
   label: string;
@@ -45,6 +47,12 @@ type DetailsResponse = {
   sections: RelatedSection[];
 };
 
+const unitTabs: Array<{ key: UnitTabKey; label: string; icon: keyof typeof Ionicons.glyphMap }> = [
+  { key: "stats", label: "إحصائيات", icon: "stats-chart-outline" },
+  { key: "details", label: "التفاصيل", icon: "list-outline" },
+  { key: "contracts", label: "العقود", icon: "documents-outline" },
+];
+
 function valueOrDash(value: unknown) {
   if (value === null || value === undefined || value === "") return "-";
   return String(value);
@@ -66,6 +74,24 @@ function shouldOfferCascadeDelete(message: string) {
   return /ارتباط|الارتباطات|راجع التفاصيل|أكد الحذف|تأكيد|cascade|requires_confirmation/i.test(message);
 }
 
+function isContractSection(section: RelatedSection) {
+  const key = `${section.key || ""} ${section.title || ""}`.toLowerCase();
+  if (/contract|عقد|عقود/.test(key)) return true;
+  return section.items.some((item) => /contract|contracts|عقد|عقود/i.test(`${item.entity} ${item.title}`));
+}
+
+function StatTile({ icon, label, value }: { icon: keyof typeof Ionicons.glyphMap; label: string; value: string | number }) {
+  return (
+    <View style={styles.statTile}>
+      <View style={styles.statIconBox}>
+        <Ionicons name={icon} size={22} color="#0F766E" />
+      </View>
+      <Text style={styles.statTileValue}>{valueOrDash(value)}</Text>
+      <Text style={styles.statTileLabel}>{label}</Text>
+    </View>
+  );
+}
+
 export default function UnitDetailsRoute() {
   const params = useLocalSearchParams<{ id: string; source?: string; return_to?: string }>();
   const id = String(params.id || "");
@@ -74,6 +100,7 @@ export default function UnitDetailsRoute() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<UnitTabKey>("stats");
 
   useEffect(() => {
     globalThis.__RENTAL_EDIT_CONTEXT__ = { resource: "units", id };
@@ -106,6 +133,9 @@ export default function UnitDetailsRoute() {
 
   const title = data?.title || "جاري التحميل...";
   const propertyId = valueOrDash(fieldValue(data?.fields, "property_id"));
+  const unitStatus = valueOrDash(fieldValue(data?.fields, "status"));
+  const unitRent = valueOrDash(fieldValue(data?.fields, "rent_amount"));
+  const unitFloor = valueOrDash(fieldValue(data?.fields, "floor"));
   const sourceReturnTo = typeof params.return_to === "string" && params.return_to ? params.return_to : "";
   const detailsReturnTo = `/unit/${id}${sourceReturnTo ? `?return_to=${encodeURIComponent(sourceReturnTo)}` : ""}`;
   const deleteReturnTo = sourceReturnTo || (propertyId !== "-" ? `/property/${propertyId}` : "/properties");
@@ -119,6 +149,9 @@ export default function UnitDetailsRoute() {
     ];
   }, [data?.fields]);
 
+  const contractSections = useMemo(() => (data?.sections || []).filter(isContractSection), [data?.sections]);
+  const contractItems = useMemo(() => contractSections.flatMap((section) => section.items), [contractSections]);
+  const otherSections = useMemo(() => (data?.sections || []).filter((section) => !isContractSection(section)), [data?.sections]);
   const relatedCount = useMemo(
     () => (data?.sections || []).reduce((sum, section) => sum + (section.count || section.items.length || 0), 0),
     [data?.sections],
@@ -225,9 +258,21 @@ export default function UnitDetailsRoute() {
           <Text style={styles.entityLabel}>وحدة</Text>
           <Text numberOfLines={2} style={styles.title}>{title}</Text>
           <View style={styles.headerStatsRow}>
-            <Text style={styles.statPill}>العقود: {relatedCount}</Text>
+            <Text style={styles.statPill}>العقود: {contractItems.length}</Text>
             <Text style={styles.statPill}>رقم السجل: {valueOrDash(id)}</Text>
           </View>
+        </View>
+
+        <View style={styles.tabsWrap}>
+          {unitTabs.map((tab) => {
+            const isActive = activeTab === tab.key;
+            return (
+              <TouchableOpacity key={tab.key} style={[styles.tabButton, isActive ? styles.tabButtonActive : null]} activeOpacity={0.88} onPress={() => setActiveTab(tab.key)}>
+                <Ionicons name={tab.icon} size={17} color={isActive ? "#0F172A" : "#6B7280"} />
+                <Text style={[styles.tabText, isActive ? styles.tabTextActive : null]}>{tab.label}</Text>
+              </TouchableOpacity>
+            );
+          })}
         </View>
 
         {loading ? (
@@ -247,7 +292,24 @@ export default function UnitDetailsRoute() {
           </View>
         ) : null}
 
-        {!loading && !error ? (
+        {!loading && !error && activeTab === "stats" ? (
+          <View style={styles.sectionCard}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>إحصائيات الوحدة</Text>
+              <Text style={styles.sectionSubtitle}>ملخص سريع عن الوحدة وارتباطاتها</Text>
+            </View>
+            <View style={styles.statsGrid}>
+              <StatTile icon="documents-outline" label="العقود" value={contractItems.length} />
+              <StatTile icon="cash-outline" label="الإيجار" value={unitRent} />
+              <StatTile icon="layers-outline" label="الدور" value={unitFloor} />
+              <StatTile icon="checkmark-circle-outline" label="الحالة" value={unitStatus} />
+              <StatTile icon="link-outline" label="الارتباطات" value={relatedCount} />
+              <StatTile icon="list-outline" label="حقول البيانات" value={primaryFields.length} />
+            </View>
+          </View>
+        ) : null}
+
+        {!loading && !error && activeTab === "details" ? (
           <>
             <View style={styles.sectionCard}>
               <View style={styles.sectionHeader}>
@@ -262,7 +324,7 @@ export default function UnitDetailsRoute() {
               ))}
             </View>
 
-            {(data?.sections || []).map((section) => (
+            {otherSections.map((section) => (
               <View key={section.key} style={styles.sectionCard}>
                 <View style={styles.sectionHeader}>
                   <Text style={styles.sectionTitle}>{section.title}</Text>
@@ -282,6 +344,28 @@ export default function UnitDetailsRoute() {
               </View>
             ))}
           </>
+        ) : null}
+
+        {!loading && !error && activeTab === "contracts" ? (
+          <View style={styles.sectionCard}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>العقود</Text>
+              <Text style={styles.sectionSubtitle}>{contractItems.length} عقد مرتبط بهذه الوحدة</Text>
+            </View>
+            {contractItems.length ? contractItems.map((item) => (
+              <TouchableOpacity key={`${item.entity}-${item.id}`} style={styles.contractCard} activeOpacity={0.86} onPress={() => router.push(relationRoute(item) as never)}>
+                <View style={styles.contractIconBox}>
+                  <Ionicons name="document-text-outline" size={22} color="#0F766E" />
+                </View>
+                <View style={styles.contractTextBox}>
+                  <Text numberOfLines={1} style={styles.contractTitle}>{item.title}</Text>
+                  {item.subtitle ? <Text numberOfLines={2} style={styles.contractSubtitle}>{item.subtitle}</Text> : null}
+                  {item.badge ? <Text style={styles.contractBadge}>{item.badge}</Text> : null}
+                </View>
+                <Ionicons name="chevron-back" size={18} color="#64748B" />
+              </TouchableOpacity>
+            )) : <Text style={styles.emptyText}>لا توجد عقود مرتبطة بهذه الوحدة.</Text>}
+          </View>
         ) : null}
       </ScrollView>
 
@@ -324,6 +408,11 @@ const styles = StyleSheet.create({
   title: { color: "#fff", fontSize: 24, lineHeight: 32, fontWeight: "900", textAlign: "right" },
   headerStatsRow: { flexDirection: "row-reverse", gap: 8, marginTop: 12, flexWrap: "wrap" },
   statPill: { overflow: "hidden", backgroundColor: "rgba(255,255,255,0.12)", color: "#fff", borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6, fontWeight: "800", fontSize: 12 },
+  tabsWrap: { flexDirection: "row-reverse", backgroundColor: "#E7E5E0", borderRadius: 19, padding: 5, marginBottom: 12, gap: 4 },
+  tabButton: { flex: 1, minHeight: 47, borderRadius: 16, alignItems: "center", justifyContent: "center", gap: 3 },
+  tabButtonActive: { backgroundColor: "#fff", shadowColor: "#0F172A", shadowOpacity: 0.07, shadowRadius: 10, shadowOffset: { width: 0, height: 5 }, elevation: 2 },
+  tabText: { color: "#6B7280", fontWeight: "900", fontSize: 12 },
+  tabTextActive: { color: "#111827" },
   loadingBox: { backgroundColor: "#fff", borderRadius: 20, padding: 18, alignItems: "center", gap: 10 },
   loadingText: { color: "#6b7280", fontWeight: "800" },
   errorBox: { backgroundColor: "#fff1f2", borderRadius: 20, padding: 16, borderWidth: 1, borderColor: "#fecdd3" },
@@ -335,6 +424,11 @@ const styles = StyleSheet.create({
   sectionHeader: { alignItems: "flex-end", marginBottom: 8 },
   sectionTitle: { fontSize: 16, fontWeight: "900", color: "#111827", textAlign: "right" },
   sectionSubtitle: { color: "#9ca3af", fontSize: 11, fontWeight: "800", textAlign: "right", marginTop: 2 },
+  statsGrid: { flexDirection: "row-reverse", flexWrap: "wrap", gap: 8 },
+  statTile: { width: "31.8%", minHeight: 96, backgroundColor: "#F8FAFC", borderWidth: 1, borderColor: "#EEF2F7", borderRadius: 18, alignItems: "center", justifyContent: "center", padding: 8 },
+  statIconBox: { width: 40, height: 40, borderRadius: 15, backgroundColor: "#ECFDF5", alignItems: "center", justifyContent: "center", marginBottom: 6 },
+  statTileValue: { color: "#111827", fontWeight: "900", fontSize: 15, textAlign: "center" },
+  statTileLabel: { color: "#64748B", fontWeight: "800", fontSize: 11, textAlign: "center", marginTop: 3 },
   fieldRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: "#f3f4f6" },
   fieldLabel: { color: "#6b7280", fontSize: 13, fontWeight: "800", textAlign: "right", width: 116 },
   fieldValue: { flex: 1, color: "#111827", fontSize: 14, fontWeight: "800", textAlign: "right" },
@@ -344,6 +438,12 @@ const styles = StyleSheet.create({
   relatedTitle: { color: "#111827", fontSize: 15, fontWeight: "900", textAlign: "right" },
   relatedSubtitle: { marginTop: 5, color: "#4b5563", fontSize: 12, fontWeight: "700", textAlign: "right" },
   badge: { overflow: "hidden", backgroundColor: "#dcfce7", color: "#166534", borderRadius: 999, paddingHorizontal: 9, paddingVertical: 4, fontSize: 11, fontWeight: "900" },
+  contractCard: { backgroundColor: "#F8FAFC", borderRadius: 18, padding: 12, marginTop: 8, borderWidth: 1, borderColor: "#E8EEF3", flexDirection: "row-reverse", alignItems: "center", gap: 9 },
+  contractIconBox: { width: 43, height: 43, borderRadius: 16, backgroundColor: "#ECFDF5", alignItems: "center", justifyContent: "center" },
+  contractTextBox: { flex: 1, alignItems: "flex-end" },
+  contractTitle: { color: "#111827", fontSize: 15, fontWeight: "900", textAlign: "right" },
+  contractSubtitle: { marginTop: 5, color: "#4b5563", fontSize: 12, fontWeight: "700", textAlign: "right" },
+  contractBadge: { marginTop: 6, overflow: "hidden", backgroundColor: "#dcfce7", color: "#166534", borderRadius: 999, paddingHorizontal: 9, paddingVertical: 4, fontSize: 11, fontWeight: "900", alignSelf: "flex-end" },
   emptyText: { color: "#6b7280", fontWeight: "800", textAlign: "center", padding: 14 },
   floatingButton: { position: "absolute", left: 18, top: 14, width: 56, height: 56, borderRadius: 28, backgroundColor: "#0F766E", alignItems: "center", justifyContent: "center", shadowColor: "#0F172A", shadowOpacity: 0.24, shadowRadius: 16, shadowOffset: { width: 0, height: 10 }, elevation: 10, zIndex: 60 },
   floatingBackdrop: { position: "absolute", left: 0, right: 0, top: 0, bottom: 0, backgroundColor: "transparent", zIndex: 40 },
