@@ -105,6 +105,73 @@ if (!function_exists('mr_download_absolute_file')) {
     }
 }
 
+if (!function_exists('mr_uploaded_file_clean_segment')) {
+    function mr_uploaded_file_clean_segment(?string $value): string
+    {
+        $value = trim((string) $value);
+        if ($value !== '') {
+            try {
+                $decoded = rawurldecode($value);
+                if ($decoded !== '') {
+                    $value = $decoded;
+                }
+            } catch (Throwable $e) {
+                // Keep original value.
+            }
+        }
+
+        $value = preg_replace('/[\\\\\/\:\*\?"<>\|]+/u', '-', $value) ?? $value;
+        $value = preg_replace('/\s+/u', ' ', trim($value)) ?? trim($value);
+        $value = trim($value, " \t\n\r\0\x0B.-_");
+
+        return $value !== '' ? mb_substr($value, 0, 90) : 'ملف';
+    }
+}
+
+if (!function_exists('mr_uploaded_file_extension')) {
+    function mr_uploaded_file_extension($uploaded, string $fallback = 'file'): string
+    {
+        $extension = strtolower((string) ($uploaded->getClientOriginalExtension() ?: pathinfo($uploaded->getClientOriginalName() ?: '', PATHINFO_EXTENSION)));
+        $extension = preg_replace('/[^a-z0-9]+/i', '', $extension) ?: $fallback;
+        return $extension ?: $fallback;
+    }
+}
+
+if (!function_exists('mr_property_upload_display_name')) {
+    function mr_property_upload_display_name(Property $property, $uploaded, ?string $prefix = null): string
+    {
+        $name = mr_uploaded_file_clean_segment($property->name ?? ('عقار ' . $property->id));
+        $extension = mr_uploaded_file_extension($uploaded, 'file');
+        return trim(($prefix ? $prefix . ' - ' : '') . $name) . '.' . $extension;
+    }
+}
+
+if (!function_exists('mr_unit_upload_display_name')) {
+    function mr_unit_upload_display_name(Unit $unit, $uploaded, ?string $prefix = null): string
+    {
+        $unitLabel = $unit->name
+            ?? $unit->unit_name
+            ?? $unit->unit_number
+            ?? ('وحدة ' . $unit->id);
+
+        $name = mr_uploaded_file_clean_segment((string) $unitLabel);
+        $extension = mr_uploaded_file_extension($uploaded, 'file');
+        return trim(($prefix ? $prefix . ' - ' : '') . $name) . '.' . $extension;
+    }
+}
+
+if (!function_exists('mr_store_uploaded_file_as_target_name')) {
+    function mr_store_uploaded_file_as_target_name($uploaded, string $directory, string $displayName): string
+    {
+        $extension = pathinfo($displayName, PATHINFO_EXTENSION) ?: mr_uploaded_file_extension($uploaded, 'file');
+        $baseName = pathinfo($displayName, PATHINFO_FILENAME) ?: 'ملف';
+        $safeBase = mr_uploaded_file_clean_segment($baseName);
+        $fileName = $safeBase . '-' . now()->format('YmdHis') . '-' . substr(md5(uniqid('', true)), 0, 6) . '.' . strtolower($extension);
+
+        return $uploaded->storeAs($directory, $fileName, 'public');
+    }
+}
+
 if (!function_exists('mr_find_file_by_basename')) {
     function mr_find_file_by_basename(?string $path): ?string
     {
@@ -287,11 +354,13 @@ Route::post('/property-files', function (Request $request) {
     }
 
     $uploaded = $request->file('file');
-    $path = $uploaded->store('property-files', 'public');
+    $property = Property::findOrFail((int) $data['property_id']);
+    $displayName = mr_property_upload_display_name($property, $uploaded, $data['category'] === 'deed' ? 'صك' : 'ملف عقار');
+    $path = mr_store_uploaded_file_as_target_name($uploaded, 'property-files', $displayName);
 
     $file = \App\Models\PropertyFile::create([
         'property_id' => $data['property_id'],
-        'file_name' => $uploaded->getClientOriginalName(),
+        'file_name' => $displayName,
         'file_path' => $path,
         'file_type' => $uploaded->getClientMimeType(),
         'file_size' => $uploaded->getSize(),
@@ -357,11 +426,13 @@ Route::post('/unit-media', function (Request $request) {
     }
 
     $uploaded = $request->file('file');
-    $path = $uploaded->store('unit-media', 'public');
+    $unit = Unit::with('property')->findOrFail((int) $data['unit_id']);
+    $displayName = mr_unit_upload_display_name($unit, $uploaded, ($data['media_type'] ?? null) === 'video' ? 'فيديو' : 'صورة');
+    $path = mr_store_uploaded_file_as_target_name($uploaded, 'unit-media', $displayName);
 
     $media = \App\Models\UnitMedia::create([
         'unit_id' => $data['unit_id'],
-        'file_name' => $uploaded->getClientOriginalName(),
+        'file_name' => $displayName,
         'file_path' => $path,
         'file_type' => $uploaded->getClientMimeType(),
         'file_size' => $uploaded->getSize(),
