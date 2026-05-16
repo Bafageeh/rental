@@ -120,12 +120,30 @@ export default function ContractDetailsScreen({ id }: { id: string | number }) {
     load(false);
   }, [id]);
 
+  useEffect(() => {
+    const unitId = contract?.unit?.id;
+    if (!unitId) return undefined;
+    const source = `contract-${id}`;
+    (globalThis as any).__RENTAL_FORCED_BACK_ROUTE__ = {
+      source,
+      route: `/unit/${unitId}`,
+    };
+    return () => {
+      const override = (globalThis as any).__RENTAL_FORCED_BACK_ROUTE__;
+      if (override?.source === source) {
+        (globalThis as any).__RENTAL_FORCED_BACK_ROUTE__ = undefined;
+      }
+    };
+  }, [contract?.unit?.id, id]);
+
   function openEdit() {
-    router.push({ pathname: "/contract-edit/[id]", params: { id: String(id), return_to: `/contract/${id}` } } as never);
+    const unitId = contract?.unit?.id;
+    router.push({ pathname: "/contract-edit/[id]", params: { id: String(id), return_to: unitId ? `/unit/${unitId}` : `/contract/${id}` } } as never);
   }
 
   function deleteContract() {
-    router.push(`/edit-delete-center?resource=contracts&id=${id}` as never);
+    const unitId = contract?.unit?.id;
+    router.push(`/edit-delete-center?resource=contracts&id=${id}${unitId ? `&return_to=${encodeURIComponent(`/unit/${unitId}`)}` : ""}` as never);
   }
 
   const payments = (data?.sections || []).flatMap((section) => section.items || []).filter(isPayment);
