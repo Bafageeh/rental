@@ -140,11 +140,30 @@ export default function UnitDetailsRoute() {
     } as never);
   }
 
-  function openUnitService(path: string, extraQuery = "") {
-    closeMenu();
+  function unitQuery(extraQuery = "") {
     const unitName = encodeURIComponent(title || `وحدة ${id}`);
     const suffix = extraQuery ? `&${extraQuery}` : "";
-    router.push(`${path}?unit_id=${id}&unit_name=${unitName}${suffix}` as never);
+    return `unit_id=${id}&unit_name=${unitName}${suffix}`;
+  }
+
+  function openUnitService(path: string, extraQuery = "") {
+    closeMenu();
+    router.push(`${path}?${unitQuery(extraQuery)}` as never);
+  }
+
+  function openCreateContractOptions() {
+    closeMenu();
+    Alert.alert("إنشاء عقد", "اختر طريقة إنشاء العقد لهذه الوحدة:", [
+      {
+        text: "إنشاء عقد يدوي",
+        onPress: () => router.push(`/create-contract?${unitQuery()}` as never),
+      },
+      {
+        text: "رفع PDF",
+        onPress: () => router.push(`/upload-contract?${unitQuery()}` as never),
+      },
+      { text: "إلغاء", style: "cancel" },
+    ]);
   }
 
   async function performUnitDelete(force = false) {
@@ -272,8 +291,7 @@ export default function UnitDetailsRoute() {
           <FloatingMenuAction icon="create-outline" label="تعديل" color="#0F766E" onPress={openEditScreen} />
           <FloatingMenuAction icon="trash-outline" label="حذف" color="#DC2626" onPress={deleteUnit} />
           <FloatingMenuAction icon="documents-outline" label="العقود" onPress={() => openUnitService("/contracts")} />
-          <FloatingMenuAction icon="create-outline" label="إنشاء عقد" onPress={() => openUnitService("/create-contract")} />
-          <FloatingMenuAction icon="cloud-upload-outline" label="رفع عقد" onPress={() => openUnitService("/upload-contract")} />
+          <FloatingMenuAction icon="create-outline" label="إنشاء عقد" onPress={openCreateContractOptions} />
           <FloatingMenuAction icon="cash-outline" label="المصروفات" onPress={() => openUnitService("/expenses")} />
           <FloatingMenuAction icon="images-outline" label="الوسائط" onPress={() => openUnitService("/files", "mode=media")} />
         </View>
