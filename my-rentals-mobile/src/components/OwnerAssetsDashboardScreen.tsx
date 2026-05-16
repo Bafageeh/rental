@@ -26,7 +26,6 @@ function count(value: unknown) { return Math.round(asNumber(value)).toLocaleStri
 function money(value: unknown) { return `${Math.round(asNumber(value)).toLocaleString("ar-SA")} ريال`; }
 function valueOrDash(value: unknown) { return value === null || value === undefined || String(value).trim() === "" ? "-" : String(value); }
 function typeText(value?: string | null) { return value ? propertyTypeLabels[value] || value : "عقار"; }
-function statusText(value?: string | null) { return value ? statusLabels[value] || value : "-"; }
 
 function EmptyBox({ text }: { text: string }) {
   return <View style={styles.emptyBox}><MaterialCommunityIcons name="inbox-outline" size={26} color="#94A3B8" /><Text style={styles.emptyText}>{text}</Text></View>;
@@ -122,11 +121,9 @@ export default function OwnerAssetsDashboardScreen({ id }: { id: string | number
         {!loading && !error && activeTab === "summary" ? <View><View style={styles.sectionHeader}><Text style={styles.sectionTitle}>ملخص المالك</Text><Text style={styles.sectionSubtitle}>إحصائيات خاصة بأملاك هذا المالك فقط</Text></View><View style={styles.statsGrid}><StatCard icon="office-building" label="العقارات" value={count(summary.properties_count ?? properties.length)} /><StatCard icon="home-city-outline" label="الوحدات" value={count(summary.units_count ?? units.length)} /><StatCard icon="file-document-check-outline" label="العقود النشطة" value={count(summary.active_contracts_count)} /><SummaryCard icon="cash-check" label="المحصل" value={money(summary.paid_income)} /><SummaryCard icon="cash-clock" label="المستحق" value={money(summary.due_income)} /><SummaryCard icon="chart-line" label="الصافي" value={money(summary.net_income)} /></View></View> : null}
 
         {!loading && !error && activeTab === "properties" ? <View>
-          <View style={styles.assetsHeaderRow}>
+          <View style={styles.addOnlyRow}>
             <TouchableOpacity style={styles.addIconButton} onPress={openAddPrivateProperty} activeOpacity={0.88} accessibilityRole="button" accessibilityLabel="إضافة عقار للمالك"><Ionicons name="add" size={30} color="#fff" /></TouchableOpacity>
-            <View style={styles.assetsHeaderText}><Text style={styles.sectionTitle}>العقارات</Text><Text style={styles.sectionSubtitle}>اضغط على البطاقة لفتح التفاصيل.</Text></View>
           </View>
-          <View style={styles.assetSummaryStrip}><StatCard icon="home-outline" label="عقارات" value={count(properties.length)} /><StatCard icon="office-building-outline" label="إجمالي الوحدات" value={count(units.length)} /><StatCard icon="account-outline" label="مباشرة" value={count(directOwnerUnits.length)} /></View>
 
           {properties.map((property) => {
             const unitCount = Number(property.units_count ?? property.units?.length ?? 0);
@@ -187,10 +184,8 @@ const styles = StyleSheet.create({
   sectionHeader: { alignItems: "flex-end", marginBottom: 10 },
   sectionTitle: { color: "#111827", fontSize: 23, fontWeight: "900", textAlign: "right" },
   sectionSubtitle: { color: "#7A766F", fontWeight: "800", textAlign: "right", marginTop: 4, lineHeight: 20 },
-  assetsHeaderRow: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 12 },
-  assetsHeaderText: { flex: 1, alignItems: "flex-end" },
+  addOnlyRow: { minHeight: 58, justifyContent: "center", alignItems: "flex-start", marginBottom: 8 },
   addIconButton: { width: 58, height: 58, borderRadius: 29, backgroundColor: "#0F766E", alignItems: "center", justifyContent: "center", shadowColor: "#0F172A", shadowOpacity: 0.16, shadowRadius: 12, shadowOffset: { width: 0, height: 7 }, elevation: 4 },
-  assetSummaryStrip: { flexDirection: "row-reverse", gap: 8, marginBottom: 13 },
   statsGrid: { flexDirection: "row-reverse", flexWrap: "wrap", gap: 8 },
   statCard: { flex: 1, minWidth: "30%", backgroundColor: "#fff", borderRadius: 18, padding: 12, borderWidth: 1, borderColor: "#E7E9EA", minHeight: 94, alignItems: "center", justifyContent: "center", shadowColor: "#0F172A", shadowOpacity: 0.035, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 1 },
   statIconBox: { width: 43, height: 43, borderRadius: 16, backgroundColor: "#ECFDF5", alignItems: "center", justifyContent: "center", marginBottom: 7 },
