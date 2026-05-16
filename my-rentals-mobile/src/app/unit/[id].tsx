@@ -117,10 +117,12 @@ function normalizeContractsResponse(result: any): ContractItem[] {
   return [];
 }
 
-function StatTile({ icon, label, value, danger = false }: { icon: keyof typeof Ionicons.glyphMap; label: string; value: string | number; danger?: boolean }) {
+function StatTile({ icon, label, value, danger = false, wide = false }: { icon: keyof typeof Ionicons.glyphMap; label: string; value: string | number; danger?: boolean; wide?: boolean }) {
   return (
-    <View style={[styles.statTile, danger ? styles.statTileDanger : null]}>
-      <View style={[styles.statIconBox, danger ? styles.statIconBoxDanger : null]}><Ionicons name={icon} size={22} color={danger ? "#DC2626" : "#0F766E"} /></View>
+    <View style={[styles.statTile, wide ? styles.statTileWide : null, danger ? styles.statTileDanger : null]}>
+      <View style={[styles.statIconBox, danger ? styles.statIconBoxDanger : null]}>
+        <Ionicons name={icon} size={22} color={danger ? "#DC2626" : "#0F766E"} />
+      </View>
       <Text style={[styles.statTileValue, danger ? styles.statTileValueDanger : null]}>{valueOrDash(value)}</Text>
       <Text style={[styles.statTileLabel, danger ? styles.statTileLabelDanger : null]}>{label}</Text>
     </View>
@@ -148,12 +150,10 @@ function ContractListCard({ contract, fallback }: { contract?: ContractItem; fal
         </View>
         <Text style={[styles.contractStatusBadge, status === "active" || status === "نشط" ? styles.contractStatusActive : null]}>{statusText(status)}</Text>
       </View>
-
       <View style={styles.contractNumberRow}>
         <Text style={styles.contractNumberLabel}>رقم العقد</Text>
         <Text numberOfLines={1} style={styles.contractNumberValue}>{contractNo}</Text>
       </View>
-
       <View style={styles.contractDetailsRow}>
         <View style={styles.contractDetailItem}><Text style={styles.contractDetailLabel}>الإيجار</Text><Text style={styles.contractDetailValue}>{money(contract?.rent_amount)}</Text></View>
         <View style={styles.contractDetailDivider} />
@@ -161,7 +161,6 @@ function ContractListCard({ contract, fallback }: { contract?: ContractItem; fal
         <View style={styles.contractDetailDivider} />
         <View style={styles.contractDetailItem}><Text style={styles.contractDetailLabel}>النهاية</Text><Text style={styles.contractDetailValue}>{dateOnly(contract?.end_date)}</Text></View>
       </View>
-
       <View style={styles.progressSection}>
         <View style={styles.progressHeader}>
           <Text style={styles.progressLabel}>الدفعات: {progress.paid}/{progress.total}</Text>
@@ -313,7 +312,24 @@ export default function UnitDetailsRoute() {
         {loading ? <View style={styles.loadingBox}><ActivityIndicator /><Text style={styles.loadingText}>جاري تحميل التفاصيل...</Text></View> : null}
         {error ? <View style={styles.errorBox}><Text style={styles.errorTitle}>تعذر تحميل تفاصيل الوحدة</Text><Text style={styles.errorText}>{error}</Text><TouchableOpacity style={styles.retryButton} onPress={() => load(false)}><Text style={styles.retryText}>إعادة المحاولة</Text></TouchableOpacity></View> : null}
 
-        {!loading && !error && activeTab === "stats" ? <View style={styles.sectionCard}><View style={styles.sectionHeader}><Text style={styles.sectionTitle}>إحصائيات الوحدة</Text><Text style={styles.sectionSubtitle}>ملخص سريع عن الوحدة وارتباطاتها</Text></View><View style={styles.statsGrid}><StatTile icon="documents-outline" label="العقود" value={contractsCount} /><StatTile icon="receipt-outline" label="عدد الدفعات" value={paymentStats.total} /><StatTile icon="alert-circle-outline" label="دفعات متأخرة" value={paymentStats.overdue} danger={paymentStats.overdue > 0} /><StatTile icon="cash-outline" label="الإيجار" value={unitRent} /><StatTile icon="layers-outline" label="الدور" value={unitFloor} /><StatTile icon="checkmark-circle-outline" label="الحالة" value={unitStatus} /><StatTile icon="link-outline" label="الارتباطات" value={relatedCount} /><StatTile icon="list-outline" label="حقول البيانات" value={primaryFields.length} /></View></View> : null}
+        {!loading && !error && activeTab === "stats" ? (
+          <View style={styles.sectionCard}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>إحصائيات الوحدة</Text>
+              <Text style={styles.sectionSubtitle}>ملخص سريع عن الوحدة وارتباطاتها</Text>
+            </View>
+            <View style={styles.statsGrid}>
+              <StatTile icon="alert-circle-outline" label="دفعات متأخرة" value={paymentStats.overdue} danger={paymentStats.overdue > 0} wide />
+              <StatTile icon="receipt-outline" label="عدد الدفعات" value={paymentStats.total} wide />
+              <StatTile icon="documents-outline" label="العقود" value={contractsCount} />
+              <StatTile icon="cash-outline" label="الإيجار" value={unitRent} />
+              <StatTile icon="checkmark-circle-outline" label="الحالة" value={unitStatus} />
+              <StatTile icon="layers-outline" label="الدور" value={unitFloor} />
+              <StatTile icon="link-outline" label="الارتباطات" value={relatedCount} />
+              <StatTile icon="list-outline" label="حقول البيانات" value={primaryFields.length} />
+            </View>
+          </View>
+        ) : null}
 
         {!loading && !error && activeTab === "details" ? <>{<View style={styles.sectionCard}><View style={styles.sectionHeader}><Text style={styles.sectionTitle}>البيانات الأساسية</Text><Text style={styles.sectionSubtitle}>{primaryFields.length} حقل</Text></View>{primaryFields.map((field) => <View key={field.key} style={styles.fieldRow}><Text style={styles.fieldValue}>{valueOrDash(field.value)}</Text><Text style={styles.fieldLabel}>{field.label}</Text></View>)}</View>}{otherSections.map((section) => <View key={section.key} style={styles.sectionCard}><View style={styles.sectionHeader}><Text style={styles.sectionTitle}>{section.title}</Text><Text style={styles.sectionSubtitle}>{section.count} عنصر</Text></View>{section.items.length ? section.items.map((item) => <TouchableOpacity key={`${item.entity}-${item.id}`} style={styles.relatedCard} activeOpacity={0.86} onPress={() => router.push(relationRoute(item) as never)}><View style={styles.relatedTopRow}>{item.badge ? <Text style={styles.badge}>{item.badge}</Text> : <View />}<View style={styles.relatedTitleWrap}><Text numberOfLines={1} style={styles.relatedTitle}>{item.title}</Text>{item.subtitle ? <Text numberOfLines={2} style={styles.relatedSubtitle}>{item.subtitle}</Text> : null}</View></View></TouchableOpacity>) : <Text style={styles.emptyText}>لا توجد عناصر مرتبطة.</Text>}</View>)}</> : null}
 
@@ -362,6 +378,7 @@ const styles = StyleSheet.create({
   sectionSubtitle: { color: "#9ca3af", fontSize: 11, fontWeight: "800", textAlign: "right", marginTop: 2 },
   statsGrid: { flexDirection: "row-reverse", flexWrap: "wrap", gap: 8 },
   statTile: { width: "31.8%", minHeight: 96, backgroundColor: "#F8FAFC", borderWidth: 1, borderColor: "#EEF2F7", borderRadius: 18, alignItems: "center", justifyContent: "center", padding: 8 },
+  statTileWide: { width: "48.6%", minHeight: 104 },
   statTileDanger: { backgroundColor: "#FEF2F2", borderColor: "#FECACA" },
   statIconBox: { width: 40, height: 40, borderRadius: 15, backgroundColor: "#ECFDF5", alignItems: "center", justifyContent: "center", marginBottom: 6 },
   statIconBoxDanger: { backgroundColor: "#FEE2E2" },
