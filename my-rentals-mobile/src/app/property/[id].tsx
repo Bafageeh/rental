@@ -1,5 +1,5 @@
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { router, useLocalSearchParams, useNavigation } from 'expo-router';
 import {
   ActivityIndicator,
@@ -130,6 +130,22 @@ function Section({ title, children }: { title: string; children: React.ReactNode
     <View style={styles.sectionCard}>
       <Text style={styles.sectionTitle}>{title}</Text>
       {children}
+    </View>
+  );
+}
+
+function CollapsibleSection({ title, children, defaultOpen = false }: { title: string; children: React.ReactNode; defaultOpen?: boolean }) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <View style={styles.sectionCard}>
+      <TouchableOpacity style={styles.collapsibleHeader} activeOpacity={0.84} onPress={() => setOpen((value) => !value)}>
+        <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={20} color="#0F766E" />
+        <View style={styles.collapsibleTitleBox}>
+          <Text style={styles.sectionTitle}>{title}</Text>
+          <Text style={styles.collapsibleHint}>{open ? 'اضغط للإغلاق' : 'اضغط للفتح'}</Text>
+        </View>
+      </TouchableOpacity>
+      {open ? <View style={styles.collapsibleBody}>{children}</View> : null}
     </View>
   );
 }
@@ -337,7 +353,7 @@ export default function PropertyDetailScreen() {
           <Row label="ملاحظات" value={data.notes} />
         </Section>
 
-        <Section title="بيانات الوثيقة والصك">
+        <CollapsibleSection title="بيانات الوثيقة والصك">
           <Row label="تاريخ الوثيقة" value={data.document_date_hijri} />
           <Row label="التاريخ الميلادي" value={data.document_date_gregorian} />
           <Row label="الحالة" value={data.document_status} />
@@ -355,7 +371,7 @@ export default function PropertyDetailScreen() {
           <Row label="الموقع" value={data.deed_location_text} />
           <Row label="نموذج العقار" value={data.deed_property_model} />
           <Row label="وصف الحدود" value={data.deed_boundaries_description} />
-        </Section>
+        </CollapsibleSection>
 
         {(hasValue(data.deed_mortgage_status) || hasValue(data.deed_mortgagee_name) || hasValue(data.deed_mortgage_amount)) ? (
           <Section title="بيانات الرهن / القيود المالية">
@@ -367,7 +383,7 @@ export default function PropertyDetailScreen() {
         ) : null}
 
         {!isApartmentProperty && units.length > 0 ? (
-          <Section title="الوحدات">
+          <CollapsibleSection title="الوحدات">
             {units.map((unit) => {
               const hasContract = unitContractsCount(unit) > 0;
               return (
@@ -384,7 +400,7 @@ export default function PropertyDetailScreen() {
                 </TouchableOpacity>
               );
             })}
-          </Section>
+          </CollapsibleSection>
         ) : null}
         <View style={{ height: 40 }} />
       </ScrollView>
@@ -421,6 +437,10 @@ const styles = StyleSheet.create({
   statLabel: { color: '#64748B', fontWeight: '800', marginTop: 4 },
   sectionCard: { backgroundColor: '#fff', borderRadius: 22, padding: 14, marginBottom: 12, borderWidth: 1, borderColor: '#ECEFF3' },
   sectionTitle: { color: '#111827', fontSize: 18, fontWeight: '900', textAlign: 'right', marginBottom: 8 },
+  collapsibleHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
+  collapsibleTitleBox: { flex: 1, alignItems: 'flex-end' },
+  collapsibleHint: { color: '#94A3B8', fontWeight: '800', fontSize: 11, marginTop: -4, textAlign: 'right' },
+  collapsibleBody: { marginTop: 8 },
   servicesGrid: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 8 },
   serviceButton: { width: '48%', minHeight: 76, borderRadius: 18, backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#E2E8F0', alignItems: 'center', justifyContent: 'center', padding: 8 },
   serviceText: { color: '#111827', fontWeight: '900', textAlign: 'center', marginTop: 5, fontSize: 12 },
