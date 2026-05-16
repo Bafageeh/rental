@@ -103,7 +103,6 @@ function AppTabs() {
       <Tabs.Screen name="reports" options={{ ...hidden, title: "التقارير" }} />
       <Tabs.Screen name="occupancy" options={{ ...hidden, title: "الإشغال" }} />
       <Tabs.Screen name="property-performance" options={{ ...hidden, title: "أداء العقارات" }} />
-      <Tabs.Screen name="documents" options={{ ...hidden, title: "المستندات" }} />
       <Tabs.Screen name="files" options={{ ...hidden, title: "الملفات والوسائط" }} />
       <Tabs.Screen name="export-center" options={{ ...hidden, title: "التصدير" }} />
       <Tabs.Screen name="owner-accounts" options={{ ...hidden, title: "حسابات الملاك" }} />
