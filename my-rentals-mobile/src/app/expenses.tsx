@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { router, useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams } from "expo-router";
 import {
   ActivityIndicator,
   Alert,
@@ -14,14 +14,18 @@ import {
 import { apiGet, apiGetScoped, apiPost } from "../lib/api";
 import InlineEditDeleteActions from "../components/InlineEditDeleteActions";
 import { SafeAreaView } from "react-native-safe-area-context";
-
 import { smartBack } from "@/lib/navigationHistory";
+
 type Property = {
   id: number;
   name?: string | null;
-  owner?: {
-    name?: string | null;
-  } | null;
+  owner?: { name?: string | null } | null;
+};
+
+type Unit = {
+  id: number;
+  unit_number?: string | null;
+  property?: Property | null;
 };
 
 type ExpenseCategory = {
@@ -37,12 +41,13 @@ type Expense = {
   title?: string | null;
   description?: string | null;
   property?: Property | null;
+  unit?: Unit | null;
   category?: ExpenseCategory | null;
 };
 
 function money(value: unknown) {
   const number = Number(value || 0);
-  return `${Math.round(number).toLocaleString()} ريال`;
+  return `${Math.round(number).toLocaleString("ar-SA")} ريال`;
 }
 
 function todayDate() {
@@ -54,12 +59,25 @@ function firstParam(value: string | string[] | undefined): string {
   return value || "";
 }
 
+function decodeParam(value: string) {
+  try {
+    return decodeURIComponent(value || "");
+  } catch {
+    return value || "";
+  }
+}
+
 export default function ExpensesScreen() {
   const params = useLocalSearchParams();
   const propertyIdParam = firstParam(params.property_id as string | string[] | undefined);
   const propertyNameParam = firstParam(params.property_name as string | string[] | undefined);
+  const unitIdParam = firstParam(params.unit_id as string | string[] | undefined);
+  const unitNameParam = firstParam(params.unit_name as string | string[] | undefined);
   const scopedPropertyId = propertyIdParam ? Number(propertyIdParam) : null;
-  const scopedPropertyName = propertyNameParam ? decodeURIComponent(propertyNameParam) : "";
+  const scopedPropertyName = decodeParam(propertyNameParam);
+  const scopedUnitId = unitIdParam ? Number(unitIdParam) : null;
+  const scopedUnitName = decodeParam(unitNameParam);
+  const isUnitScoped = !!scopedUnitId;
 
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [properties, setProperties] = useState<Property[]>([]);
@@ -70,7 +88,7 @@ export default function ExpensesScreen() {
   const [error, setError] = useState("");
 
   const [showForm, setShowForm] = useState(false);
-  const [propertyId, setPropertyId] = useState<number | null>(null);
+  const [propertyId, setPropertyId] = useState<number | null>(scopedPropertyId);
   const [categoryId, setCategoryId] = useState<number | null>(null);
   const [amount, setAmount] = useState("");
   const [expenseDate, setExpenseDate] = useState(todayDate());
@@ -82,11 +100,16 @@ export default function ExpensesScreen() {
       setLoading(true);
       setError("");
 
+      const expenseFilter = isUnitScoped
+        ? `?unit_id=${scopedUnitId}`
+        : scopedPropertyId
+          ? `?property_id=${scopedPropertyId}`
+          : "";
       const propertyFilter = scopedPropertyId ? `?property_id=${scopedPropertyId}` : "";
 
       const [expensesResult, propertiesResult, categoriesResult] = await Promise.all([
-        apiGetScoped(`/expenses${propertyFilter}`, `/my/expenses${propertyFilter}`),
-        apiGetScoped(`/properties${propertyFilter}`, `/my/properties${propertyFilter}`),
+        apiGetScoped(`/expenses${expenseFilter}`, `/my/expenses${expenseFilter}`),
+        isUnitScoped ? Promise.resolve([]) : apiGetScoped(`/properties${propertyFilter}`, `/my/properties${propertyFilter}`),
         apiGet("/expense-categories"),
       ]);
 
@@ -103,7 +126,7 @@ export default function ExpensesScreen() {
 
       if (scopedPropertyId) {
         setPropertyId(scopedPropertyId);
-      } else if (!propertyId && propertiesList.length > 0) {
+      } else if (!isUnitScoped && !propertyId && propertiesList.length > 0) {
         setPropertyId(propertiesList[0].id);
       }
 
@@ -118,7 +141,7 @@ export default function ExpensesScreen() {
   }
 
   async function saveExpense() {
-    if (!propertyId) {
+    if (!isUnitScoped && !propertyId) {
       Alert.alert("تنبيه", "اختر العقار");
       return;
     }
@@ -137,7 +160,8 @@ export default function ExpensesScreen() {
       setSaving(true);
 
       await apiPost("/expenses", {
-        property_id: propertyId,
+        property_id: isUnitScoped ? null : propertyId,
+        unit_id: scopedUnitId,
         expense_category_id: categoryId,
         amount: Number(amount || 0),
         expense_date: expenseDate.trim(),
@@ -159,6 +183,7 @@ export default function ExpensesScreen() {
       setSaving(false);
     }
   }
+
   async function refreshScreen() {
     try {
       setRefreshing(true);
@@ -170,10 +195,15 @@ export default function ExpensesScreen() {
 
   useEffect(() => {
     load();
-  }, [propertyIdParam]);
+  }, [propertyIdParam, unitIdParam]);
 
   const total = expenses.reduce((sum, item) => sum + Number(item.amount || 0), 0);
   const selectedPropertyLabel = scopedPropertyName || properties.find((property) => property.id === propertyId)?.name || (scopedPropertyId ? `عقار #${scopedPropertyId}` : "");
+  const subtitle = isUnitScoped
+    ? `مصروفات الوحدة: ${scopedUnitName || `#${scopedUnitId}`}`
+    : scopedPropertyId
+      ? `مصروفات العقار: ${selectedPropertyLabel} — تشمل مصروفات العقار والوحدات التابعة له`
+      : "مصروفات الخدمات والصيانة لكل عقار";
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -185,106 +215,63 @@ export default function ExpensesScreen() {
           <Text style={styles.backText}>→ رجوع</Text>
         </TouchableOpacity>
         <Text style={styles.title}>المصاريف</Text>
-        <Text style={styles.subtitle}>
-          {scopedPropertyId ? `مصاريف العقار: ${selectedPropertyLabel}` : "مصاريف الخدمات والصيانة لكل عقار"}
-        </Text>
+        <Text style={styles.subtitle}>{subtitle}</Text>
 
         <View style={styles.summaryBox}>
           <Text style={styles.summaryTitle}>إجمالي المصاريف</Text>
           <Text style={styles.summaryValue}>{money(total)}</Text>
         </View>
 
-        <TouchableOpacity
-          style={styles.primaryButton}
-          onPress={() => setShowForm(!showForm)}
-        >
-          <Text style={styles.primaryButtonText}>
-            {showForm ? "إغلاق نموذج الإضافة" : "إضافة مصروف"}
-          </Text>
+        <TouchableOpacity style={styles.primaryButton} onPress={() => setShowForm(!showForm)}>
+          <Text style={styles.primaryButtonText}>{showForm ? "إغلاق نموذج الإضافة" : isUnitScoped ? "إضافة مصروف للوحدة" : "إضافة مصروف"}</Text>
         </TouchableOpacity>
 
         {showForm ? (
           <View style={styles.formCard}>
             <Text style={styles.formTitle}>بيانات المصروف</Text>
 
-            <Text style={styles.label}>العقار</Text>
-            {scopedPropertyId ? (
-              <View style={styles.scopedPropertyBox}>
-                <Text style={styles.scopedPropertyText}>{selectedPropertyLabel}</Text>
-              </View>
+            {isUnitScoped ? (
+              <>
+                <Text style={styles.label}>الوحدة</Text>
+                <View style={styles.scopedPropertyBox}>
+                  <Text style={styles.scopedPropertyText}>{scopedUnitName || `وحدة #${scopedUnitId}`}</Text>
+                </View>
+              </>
             ) : (
-              <View style={styles.chips}>
-                {properties.map((property) => (
-                  <TouchableOpacity
-                    key={property.id}
-                    style={[styles.chip, propertyId === property.id ? styles.chipActive : null]}
-                    onPress={() => setPropertyId(property.id)}
-                  >
-                    <Text style={[styles.chipText, propertyId === property.id ? styles.chipTextActive : null]}>
-                      {property.name || "عقار"}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
+              <>
+                <Text style={styles.label}>العقار</Text>
+                {scopedPropertyId ? (
+                  <View style={styles.scopedPropertyBox}>
+                    <Text style={styles.scopedPropertyText}>{selectedPropertyLabel}</Text>
+                  </View>
+                ) : (
+                  <View style={styles.chips}>
+                    {properties.map((property) => (
+                      <TouchableOpacity key={property.id} style={[styles.chip, propertyId === property.id ? styles.chipActive : null]} onPress={() => setPropertyId(property.id)}>
+                        <Text style={[styles.chipText, propertyId === property.id ? styles.chipTextActive : null]}>{property.name || "عقار"}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
+              </>
             )}
 
             <Text style={styles.label}>نوع المصروف</Text>
             <View style={styles.chips}>
               {categories.map((category) => (
-                <TouchableOpacity
-                  key={category.id}
-                  style={[styles.chip, categoryId === category.id ? styles.chipActive : null]}
-                  onPress={() => setCategoryId(category.id)}
-                >
-                  <Text style={[styles.chipText, categoryId === category.id ? styles.chipTextActive : null]}>
-                    {category.name || "تصنيف"}
-                  </Text>
+                <TouchableOpacity key={category.id} style={[styles.chip, categoryId === category.id ? styles.chipActive : null]} onPress={() => setCategoryId(category.id)}>
+                  <Text style={[styles.chipText, categoryId === category.id ? styles.chipTextActive : null]}>{category.name || "تصنيف"}</Text>
                 </TouchableOpacity>
               ))}
             </View>
 
-            <TextInput
-              style={styles.input}
-              placeholder="المبلغ"
-              value={amount}
-              onChangeText={setAmount}
-              keyboardType="number-pad"
-              textAlign="right"
-            />
+            <TextInput style={styles.input} placeholder="المبلغ" value={amount} onChangeText={setAmount} keyboardType="number-pad" textAlign="right" />
+            <TextInput style={styles.input} placeholder="تاريخ المصروف YYYY-MM-DD" value={expenseDate} onChangeText={setExpenseDate} textAlign="right" />
+            <TextInput style={styles.input} placeholder="عنوان المصروف" value={title} onChangeText={setTitle} textAlign="right" />
+            <TextInput style={[styles.input, styles.multilineInput]} placeholder="وصف أو ملاحظات" value={description} onChangeText={setDescription} multiline textAlign="right" />
 
-            <TextInput
-              style={styles.input}
-              placeholder="تاريخ المصروف YYYY-MM-DD"
-              value={expenseDate}
-              onChangeText={setExpenseDate}
-              textAlign="right"
-            />
-
-            <TextInput
-              style={styles.input}
-              placeholder="عنوان المصروف"
-              value={title}
-              onChangeText={setTitle}
-              textAlign="right"
-            />
-
-            <TextInput
-              style={[styles.input, styles.multilineInput]}
-              placeholder="وصف أو ملاحظات"
-              value={description}
-              onChangeText={setDescription}
-              multiline
-              textAlign="right"
-            />
-
-            <TouchableOpacity
-              style={styles.saveButton}
-              onPress={saveExpense}
-              disabled={saving}
-            >
-              <Text style={styles.saveButtonText}>
-                {saving ? "جاري الحفظ..." : "حفظ المصروف"}
-              </Text>
+            <TouchableOpacity style={styles.saveButton} onPress={saveExpense} disabled={saving}>
+              <Text style={styles.saveButtonText}>{saving ? "جاري الحفظ..." : "حفظ المصروف"}</Text>
             </TouchableOpacity>
           </View>
         ) : null}
@@ -318,12 +305,11 @@ export default function ExpensesScreen() {
             <Text style={styles.amount}>{money(expense.amount)}</Text>
             <Text style={styles.detail}>التاريخ: {expense.expense_date || "-"}</Text>
             <Text style={styles.detail}>العقار: {expense.property?.name || "-"}</Text>
+            <Text style={styles.detail}>الوحدة: {expense.unit?.unit_number || (expense.unit?.id ? `#${expense.unit.id}` : "مصروف عام للعقار")}</Text>
             <Text style={styles.detail}>المالك: {expense.property?.owner?.name || "-"}</Text>
             <Text style={styles.detail}>النوع: {expense.category?.name || "-"}</Text>
             <Text style={styles.detail}>العنوان: {expense.title || "-"}</Text>
-            {expense.description ? (
-              <Text style={styles.notes}>ملاحظات: {expense.description}</Text>
-            ) : null}
+            {expense.description ? <Text style={styles.notes}>ملاحظات: {expense.description}</Text> : null}
           </View>
         ))}
       </ScrollView>
@@ -337,28 +323,11 @@ const styles = StyleSheet.create({
   backButton: { alignSelf: "flex-start", paddingVertical: 6, paddingHorizontal: 4, marginBottom: 4 },
   backText: { color: "#111827", fontWeight: "800" },
   title: { fontSize: 30, fontWeight: "800", color: "#111827", textAlign: "right" },
-  subtitle: {
-    marginTop: 8,
-    marginBottom: 18,
-    fontSize: 15,
-    color: "#7A766F",
-    textAlign: "right",
-  },
-  summaryBox: {
-    backgroundColor: "#111827",
-    borderRadius: 14,
-    padding: 12,
-    marginBottom: 9,
-  },
+  subtitle: { marginTop: 8, marginBottom: 18, fontSize: 15, color: "#7A766F", textAlign: "right", lineHeight: 22 },
+  summaryBox: { backgroundColor: "#111827", borderRadius: 14, padding: 12, marginBottom: 9 },
   summaryTitle: { color: "#C4C1BB", textAlign: "right", fontWeight: "700" },
   summaryValue: { color: "#ffffff", textAlign: "right", marginTop: 8, fontSize: 24, fontWeight: "800" },
-  primaryButton: {
-    backgroundColor: "#111827",
-    padding: 13,
-    borderRadius: 14,
-    alignItems: "center",
-    marginBottom: 9,
-  },
+  primaryButton: { backgroundColor: "#111827", padding: 13, borderRadius: 14, alignItems: "center", marginBottom: 9 },
   primaryButtonText: { color: "#ffffff", fontWeight: "800" },
   formCard: { backgroundColor: "#ffffff", borderRadius: 14, padding: 12, marginBottom: 9 },
   formTitle: { fontSize: 17, fontWeight: "800", color: "#111827", textAlign: "right", marginBottom: 8 },
@@ -366,26 +335,11 @@ const styles = StyleSheet.create({
   chips: { flexDirection: "row-reverse", flexWrap: "wrap", marginBottom: 8 },
   scopedPropertyBox: { backgroundColor: "#ecfeff", borderWidth: 1, borderColor: "#99f6e4", borderRadius: 12, padding: 12, marginBottom: 10 },
   scopedPropertyText: { color: "#0f766e", fontWeight: "800", textAlign: "right" },
-  chip: {
-    backgroundColor: "#f3f4f6",
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderRadius: 999,
-    marginLeft: 8,
-    marginBottom: 8,
-  },
+  chip: { backgroundColor: "#f3f4f6", paddingHorizontal: 10, paddingVertical: 8, borderRadius: 999, marginLeft: 8, marginBottom: 8 },
   chipActive: { backgroundColor: "#111827" },
   chipText: { color: "#374151", fontWeight: "700" },
   chipTextActive: { color: "#fff" },
-  input: {
-    backgroundColor: "#F7F6F4",
-    borderWidth: 1,
-    borderColor: "#DDDBD6",
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 10,
-    color: "#111827",
-  },
+  input: { backgroundColor: "#F7F6F4", borderWidth: 1, borderColor: "#DDDBD6", borderRadius: 12, padding: 12, marginBottom: 10, color: "#111827" },
   multilineInput: { minHeight: 70, textAlignVertical: "top" },
   saveButton: { backgroundColor: "#16a34a", padding: 13, borderRadius: 12, alignItems: "center" },
   saveButtonText: { color: "#fff", fontWeight: "800" },
