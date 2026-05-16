@@ -32,6 +32,7 @@ type PropertyForm = {
   elevators_count: string;
   rooms_count: string;
   bathrooms_count: string;
+  unit_floor: string;
   notes: string;
 };
 
@@ -71,6 +72,7 @@ function emptyForm(ownerId = "", propertyType = "building"): PropertyForm {
     elevators_count: "",
     rooms_count: "",
     bathrooms_count: "",
+    unit_floor: "",
     notes: "",
   };
 }
@@ -80,9 +82,17 @@ function valueToString(value: unknown) {
   return String(value);
 }
 
+function optionalNumber(value: string) {
+  const text = String(value ?? "").trim();
+  if (!text) return undefined;
+  const number = Number(text.replace(/,/g, ""));
+  return Number.isFinite(number) ? number : undefined;
+}
+
 function cleanPayload(form: PropertyForm, isEdit: boolean, hideApartmentDirectFields = false) {
   const payload: Record<string, string | number | null> = {};
   Object.entries(form).forEach(([key, value]) => {
+    if (key === "unit_floor") return;
     if (form.property_type === "apartment") {
       if (["floors_count", "parking_spots_count", "elevators_count"].includes(key)) return;
       if (hideApartmentDirectFields && ["deed_number", "city", "district", "address", "national_short_address"].includes(key)) return;
@@ -109,16 +119,73 @@ function cleanPayload(form: PropertyForm, isEdit: boolean, hideApartmentDirectFi
   return payload;
 }
 
+function cleanUnitPayload(form: PropertyForm, sourcePropertyId: string) {
+  return {
+    property_id: Number(sourcePropertyId),
+    unit_number: form.name.trim(),
+    floor: form.unit_floor.trim() || null,
+    type: "apartment",
+    is_subdivided: false,
+    rooms_count: optionalNumber(form.rooms_count) ?? 0,
+    bathrooms_count: optionalNumber(form.bathrooms_count) ?? 0,
+    rent_amount: 0,
+    status: "available",
+    notes: form.notes.trim() || null,
+  };
+}
+
 function Section({ title, icon, children }: { title: string; icon: keyof typeof Ionicons.glyphMap; children: React.ReactNode }) {
-  return <View style={styles.sectionCard}><View style={styles.sectionHeader}><View style={styles.sectionIconBox}><Ionicons name={icon} size={19} color="#0F766E" /></View><Text style={styles.sectionTitle}>{title}</Text></View>{children}</View>;
+  return (
+    <View style={styles.sectionCard}>
+      <View style={styles.sectionHeader}>
+        <View style={styles.sectionIconBox}>
+          <Ionicons name={icon} size={19} color="#0F766E" />
+        </View>
+        <Text style={styles.sectionTitle}>{title}</Text>
+      </View>
+      {children}
+    </View>
+  );
 }
 
 function Field({ label, value, onChangeText, placeholder, keyboardType = "default", multiline = false }: { label: string; value: string; onChangeText: (value: string) => void; placeholder?: string; keyboardType?: "default" | "number-pad" | "decimal-pad"; multiline?: boolean; }) {
-  return <View style={styles.fieldBox}><Text style={styles.fieldLabel}>{label}</Text><TextInput style={[styles.input, multiline ? styles.textArea : null]} value={value} onChangeText={onChangeText} placeholder={placeholder || label} placeholderTextColor="#94A3B8" keyboardType={keyboardType} textAlign="right" multiline={multiline} /></View>;
+  return (
+    <View style={styles.fieldBox}>
+      <Text style={styles.fieldLabel}>{label}</Text>
+      <TextInput
+        style={[styles.input, multiline ? styles.textArea : null]}
+        value={value}
+        onChangeText={onChangeText}
+        placeholder={placeholder || label}
+        placeholderTextColor="#94A3B8"
+        keyboardType={keyboardType}
+        textAlign="right"
+        multiline={multiline}
+      />
+    </View>
+  );
 }
 
 function ChoiceGroup({ options, value, onChange, disabled = false }: { options: Array<{ value: string; label: string; icon?: keyof typeof Ionicons.glyphMap }>; value: string; onChange: (value: string) => void; disabled?: boolean; }) {
-  return <View style={styles.choiceRow}>{options.map((option) => { const selected = value === option.value; return <TouchableOpacity key={option.value} style={[styles.choiceChip, selected ? styles.choiceChipActive : null, disabled && !selected ? styles.choiceChipDisabled : null]} activeOpacity={disabled ? 1 : 0.86} disabled={disabled} onPress={() => onChange(option.value)}>{option.icon ? <Ionicons name={option.icon} size={16} color={selected ? "#fff" : "#475569"} /> : null}<Text style={[styles.choiceText, selected ? styles.choiceTextActive : null]}>{option.label}</Text></TouchableOpacity>; })}</View>;
+  return (
+    <View style={styles.choiceRow}>
+      {options.map((option) => {
+        const selected = value === option.value;
+        return (
+          <TouchableOpacity
+            key={option.value}
+            style={[styles.choiceChip, selected ? styles.choiceChipActive : null, disabled && !selected ? styles.choiceChipDisabled : null]}
+            activeOpacity={disabled ? 1 : 0.86}
+            disabled={disabled}
+            onPress={() => onChange(option.value)}
+          >
+            {option.icon ? <Ionicons name={option.icon} size={16} color={selected ? "#fff" : "#475569"} /> : null}
+            <Text style={[styles.choiceText, selected ? styles.choiceTextActive : null]}>{option.label}</Text>
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  );
 }
 
 export default function PropertyFormScreen() {
@@ -145,14 +212,18 @@ export default function PropertyFormScreen() {
   const title = useMemo(() => lockedApartmentMode ? "إضافة شقة" : isEdit ? "تعديل العقار" : "إضافة عقار يدويًا", [isEdit, lockedApartmentMode]);
   const propertyTypeChoices = lockedApartmentMode ? propertyTypes.filter((item) => item.value === "apartment") : propertyTypes;
   const lockNotice = isAddingUnderBuilding
-    ? `تنبيه: نوع العقار مثبت على شقة لأن الإضافة تتم تحت عمارة${sourcePropertyName ? ` (${sourcePropertyName})` : ""}.`
+    ? `تنبيه: نوع العقار مثبت على شقة لأن الإضافة تتم تحت عقار${sourcePropertyName ? ` (${sourcePropertyName})` : ""}.`
     : "نوع العقار مثبت على شقة ولا يمكن تغييره من هذا المسار.";
 
   function setField<K extends keyof PropertyForm>(key: K, value: PropertyForm[K]) {
     setForm((previous) => {
       const next = {
         ...previous,
-        [key]: key === "national_short_address" ? String(value).replace(/[^A-Za-z0-9]/g, "").slice(0, 8).toUpperCase() : value,
+        [key]: key === "national_short_address"
+          ? String(value).replace(/[^A-Za-z0-9]/g, "").slice(0, 8).toUpperCase()
+          : key === "unit_floor"
+            ? String(value).replace(/[^0-9]/g, "")
+            : value,
       };
       if (key === "property_type" && value === "apartment") {
         next.floors_count = "";
@@ -162,6 +233,7 @@ export default function PropertyFormScreen() {
       if (key === "property_type" && value === "building") {
         next.rooms_count = "";
         next.bathrooms_count = "";
+        next.unit_floor = "";
       }
       return next;
     });
@@ -189,6 +261,7 @@ export default function PropertyFormScreen() {
         elevators_count: valueToString(property?.elevators_count),
         rooms_count: valueToString(defaultUnit?.rooms_count),
         bathrooms_count: valueToString(defaultUnit?.bathrooms_count),
+        unit_floor: valueToString(defaultUnit?.floor),
         notes: valueToString(property?.notes),
       });
     } catch (e) {
@@ -213,13 +286,32 @@ export default function PropertyFormScreen() {
         const fields = cleanPayload(normalizedForm, true, hideApartmentDirectFields);
         delete fields.owner_id;
         await apiPost(`/edit-delete-center/properties/${id}/update`, { fields });
-        Alert.alert("تم", "تم تحديث بيانات العقار.", [{ text: "عرض العقار", onPress: () => router.replace(`/property/${id}` as never) }, { text: "رجوع", onPress: () => router.back() }]);
-      } else {
-        const payload = cleanPayload(normalizedForm, false, hideApartmentDirectFields);
-        const json = await apiPost("/properties", payload);
-        const propertyId = Number(json?.property?.id || 0);
-        Alert.alert("تم", isApartment ? "تم إنشاء الشقة." : "تم إنشاء العقار يدويًا.", [{ text: isApartment ? "عرض الشقة" : "عرض العقار", onPress: () => propertyId ? router.replace(`/property/${propertyId}` as never) : router.replace("/properties" as never) }, { text: isApartment ? "إضافة شقة أخرى" : "إضافة آخر", onPress: () => setForm(emptyForm(initialOwnerId, initialPropertyType)) }]);
+        Alert.alert("تم", "تم تحديث بيانات العقار.", [
+          { text: "عرض العقار", onPress: () => router.replace(`/property/${id}` as never) },
+          { text: "رجوع", onPress: () => router.back() },
+        ]);
+        return;
       }
+
+      if (isAddingUnderBuilding) {
+        const unitPayload = cleanUnitPayload(normalizedForm, sourcePropertyId);
+        const json = await apiPost("/units", unitPayload);
+        const unitId = Number(json?.unit?.id || 0);
+        Alert.alert("تم", "تم إنشاء الشقة تحت العقار المحدد.", [
+          { text: "عرض العقار", onPress: () => router.replace(`/property/${sourcePropertyId}` as never) },
+          { text: "عرض الشقة", onPress: () => unitId ? router.replace(`/unit/${unitId}` as never) : router.replace(`/property/${sourcePropertyId}` as never) },
+          { text: "إضافة شقة أخرى", onPress: () => setForm(emptyForm(initialOwnerId, "apartment")) },
+        ]);
+        return;
+      }
+
+      const payload = cleanPayload(normalizedForm, false, hideApartmentDirectFields);
+      const json = await apiPost("/properties", payload);
+      const propertyId = Number(json?.property?.id || 0);
+      Alert.alert("تم", isApartment ? "تم إنشاء الشقة." : "تم إنشاء العقار يدويًا.", [
+        { text: isApartment ? "عرض الشقة" : "عرض العقار", onPress: () => propertyId ? router.replace(`/property/${propertyId}` as never) : router.replace("/properties" as never) },
+        { text: isApartment ? "إضافة شقة أخرى" : "إضافة آخر", onPress: () => setForm(emptyForm(initialOwnerId, initialPropertyType)) },
+      ]);
     } catch (e) {
       Alert.alert("تعذر الحفظ", e instanceof Error ? e.message : "حدث خطأ غير متوقع");
     } finally {
@@ -227,9 +319,126 @@ export default function PropertyFormScreen() {
     }
   }
 
-  return <SafeAreaView style={styles.safe} edges={["bottom"]}><KeyboardAvoidingView style={styles.safe} behavior={Platform.OS === "ios" ? "padding" : undefined}><ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}><View style={styles.hero}><TouchableOpacity style={styles.backButton} activeOpacity={0.86} onPress={() => router.back()}><Ionicons name="chevron-forward" size={20} color="#fff" /></TouchableOpacity><View style={styles.heroTextBox}><Text style={styles.heroKicker}>{lockedApartmentMode ? "إضافة شقة تابعة" : isEdit ? "تحديث البيانات" : "إدخال مباشر"}</Text><Text style={styles.heroTitle}>{title}</Text><Text style={styles.heroSubtitle}>{lockedApartmentMode ? lockNotice : isEdit ? "نفس شاشة الإضافة تستخدم للتعديل حتى تكون البيانات مرتبة وواضحة." : "اختر نوع العقار وستتغير الحقول تلقائيًا حسب النوع."}</Text></View><View style={styles.heroIconBox}><Ionicons name={isApartment ? "home-outline" : isEdit ? "create-outline" : "add-circle-outline"} size={30} color="#0F766E" /></View></View>{loading ? <View style={styles.loadingCard}><ActivityIndicator /><Text style={styles.loadingText}>جاري تحميل بيانات العقار...</Text></View> : <><Section title="البيانات الأساسية" icon="business-outline"><Field label={isApartment ? "اسم الشقة" : "اسم العقار"} value={form.name} onChangeText={(value) => setField("name", value)} placeholder={isApartment ? "مثال: شقة الدور الأول" : "مثال: عمارة الصفا"} />{showDeedField ? <Field label={isApartment ? "رقم الصك إن كانت مباشرة مع المالك" : "رقم الصك إن وجد"} value={form.deed_number} onChangeText={(value) => setField("deed_number", value)} placeholder="رقم الصك إن وجد" keyboardType="number-pad" /> : null}<Text style={styles.fieldLabel}>نوع العقار</Text><ChoiceGroup options={propertyTypeChoices} value={form.property_type} onChange={(value) => setField("property_type", value)} disabled={lockedApartmentMode} />{lockedApartmentMode ? <View style={isAddingUnderBuilding ? styles.lockWarning : styles.lockInfo}><Ionicons name={isAddingUnderBuilding ? "alert-circle-outline" : "lock-closed-outline"} size={16} color={isAddingUnderBuilding ? "#92400E" : "#0F766E"} /><Text style={isAddingUnderBuilding ? styles.lockWarningText : styles.lockInfoText}>{lockNotice}</Text></View> : null}</Section>{showLocationSection ? <Section title={isApartment ? "الموقع إن كانت مباشرة مع المالك" : "الموقع"} icon="location-outline"><Field label="المدينة" value={form.city} onChangeText={(value) => setField("city", value)} /><Field label="الحي" value={form.district} onChangeText={(value) => setField("district", value)} /><Field label="العنوان" value={form.address} onChangeText={(value) => setField("address", value)} multiline /><Field label="العنوان الوطني المختصر" value={form.national_short_address} onChangeText={(value) => setField("national_short_address", value)} placeholder="مثال: JEDA1234" /></Section> : null}<Section title="المواصفات" icon="options-outline"><Field label="المساحة" value={form.property_area} onChangeText={(value) => setField("property_area", value)} keyboardType="decimal-pad" />{isApartment ? <><Field label="عدد الغرف" value={form.rooms_count} onChangeText={(value) => setField("rooms_count", value)} keyboardType="number-pad" /><Field label="عدد الحمامات" value={form.bathrooms_count} onChangeText={(value) => setField("bathrooms_count", value)} keyboardType="number-pad" /></> : null}{isBuilding ? <><Field label="عدد الأدوار" value={form.floors_count} onChangeText={(value) => setField("floors_count", value)} keyboardType="number-pad" /><Field label="عدد المواقف" value={form.parking_spots_count} onChangeText={(value) => setField("parking_spots_count", value)} keyboardType="number-pad" /><Field label="عدد المصاعد" value={form.elevators_count} onChangeText={(value) => setField("elevators_count", value)} keyboardType="number-pad" /></> : null}{!isApartment && !isBuilding ? <><Field label="عدد الأدوار" value={form.floors_count} onChangeText={(value) => setField("floors_count", value)} keyboardType="number-pad" /><Field label="عدد المواقف" value={form.parking_spots_count} onChangeText={(value) => setField("parking_spots_count", value)} keyboardType="number-pad" /></> : null}</Section><Section title="الاستخدام والملاحظات" icon="shield-checkmark-outline"><Text style={styles.fieldLabel}>نوع الاستخدام</Text><ChoiceGroup options={usageTypes} value={form.usage_type} onChange={(value) => setField("usage_type", value)} /><Field label="ملاحظات" value={form.notes} onChangeText={(value) => setField("notes", value)} multiline /></Section><TouchableOpacity style={[styles.saveButton, saving ? styles.disabled : null]} activeOpacity={0.88} disabled={saving} onPress={save}>{saving ? <ActivityIndicator color="#fff" /> : <Ionicons name="save-outline" size={20} color="#fff" />}<Text style={styles.saveText}>{saving ? "جاري الحفظ..." : isEdit ? "حفظ التعديل" : isApartment ? "حفظ الشقة" : "حفظ العقار"}</Text></TouchableOpacity></>}</ScrollView></KeyboardAvoidingView></SafeAreaView>;
+  return (
+    <SafeAreaView style={styles.safe} edges={["bottom"]}>
+      <KeyboardAvoidingView style={styles.safe} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+          <View style={styles.hero}>
+            <TouchableOpacity style={styles.backButton} activeOpacity={0.86} onPress={() => router.back()}>
+              <Ionicons name="chevron-forward" size={20} color="#fff" />
+            </TouchableOpacity>
+            <View style={styles.heroTextBox}>
+              <Text style={styles.heroKicker}>{lockedApartmentMode ? "إضافة شقة تابعة" : isEdit ? "تحديث البيانات" : "إدخال مباشر"}</Text>
+              <Text style={styles.heroTitle}>{title}</Text>
+              <Text style={styles.heroSubtitle}>{lockedApartmentMode ? lockNotice : isEdit ? "نفس شاشة الإضافة تستخدم للتعديل حتى تكون البيانات مرتبة وواضحة." : "اختر نوع العقار وستتغير الحقول تلقائيًا حسب النوع."}</Text>
+            </View>
+            <View style={styles.heroIconBox}>
+              <Ionicons name={isApartment ? "home-outline" : isEdit ? "create-outline" : "add-circle-outline"} size={30} color="#0F766E" />
+            </View>
+          </View>
+
+          {loading ? (
+            <View style={styles.loadingCard}>
+              <ActivityIndicator />
+              <Text style={styles.loadingText}>جاري تحميل بيانات العقار...</Text>
+            </View>
+          ) : (
+            <>
+              <Section title="البيانات الأساسية" icon="business-outline">
+                <Field label={isApartment ? "اسم الشقة" : "اسم العقار"} value={form.name} onChangeText={(value) => setField("name", value)} placeholder={isApartment ? "مثال: شقة الدور الأول" : "مثال: عمارة الصفا"} />
+                {showDeedField ? <Field label={isApartment ? "رقم الصك إن كانت مباشرة مع المالك" : "رقم الصك إن وجد"} value={form.deed_number} onChangeText={(value) => setField("deed_number", value)} placeholder="رقم الصك إن وجد" keyboardType="number-pad" /> : null}
+                <Text style={styles.fieldLabel}>نوع العقار</Text>
+                <ChoiceGroup options={propertyTypeChoices} value={form.property_type} onChange={(value) => setField("property_type", value)} disabled={lockedApartmentMode} />
+                {lockedApartmentMode ? (
+                  <View style={isAddingUnderBuilding ? styles.lockWarning : styles.lockInfo}>
+                    <Ionicons name={isAddingUnderBuilding ? "alert-circle-outline" : "lock-closed-outline"} size={16} color={isAddingUnderBuilding ? "#92400E" : "#0F766E"} />
+                    <Text style={isAddingUnderBuilding ? styles.lockWarningText : styles.lockInfoText}>{lockNotice}</Text>
+                  </View>
+                ) : null}
+              </Section>
+
+              {showLocationSection ? (
+                <Section title={isApartment ? "الموقع إن كانت مباشرة مع المالك" : "الموقع"} icon="location-outline">
+                  <Field label="المدينة" value={form.city} onChangeText={(value) => setField("city", value)} />
+                  <Field label="الحي" value={form.district} onChangeText={(value) => setField("district", value)} />
+                  <Field label="العنوان" value={form.address} onChangeText={(value) => setField("address", value)} multiline />
+                  <Field label="العنوان الوطني المختصر" value={form.national_short_address} onChangeText={(value) => setField("national_short_address", value)} placeholder="مثال: JEDA1234" />
+                </Section>
+              ) : null}
+
+              <Section title="المواصفات" icon="options-outline">
+                <Field label="المساحة" value={form.property_area} onChangeText={(value) => setField("property_area", value)} keyboardType="decimal-pad" />
+                {isApartment && isAddingUnderBuilding ? <Field label="الوحدة في الدور" value={form.unit_floor} onChangeText={(value) => setField("unit_floor", value)} keyboardType="number-pad" /> : null}
+                {isApartment ? (
+                  <>
+                    <Field label="عدد الغرف" value={form.rooms_count} onChangeText={(value) => setField("rooms_count", value)} keyboardType="number-pad" />
+                    <Field label="عدد الحمامات" value={form.bathrooms_count} onChangeText={(value) => setField("bathrooms_count", value)} keyboardType="number-pad" />
+                  </>
+                ) : null}
+                {isBuilding ? (
+                  <>
+                    <Field label="عدد الأدوار" value={form.floors_count} onChangeText={(value) => setField("floors_count", value)} keyboardType="number-pad" />
+                    <Field label="عدد المواقف" value={form.parking_spots_count} onChangeText={(value) => setField("parking_spots_count", value)} keyboardType="number-pad" />
+                    <Field label="عدد المصاعد" value={form.elevators_count} onChangeText={(value) => setField("elevators_count", value)} keyboardType="number-pad" />
+                  </>
+                ) : null}
+                {!isApartment && !isBuilding ? (
+                  <>
+                    <Field label="عدد الأدوار" value={form.floors_count} onChangeText={(value) => setField("floors_count", value)} keyboardType="number-pad" />
+                    <Field label="عدد المواقف" value={form.parking_spots_count} onChangeText={(value) => setField("parking_spots_count", value)} keyboardType="number-pad" />
+                  </>
+                ) : null}
+              </Section>
+
+              <Section title="الاستخدام والملاحظات" icon="shield-checkmark-outline">
+                <Text style={styles.fieldLabel}>نوع الاستخدام</Text>
+                <ChoiceGroup options={usageTypes} value={form.usage_type} onChange={(value) => setField("usage_type", value)} />
+                <Field label="ملاحظات" value={form.notes} onChangeText={(value) => setField("notes", value)} multiline />
+              </Section>
+
+              <TouchableOpacity style={[styles.saveButton, saving ? styles.disabled : null]} activeOpacity={0.88} disabled={saving} onPress={save}>
+                {saving ? <ActivityIndicator color="#fff" /> : <Ionicons name="save-outline" size={20} color="#fff" />}
+                <Text style={styles.saveText}>{saving ? "جاري الحفظ..." : isEdit ? "حفظ التعديل" : isApartment ? "حفظ الشقة" : "حفظ العقار"}</Text>
+              </TouchableOpacity>
+            </>
+          )}
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
+  );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: "#F7F6F4" }, content: { padding: 14, paddingBottom: 48 }, hero: { backgroundColor: "#111827", borderRadius: 28, padding: 15, marginBottom: 13, flexDirection: "row", alignItems: "center", gap: 12 }, backButton: { width: 38, height: 38, borderRadius: 15, backgroundColor: "#374151", alignItems: "center", justifyContent: "center" }, heroTextBox: { flex: 1, alignItems: "flex-end" }, heroKicker: { color: "#5EEAD4", fontWeight: "900", fontSize: 12, textAlign: "right" }, heroTitle: { color: "#fff", fontSize: 24, fontWeight: "900", textAlign: "right", marginTop: 3 }, heroSubtitle: { color: "#CBD5E1", fontWeight: "800", lineHeight: 21, textAlign: "right", marginTop: 6, fontSize: 12 }, heroIconBox: { width: 56, height: 56, borderRadius: 22, backgroundColor: "#ECFDF5", alignItems: "center", justifyContent: "center" }, loadingCard: { backgroundColor: "#fff", borderRadius: 22, padding: 18, alignItems: "center" }, loadingText: { color: "#64748B", fontWeight: "800", marginTop: 8 }, sectionCard: { backgroundColor: "#fff", borderRadius: 24, padding: 14, marginBottom: 12, borderWidth: 1, borderColor: "#ECEFF3", shadowColor: "#000", shadowOpacity: 0.05, shadowRadius: 10, elevation: 1 }, sectionHeader: { flexDirection: "row-reverse", alignItems: "center", gap: 8, marginBottom: 12 }, sectionIconBox: { width: 34, height: 34, borderRadius: 14, backgroundColor: "#ECFDF5", alignItems: "center", justifyContent: "center" }, sectionTitle: { color: "#111827", fontWeight: "900", fontSize: 17, textAlign: "right" }, fieldBox: { marginBottom: 10 }, fieldLabel: { color: "#334155", fontWeight: "900", textAlign: "right", marginBottom: 7 }, input: { backgroundColor: "#F8FAFC", borderWidth: 1, borderColor: "#E2E8F0", borderRadius: 16, minHeight: 48, paddingHorizontal: 12, color: "#111827", fontWeight: "800" }, textArea: { minHeight: 88, textAlignVertical: "top", paddingTop: 11 }, choiceRow: { flexDirection: "row-reverse", flexWrap: "wrap", gap: 8, marginBottom: 10 }, choiceChip: { backgroundColor: "#F1F5F9", borderRadius: 999, paddingHorizontal: 12, paddingVertical: 9, flexDirection: "row-reverse", alignItems: "center", gap: 5, borderWidth: 1, borderColor: "#E2E8F0" }, choiceChipActive: { backgroundColor: "#0F766E", borderColor: "#0F766E" }, choiceChipDisabled: { opacity: 0.45 }, choiceText: { color: "#475569", fontWeight: "900", fontSize: 12 }, choiceTextActive: { color: "#fff" }, lockInfo: { backgroundColor: "#ECFDF5", borderRadius: 14, padding: 10, flexDirection: "row-reverse", alignItems: "center", gap: 7, borderWidth: 1, borderColor: "#A7F3D0", marginBottom: 6 }, lockInfoText: { flex: 1, color: "#0F766E", fontWeight: "900", textAlign: "right", fontSize: 12, lineHeight: 18 }, lockWarning: { backgroundColor: "#FFFBEB", borderRadius: 14, padding: 10, flexDirection: "row-reverse", alignItems: "center", gap: 7, borderWidth: 1, borderColor: "#FCD34D", marginBottom: 6 }, lockWarningText: { flex: 1, color: "#92400E", fontWeight: "900", textAlign: "right", fontSize: 12, lineHeight: 18 }, saveButton: { backgroundColor: "#111827", borderRadius: 20, padding: 16, alignItems: "center", justifyContent: "center", flexDirection: "row-reverse", gap: 8, marginTop: 4 }, saveText: { color: "#fff", fontWeight: "900", fontSize: 16 }, disabled: { opacity: 0.65 },
+  safe: { flex: 1, backgroundColor: "#F7F6F4" },
+  content: { padding: 14, paddingBottom: 48 },
+  hero: { backgroundColor: "#111827", borderRadius: 28, padding: 15, marginBottom: 13, flexDirection: "row", alignItems: "center", gap: 12 },
+  backButton: { width: 38, height: 38, borderRadius: 15, backgroundColor: "#374151", alignItems: "center", justifyContent: "center" },
+  heroTextBox: { flex: 1, alignItems: "flex-end" },
+  heroKicker: { color: "#5EEAD4", fontWeight: "900", fontSize: 12, textAlign: "right" },
+  heroTitle: { color: "#fff", fontSize: 24, fontWeight: "900", textAlign: "right", marginTop: 3 },
+  heroSubtitle: { color: "#CBD5E1", fontWeight: "800", lineHeight: 21, textAlign: "right", marginTop: 6, fontSize: 12 },
+  heroIconBox: { width: 56, height: 56, borderRadius: 22, backgroundColor: "#ECFDF5", alignItems: "center", justifyContent: "center" },
+  loadingCard: { backgroundColor: "#fff", borderRadius: 22, padding: 18, alignItems: "center" },
+  loadingText: { color: "#64748B", fontWeight: "800", marginTop: 8 },
+  sectionCard: { backgroundColor: "#fff", borderRadius: 24, padding: 14, marginBottom: 12, borderWidth: 1, borderColor: "#ECEFF3", shadowColor: "#000", shadowOpacity: 0.05, shadowRadius: 10, elevation: 1 },
+  sectionHeader: { flexDirection: "row-reverse", alignItems: "center", gap: 8, marginBottom: 12 },
+  sectionIconBox: { width: 34, height: 34, borderRadius: 14, backgroundColor: "#ECFDF5", alignItems: "center", justifyContent: "center" },
+  sectionTitle: { color: "#111827", fontWeight: "900", fontSize: 17, textAlign: "right" },
+  fieldBox: { marginBottom: 10 },
+  fieldLabel: { color: "#334155", fontWeight: "900", textAlign: "right", marginBottom: 7 },
+  input: { backgroundColor: "#F8FAFC", borderWidth: 1, borderColor: "#E2E8F0", borderRadius: 16, minHeight: 48, paddingHorizontal: 12, color: "#111827", fontWeight: "800" },
+  textArea: { minHeight: 88, textAlignVertical: "top", paddingTop: 11 },
+  choiceRow: { flexDirection: "row-reverse", flexWrap: "wrap", gap: 8, marginBottom: 10 },
+  choiceChip: { backgroundColor: "#F1F5F9", borderRadius: 999, paddingHorizontal: 12, paddingVertical: 9, flexDirection: "row-reverse", alignItems: "center", gap: 5, borderWidth: 1, borderColor: "#E2E8F0" },
+  choiceChipActive: { backgroundColor: "#0F766E", borderColor: "#0F766E" },
+  choiceChipDisabled: { opacity: 0.45 },
+  choiceText: { color: "#475569", fontWeight: "900", fontSize: 12 },
+  choiceTextActive: { color: "#fff" },
+  lockInfo: { backgroundColor: "#ECFDF5", borderRadius: 14, padding: 10, flexDirection: "row-reverse", alignItems: "center", gap: 7, borderWidth: 1, borderColor: "#A7F3D0", marginBottom: 6 },
+  lockInfoText: { flex: 1, color: "#0F766E", fontWeight: "900", textAlign: "right", fontSize: 12, lineHeight: 18 },
+  lockWarning: { backgroundColor: "#FFFBEB", borderRadius: 14, padding: 10, flexDirection: "row-reverse", alignItems: "center", gap: 7, borderWidth: 1, borderColor: "#FCD34D", marginBottom: 6 },
+  lockWarningText: { flex: 1, color: "#92400E", fontWeight: "900", textAlign: "right", fontSize: 12, lineHeight: 18 },
+  saveButton: { backgroundColor: "#111827", borderRadius: 20, padding: 16, alignItems: "center", justifyContent: "center", flexDirection: "row-reverse", gap: 8, marginTop: 4 },
+  saveText: { color: "#fff", fontWeight: "900", fontSize: 16 },
+  disabled: { opacity: 0.65 },
 });
