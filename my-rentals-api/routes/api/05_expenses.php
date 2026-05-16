@@ -26,11 +26,17 @@ Route::get('/expenses', function (Request $request) {
     ]);
 
     if ($request->filled('unit_id')) {
+        // مصروفات الوحدة أو الفرع مستقلة ولا تظهر إلا عند طلب نفس الوحدة.
         $query->where('unit_id', $request->integer('unit_id'));
     } elseif ($request->filled('property_id')) {
-        // عند عرض مصروفات العقار نعرض مصروف العقار نفسه + مصروفات كل الوحدات التابعة له
-        // لأنها كلها مرتبطة بنفس property_id، سواء كان unit_id فارغًا أو محددًا.
         $query->where('property_id', $request->integer('property_id'));
+
+        $includeChildren = $request->boolean('include_children') || $request->boolean('total') || $request->input('scope') === 'total';
+
+        if (!$includeChildren) {
+            // العرض العادي للعقار: مصروفات العقار المباشرة فقط، بدون مصروفات الوحدات.
+            $query->whereNull('unit_id');
+        }
     }
 
     if ($request->filled('owner_id')) {
