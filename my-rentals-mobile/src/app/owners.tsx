@@ -54,6 +54,8 @@ export default function OwnersScreen() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [showForm, setShowForm] = useState(false);
+  const [editingOwnerId, setEditingOwnerId] = useState<number | null>(null);
+  const [openMenuOwnerId, setOpenMenuOwnerId] = useState<number | null>(null);
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
@@ -61,6 +63,45 @@ export default function OwnersScreen() {
 
   const canAccess = loggedIn && isAdmin;
   const visibleOwners = useMemo(() => items.filter((owner) => !isAdminLikeOwner(owner, user)), [items, user]);
+
+  function resetForm() {
+    setName("");
+    setPhone("");
+    setEmail("");
+    setNationalId("");
+    setEditingOwnerId(null);
+  }
+
+  function openAddOwnerForm() {
+    setOpenMenuOwnerId(null);
+    if (showForm && !editingOwnerId) {
+      setShowForm(false);
+      resetForm();
+      return;
+    }
+    resetForm();
+    setShowForm(true);
+  }
+
+  function openEditOwnerForm(owner: Owner) {
+    setOpenMenuOwnerId(null);
+    setEditingOwnerId(owner.id);
+    setName(owner.name || "");
+    setPhone(owner.phone || "");
+    setEmail(owner.email || "");
+    setNationalId(owner.national_id || "");
+    setShowForm(true);
+  }
+
+  function closeForm() {
+    setShowForm(false);
+    resetForm();
+  }
+
+  function openOwnerDetails(owner: Owner) {
+    setOpenMenuOwnerId(null);
+    router.push(`/owner/${owner.id}` as never);
+  }
 
   async function load() {
     if (!canAccess) return;
@@ -94,15 +135,40 @@ export default function OwnersScreen() {
     }
     try {
       setSaving(true);
-      await apiPost("/owners", { name: name.trim(), phone: phone.trim() || null, email: email.trim() || null, national_id: nationalId.trim() || null });
-      setName(""); setPhone(""); setEmail(""); setNationalId(""); setShowForm(false);
-      Alert.alert("تم", "تم إضافة المالك بنجاح");
+      const payload = { name: name.trim(), phone: phone.trim() || null, email: email.trim() || null, national_id: nationalId.trim() || null };
+      if (editingOwnerId) {
+        await apiPost(`/edit-delete-center/owners/${editingOwnerId}/update`, payload);
+      } else {
+        await apiPost("/owners", payload);
+      }
+      closeForm();
+      Alert.alert("تم", editingOwnerId ? "تم تعديل بيانات المالك بنجاح" : "تم إضافة المالك بنجاح");
       await load();
     } catch (e) {
       Alert.alert("خطأ", e instanceof Error ? e.message : "تعذر حفظ المالك");
     } finally {
       setSaving(false);
     }
+  }
+
+  function confirmDeleteOwner(owner: Owner) {
+    setOpenMenuOwnerId(null);
+    Alert.alert("حذف المالك", `هل تريد حذف ${owner.name || "هذا المالك"}؟`, [
+      { text: "إلغاء", style: "cancel" },
+      {
+        text: "حذف",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            await apiPost(`/edit-delete-center/owners/${owner.id}/delete`, {});
+            Alert.alert("تم", "تم حذف المالك بنجاح");
+            await load();
+          } catch (e) {
+            Alert.alert("تعذر الحذف", e instanceof Error ? e.message : "لا يمكن حذف المالك الآن");
+          }
+        },
+      },
+    ]);
   }
 
   useEffect(() => {
@@ -134,12 +200,12 @@ export default function OwnersScreen() {
 
         {showForm ? (
           <View style={styles.formCard}>
-            <Text style={styles.formTitle}>بيانات المالك</Text>
+            <Text style={styles.formTitle}>{editingOwnerId ? "تعديل بيانات المالك" : "بيانات المالك"}</Text>
             <TextInput style={styles.input} placeholder="اسم المالك" value={name} onChangeText={setName} textAlign="right" />
             <TextInput style={styles.input} placeholder="رقم الجوال" value={phone} onChangeText={setPhone} keyboardType="phone-pad" textAlign="right" />
             <TextInput style={styles.input} placeholder="البريد الإلكتروني" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" textAlign="right" />
             <TextInput style={styles.input} placeholder="رقم الهوية / السجل" value={nationalId} onChangeText={setNationalId} keyboardType="number-pad" textAlign="right" />
-            <TouchableOpacity style={styles.saveButton} onPress={saveOwner} disabled={saving} activeOpacity={0.85}><Text style={styles.saveButtonText}>{saving ? "جاري الحفظ..." : "حفظ المالك"}</Text></TouchableOpacity>
+            <TouchableOpacity style={styles.saveButton} onPress={saveOwner} disabled={saving} activeOpacity={0.85}><Text style={styles.saveButtonText}>{saving ? "جاري الحفظ..." : editingOwnerId ? "حفظ التعديل" : "حفظ المالك"}</Text></TouchableOpacity>
           </View>
         ) : null}
 
@@ -154,29 +220,50 @@ export default function OwnersScreen() {
         {!error && visibleOwners.length === 0 ? <View style={styles.box}><Text style={styles.emptyText}>لا يوجد ملاك حاليًا</Text></View> : null}
 
         {visibleOwners.map((owner) => (
-          <TouchableOpacity key={owner.id} style={styles.card} activeOpacity={0.9} onPress={() => router.push(`/owner/${owner.id}` as never)}>
-            <View style={styles.cardTopRow}>
-              <Text style={styles.badge}>مالك</Text>
-              <View style={styles.titleWrap}>
-                <Text numberOfLines={2} style={styles.cardTitle}>{owner.name || "مالك بدون اسم"}</Text>
-                <Text style={styles.cardSub}>اضغط لفتح عقارات ووحدات هذا المالك</Text>
+          <View key={owner.id} style={styles.card}>
+            <TouchableOpacity style={styles.ownerMenuButton} activeOpacity={0.85} onPress={() => setOpenMenuOwnerId(openMenuOwnerId === owner.id ? null : owner.id)}>
+              <Ionicons name="ellipsis-vertical" size={20} color="#0F172A" />
+            </TouchableOpacity>
+            {openMenuOwnerId === owner.id ? (
+              <View style={styles.ownerMenu}>
+                <TouchableOpacity style={styles.ownerMenuItem} activeOpacity={0.85} onPress={() => openOwnerDetails(owner)}>
+                  <Ionicons name="eye-outline" size={18} color="#0F766E" />
+                  <Text style={styles.ownerMenuText}>تفاصيل</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.ownerMenuItem} activeOpacity={0.85} onPress={() => openEditOwnerForm(owner)}>
+                  <Ionicons name="create-outline" size={18} color="#0F766E" />
+                  <Text style={styles.ownerMenuText}>تعديل</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.ownerMenuItem} activeOpacity={0.85} onPress={() => confirmDeleteOwner(owner)}>
+                  <Ionicons name="trash-outline" size={18} color="#DC2626" />
+                  <Text style={[styles.ownerMenuText, { color: "#DC2626" }]}>حذف</Text>
+                </TouchableOpacity>
               </View>
-            </View>
-            <View style={styles.metricsRow}>
-              <View style={styles.metricPill}><Text style={styles.metricValue}>{owner.properties_count ?? 0}</Text><Text style={styles.metricLabel}>عقار</Text></View>
-              <View style={styles.metricPill}><Text style={styles.metricValue}>{owner.units_count ?? 0}</Text><Text style={styles.metricLabel}>وحدة</Text></View>
-              <View style={styles.metricPill}><Text style={styles.metricValue}>{owner.contracts_count ?? 0}</Text><Text style={styles.metricLabel}>عقد</Text></View>
-            </View>
-            <View style={styles.infoBox}>
-              <Text style={styles.detail}>الجوال: {valueOrDash(owner.phone)}</Text>
-              <Text style={styles.detail}>البريد: {valueOrDash(owner.email)}</Text>
-              <Text style={styles.detail}>رقم الهوية: {valueOrDash(owner.national_id)}</Text>
-            </View>
-          </TouchableOpacity>
+            ) : null}
+            <TouchableOpacity activeOpacity={0.9} onPress={() => openOwnerDetails(owner)}>
+              <View style={styles.cardTopRow}>
+                <Text style={styles.badge}>مالك</Text>
+                <View style={styles.titleWrap}>
+                  <Text numberOfLines={2} style={styles.cardTitle}>{owner.name || "مالك بدون اسم"}</Text>
+                  <Text style={styles.cardSub}>اضغط لفتح عقارات ووحدات هذا المالك</Text>
+                </View>
+              </View>
+              <View style={styles.metricsRow}>
+                <View style={styles.metricPill}><Text style={styles.metricValue}>{owner.properties_count ?? 0}</Text><Text style={styles.metricLabel}>عقار</Text></View>
+                <View style={styles.metricPill}><Text style={styles.metricValue}>{owner.units_count ?? 0}</Text><Text style={styles.metricLabel}>وحدة</Text></View>
+                <View style={styles.metricPill}><Text style={styles.metricValue}>{owner.contracts_count ?? 0}</Text><Text style={styles.metricLabel}>عقد</Text></View>
+              </View>
+              <View style={styles.infoBox}>
+                <Text style={styles.detail}>الجوال: {valueOrDash(owner.phone)}</Text>
+                <Text style={styles.detail}>البريد: {valueOrDash(owner.email)}</Text>
+                <Text style={styles.detail}>رقم الهوية: {valueOrDash(owner.national_id)}</Text>
+              </View>
+            </TouchableOpacity>
+          </View>
         ))}
         <View style={{ height: 82 }} />
       </ScrollView>
-      <TouchableOpacity style={[styles.floatingAddButton, showForm ? styles.floatingCloseButton : null]} activeOpacity={0.88} onPress={() => setShowForm(!showForm)}>
+      <TouchableOpacity style={[styles.floatingAddButton, showForm ? styles.floatingCloseButton : null]} activeOpacity={0.88} onPress={showForm ? closeForm : openAddOwnerForm}>
         <Ionicons name={showForm ? "close" : "add"} size={30} color="#fff" />
       </TouchableOpacity>
     </SafeAreaView>
@@ -206,8 +293,12 @@ const styles = StyleSheet.create({
   errorText: { color: "#7f1d1d", marginTop: 8, textAlign: "right" },
   button: { marginTop: 14, backgroundColor: "#111827", padding: 12, borderRadius: 12, alignItems: "center" },
   buttonText: { color: "#fff", fontWeight: "900" },
-  card: { backgroundColor: "#fff", borderRadius: 24, padding: 14, marginBottom: 12, borderWidth: 1, borderColor: "#EDECE9", shadowColor: "#000", shadowOpacity: 0.05, shadowRadius: 10, elevation: 1 },
-  cardTopRow: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 10 },
+  card: { backgroundColor: "#fff", borderRadius: 24, padding: 14, marginBottom: 12, borderWidth: 1, borderColor: "#EDECE9", shadowColor: "#000", shadowOpacity: 0.05, shadowRadius: 10, elevation: 1, position: "relative" },
+  ownerMenuButton: { position: "absolute", left: 12, top: 12, width: 36, height: 36, borderRadius: 18, backgroundColor: "#F8FAFC", borderWidth: 1, borderColor: "#E5E7EB", alignItems: "center", justifyContent: "center", zIndex: 12 },
+  ownerMenu: { position: "absolute", left: 12, top: 52, width: 128, backgroundColor: "#fff", borderRadius: 16, borderWidth: 1, borderColor: "#E5E7EB", paddingVertical: 5, zIndex: 20, shadowColor: "#0F172A", shadowOpacity: 0.16, shadowRadius: 14, shadowOffset: { width: 0, height: 7 }, elevation: 8 },
+  ownerMenuItem: { minHeight: 39, flexDirection: "row-reverse", alignItems: "center", justifyContent: "flex-start", gap: 8, paddingHorizontal: 12 },
+  ownerMenuText: { color: "#0F172A", fontWeight: "900", fontSize: 12, textAlign: "right" },
+  cardTopRow: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 10, paddingLeft: 38 },
   titleWrap: { flex: 1, alignItems: "flex-end" },
   badge: { backgroundColor: "#E0F2FE", color: "#075985", paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999, overflow: "hidden", fontWeight: "900", fontSize: 12 },
   cardTitle: { fontSize: 19, fontWeight: "900", color: "#111827", textAlign: "right" },
