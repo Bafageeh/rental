@@ -58,5 +58,5 @@ export default function ContractDetailsRoute() {
     };
   }, [forcedUnitRoute, id, navigation]);
 
-  return <ContractDetailsScreen id={id} initialUnitId={initialUnitId} />;
+  return <ContractDetailsScreen id={id} />;
 }
