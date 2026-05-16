@@ -42,6 +42,13 @@ function compactHistory() {
   routeHistory = routeHistory.slice(routeHistory.length - MAX_HISTORY_ITEMS);
 }
 
+function forcedBackRoute() {
+  const override = (globalThis as any).__RENTAL_FORCED_BACK_ROUTE__;
+  if (!override || typeof override !== "object") return "";
+  const route = typeof override.route === "string" ? override.route.trim() : "";
+  return route;
+}
+
 export function resetNavigationHistory(initialRoute?: string) {
   routeHistory = initialRoute ? [initialRoute] : [];
 }
@@ -73,6 +80,13 @@ export function trackNavigationRoute(pathname?: string | null, params: Params = 
 }
 
 export function smartBack(fallbackRoute: string = "/") {
+  const forcedRoute = forcedBackRoute();
+  if (forcedRoute) {
+    (globalThis as any).__RENTAL_FORCED_BACK_ROUTE__ = undefined;
+    router.replace(forcedRoute as never);
+    return;
+  }
+
   const currentRoute = routeHistory[routeHistory.length - 1];
 
   while (routeHistory.length > 0 && routeHistory[routeHistory.length - 1] === currentRoute) {
