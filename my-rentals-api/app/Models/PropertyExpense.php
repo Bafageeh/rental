@@ -9,6 +9,7 @@ class PropertyExpense extends Model
 {
     protected $fillable = [
         'property_id',
+        'unit_id',
         'expense_category_id',
         'amount',
         'expense_date',
@@ -25,6 +26,11 @@ class PropertyExpense extends Model
     public function property(): BelongsTo
     {
         return $this->belongsTo(Property::class);
+    }
+
+    public function unit(): BelongsTo
+    {
+        return $this->belongsTo(Unit::class);
     }
 
     public function category(): BelongsTo
