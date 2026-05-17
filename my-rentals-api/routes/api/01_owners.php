@@ -172,16 +172,18 @@ Route::post('/owners', function (Request $request) {
         'name' => ['required', 'string', 'max:255'],
         'phone' => ['nullable', 'string', 'max:50'],
         'email' => ['nullable', 'email', 'max:255'],
-        'national_id' => ['nullable', 'string', 'max:50'],
+        'national_id' => ['required', 'string', 'max:50'],
         'type' => ['nullable', 'string', 'max:50'],
         'notes' => ['nullable', 'string'],
+    ], [
+        'national_id.required' => 'رقم هوية المالك مطلوب لإنشاء حساب دخول تلقائي.',
     ]);
 
     $owner = Owner::create([
         'name' => $data['name'],
         'phone' => $data['phone'] ?? null,
         'email' => $data['email'] ?? null,
-        'national_id' => $data['national_id'] ?? null,
+        'national_id' => trim((string) $data['national_id']),
         'type' => $data['type'] ?? 'external',
         'notes' => $data['notes'] ?? null,
     ]);
