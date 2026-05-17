@@ -68,7 +68,7 @@ export default function LoginScreen() {
 
     const trimmedUsername = username.trim();
     if (!trimmedUsername) {
-      setUsernameError('رقم الهوية مطلوب');
+      setUsernameError('اسم المستخدم مطلوب');
       valid = false;
     }
 
@@ -107,7 +107,7 @@ export default function LoginScreen() {
 
       router.replace('/' as any);
     } catch (e) {
-      Alert.alert('خطأ في الدخول', e instanceof Error ? e.message : 'رقم الهوية أو الرقم السري غير صحيح');
+      Alert.alert('خطأ في الدخول', e instanceof Error ? e.message : 'اسم المستخدم أو الرقم السري غير صحيح');
     } finally {
       setLoading(false);
     }
@@ -153,13 +153,13 @@ export default function LoginScreen() {
                 }} disabled={biometricLoading} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel="الدخول بالبصمة" accessibilityState={{ busy: biometricLoading }}>
                   {biometricLoading ? <ActivityIndicator color={colors.textInverse} /> : <Text style={styles.btnText}>الدخول بالبصمة</Text>}
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.secondaryBtn} onPress={() => setShowManualLogin(true)} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel="الدخول برقم الهوية">
-                  <Text style={styles.secondaryBtnText}>الدخول برقم الهوية</Text>
+                <TouchableOpacity style={styles.secondaryBtn} onPress={() => setShowManualLogin(true)} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel="الدخول باسم المستخدم">
+                  <Text style={styles.secondaryBtnText}>الدخول باسم المستخدم</Text>
                 </TouchableOpacity>
               </>
             ) : (
               <>
-                <Text style={styles.label}>رقم الهوية</Text>
+                <Text style={styles.label}>اسم المستخدم</Text>
                 <TextInput
                   style={[styles.input, usernameError && styles.inputError]}
                   value={username}
@@ -167,15 +167,15 @@ export default function LoginScreen() {
                     setUsername(t);
                     if (usernameError) setUsernameError('');
                   }}
-                  placeholder="مثال: 1002803441"
+                  placeholder="رقم الهوية أو اسم المستخدم"
                   placeholderTextColor={colors.textTertiary}
-                  keyboardType="number-pad"
+                  keyboardType="default"
                   autoCapitalize="none"
                   autoCorrect={false}
                   autoComplete="username"
                   textAlign="right"
                   editable={!loading}
-                  accessibilityLabel="رقم الهوية"
+                  accessibilityLabel="اسم المستخدم"
                 />
                 {usernameError ? <Text style={styles.errorText}>{usernameError}</Text> : null}
 
