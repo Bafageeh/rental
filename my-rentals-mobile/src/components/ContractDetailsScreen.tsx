@@ -19,8 +19,19 @@ type PaymentItem = {
   status?: string | null;
 };
 
+type FieldItem = {
+  key?: string;
+  label?: string;
+  value?: unknown;
+  raw_value?: unknown;
+  is_relation?: boolean;
+};
+
 type ContractPayload = {
+  entity?: string;
+  id?: number;
   title?: string;
+  fields?: FieldItem[];
   sections?: Array<{ key: string; title: string; count: number; items: PaymentItem[] }>;
 };
 
@@ -48,6 +59,10 @@ function responseList(payload: any) {
 function display(value: unknown, fallback = "-") {
   const text = String(value ?? "").trim();
   return text ? text : fallback;
+}
+
+function hasText(value: unknown) {
+  return String(value ?? "").trim() !== "";
 }
 
 function statusLabel(status?: string | null) {
@@ -88,6 +103,96 @@ function prettyDate(value?: string | null, fallback = "-") {
   return text || fallback;
 }
 
+function firstFilled<T>(...values: Array<T | null | undefined>): T | null {
+  for (const value of values) {
+    if (value !== null && value !== undefined && hasText(value)) return value;
+  }
+  return null;
+}
+
+function normalizeContractPayload(payload: any): ContractRecord | null {
+  const candidate = payload?.contract || payload?.data || payload;
+  if (!candidate || Array.isArray(candidate) || typeof candidate !== "object") return null;
+  if (!hasText(candidate.id)) return null;
+  return candidate as ContractRecord;
+}
+
+function fieldByKey(payload: any, key: string): FieldItem | undefined {
+  const fields = Array.isArray(payload?.fields) ? payload.fields : [];
+  return fields.find((field: FieldItem) => field?.key === key);
+}
+
+function fieldRaw(payload: any, key: string) {
+  const field = fieldByKey(payload, key);
+  return field?.raw_value ?? field?.value ?? null;
+}
+
+function fieldDisplay(payload: any, key: string) {
+  const field = fieldByKey(payload, key);
+  return field?.value ?? field?.raw_value ?? null;
+}
+
+function numberOrUndefined(value: unknown) {
+  if (!hasText(value)) return undefined;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+function contractFromRelatedPayload(payload: any, id: string | number): ContractRecord | null {
+  if (!payload || payload.entity !== "contract") return null;
+
+  const tenantId = numberOrUndefined(fieldRaw(payload, "tenant_id"));
+  const unitId = numberOrUndefined(fieldRaw(payload, "unit_id"));
+
+  return {
+    id: Number(payload.id || id),
+    contract_number: firstFilled(fieldRaw(payload, "contract_number"), cleanTitleTitle(payload.title)) as string | null,
+    government_contract_number: firstFilled(fieldRaw(payload, "government_contract_number")) as string | null,
+    status: firstFilled(fieldRaw(payload, "status"), fieldDisplay(payload, "status")) as string | null,
+    start_date: firstFilled(fieldRaw(payload, "start_date"), fieldDisplay(payload, "start_date")) as string | null,
+    end_date: firstFilled(fieldRaw(payload, "end_date"), fieldDisplay(payload, "end_date")) as string | null,
+    rent_amount: fieldRaw(payload, "rent_amount") as number | string | null,
+    total_contract_value: fieldRaw(payload, "total_contract_value") as number | string | null,
+    tenant: {
+      id: tenantId,
+      name: firstFilled(fieldDisplay(payload, "tenant_id")) as string | null,
+    },
+    unit: {
+      id: unitId,
+      unit_number: firstFilled(fieldDisplay(payload, "unit_id")) as string | null,
+    },
+  };
+}
+
+function mergeContractRecords(primary: ContractRecord | null, fallback: ContractRecord | null): ContractRecord | null {
+  if (!primary && !fallback) return null;
+  if (!primary) return fallback;
+  if (!fallback) return primary;
+
+  return {
+    id: Number(firstFilled(primary.id, fallback.id) || primary.id || fallback.id),
+    contract_number: firstFilled(primary.contract_number, fallback.contract_number) as string | null,
+    government_contract_number: firstFilled(primary.government_contract_number, fallback.government_contract_number) as string | null,
+    status: firstFilled(primary.status, fallback.status) as string | null,
+    start_date: firstFilled(primary.start_date, fallback.start_date) as string | null,
+    end_date: firstFilled(primary.end_date, fallback.end_date) as string | null,
+    rent_amount: firstFilled(primary.rent_amount, fallback.rent_amount),
+    total_contract_value: firstFilled(primary.total_contract_value, fallback.total_contract_value),
+    tenant: {
+      id: primary.tenant?.id || fallback.tenant?.id,
+      name: firstFilled(primary.tenant?.name, fallback.tenant?.name) as string | null,
+    },
+    unit: {
+      id: primary.unit?.id || fallback.unit?.id,
+      unit_number: firstFilled(primary.unit?.unit_number, fallback.unit?.unit_number) as string | null,
+      property: {
+        id: primary.unit?.property?.id || fallback.unit?.property?.id,
+        name: firstFilled(primary.unit?.property?.name, fallback.unit?.property?.name) as string | null,
+      },
+    },
+  };
+}
+
 export default function ContractDetailsScreen({ id }: { id: string | number }) {
   const navigation = useNavigation();
   const [data, setData] = useState<ContractPayload | null>(null);
@@ -102,13 +207,19 @@ export default function ContractDetailsScreen({ id }: { id: string | number }) {
       if (refresh) setRefreshing(true);
       else setLoading(true);
       setError("");
-      const [relatedResult, contractsResult] = await Promise.all([
+      const [relatedResult, contractResult, contractsResult] = await Promise.all([
         apiGet(`/relation-manager/related/contract/${id}`),
+        apiGet(`/contracts/${id}`).catch(() => null),
         apiGet(`/contracts`).catch(() => []),
       ]);
-      setData(relatedResult as ContractPayload);
+      const relatedPayload = relatedResult as ContractPayload;
+      setData(relatedPayload);
+
       const list = responseList(contractsResult) as ContractRecord[];
-      setContract(list.find((item) => String(item.id) === String(id)) || null);
+      const listContract = list.find((item) => String(item.id) === String(id)) || null;
+      const directContract = normalizeContractPayload(contractResult);
+      const relatedContract = contractFromRelatedPayload(relatedPayload, id);
+      setContract(mergeContractRecords(mergeContractRecords(directContract, listContract), relatedContract));
     } catch (e) {
       setError(e instanceof Error ? e.message : "تعذر تحميل العقد");
     } finally {
@@ -173,8 +284,8 @@ export default function ContractDetailsScreen({ id }: { id: string | number }) {
   }
 
   const payments = (data?.sections || []).flatMap((section) => section.items || []).filter(isPayment);
-  const tenantName = display(contract?.tenant?.name, cleanTitleTitle(data?.title) || "المستأجر غير محدد");
-  const contractNumber = display(contract?.government_contract_number || contract?.contract_number || id);
+  const tenantName = display(contract?.tenant?.name, "المستأجر غير محدد");
+  const contractNumber = display(contract?.government_contract_number || contract?.contract_number || cleanTitleTitle(data?.title) || id);
   const startDate = prettyDate(contract?.start_date, "بلا بداية");
   const endDate = prettyDate(contract?.end_date, "بلا نهاية");
   const badgeText = statusLabel(contract?.status);
