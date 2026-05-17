@@ -25,8 +25,9 @@ class EnforceApiAccessScope
 
         $isScopedOwnerPath = $request->is('api/my/*') || $request->is('my/*');
         $isAuthPath = $request->is('api/auth/*') || $request->is('auth/*');
+        $isProfilePath = $request->is('api/profile/*') || $request->is('profile/*');
 
-        if ($isScopedOwnerPath || $isAuthPath) {
+        if ($isScopedOwnerPath || $isAuthPath || $isProfilePath) {
             return $next($request);
         }
 
