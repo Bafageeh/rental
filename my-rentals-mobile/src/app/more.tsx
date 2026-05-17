@@ -86,15 +86,27 @@ export default function MoreScreen() {
         </View>
 
         {isAdmin ? (
-          <View style={styles.card}>
-            <ActionTile
-              icon="chatbubbles-outline"
-              title="مركز الاستفسارات"
-              subtitle="مشاهدة رسائل واتساب الواردة والردود الآلية المرتبطة بعقود المستأجرين."
-              onPress={() => requireAdmin('/inquiry-center', 'مركز الاستفسارات')}
-              adminOnly
-            />
-          </View>
+          <>
+            <View style={styles.card}>
+              <ActionTile
+                icon="people-circle-outline"
+                title="إدارة المستخدمين"
+                subtitle="إنشاء وتعديل المستخدمين، ربط الملاك، تفعيل وتعطيل الحسابات، وإعادة تعيين الرقم السري."
+                onPress={() => requireAdmin('/user-accounts', 'إدارة المستخدمين')}
+                adminOnly
+              />
+            </View>
+
+            <View style={styles.card}>
+              <ActionTile
+                icon="chatbubbles-outline"
+                title="مركز الاستفسارات"
+                subtitle="مشاهدة رسائل واتساب الواردة والردود الآلية المرتبطة بعقود المستأجرين."
+                onPress={() => requireAdmin('/inquiry-center', 'مركز الاستفسارات')}
+                adminOnly
+              />
+            </View>
+          </>
         ) : null}
 
         <View style={styles.card}>
