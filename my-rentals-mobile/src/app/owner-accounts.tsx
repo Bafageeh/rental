@@ -17,17 +17,27 @@ type Owner = {
   id: number;
   name?: string | null;
   type?: string | null;
+  national_id?: string | null;
 };
 
 type OwnerAccount = {
   id: number;
   name?: string | null;
+  username?: string | null;
   email?: string | null;
   role?: string | null;
   owner_id?: number | null;
   owner_name?: string | null;
   status?: string | null;
 };
+
+function normalizeNationalId(value?: string | null) {
+  return String(value || "")
+    .replace(/[٠١٢٣٤٥٦٧٨٩]/g, (d) => String("٠١٢٣٤٥٦٧٨٩".indexOf(d)))
+    .replace(/[۰۱۲۳۴۵۶۷۸۹]/g, (d) => String("۰۱۲۳۴۵۶۷۸۹".indexOf(d)))
+    .replace(/[^0-9A-Za-z]/g, "")
+    .trim();
+}
 
 export default function OwnerAccountsScreen() {
   const [owners, setOwners] = useState<Owner[]>([]);
@@ -50,7 +60,8 @@ export default function OwnerAccountsScreen() {
       setError("");
 
       const result = await apiGet("/owner-accounts");
-      const ownerList = Array.isArray(result?.owners) ? result.owners : [];
+      const ownersResult = await apiGet("/owners").catch(() => null);
+      const ownerList = Array.isArray(ownersResult) ? ownersResult : Array.isArray(result?.owners) ? result.owners : [];
 
       setOwners(ownerList);
       setUsers(Array.isArray(result?.users) ? result.users : []);
@@ -72,18 +83,16 @@ export default function OwnerAccountsScreen() {
       return;
     }
 
-    if (!name.trim()) {
-      Alert.alert("تنبيه", "اكتب اسم المستخدم");
-      return;
-    }
+    const selectedOwner = owners.find((owner) => owner.id === ownerId) || null;
+    const loginId = normalizeNationalId(selectedOwner?.national_id);
 
-    if (!email.trim()) {
-      Alert.alert("تنبيه", "اكتب البريد الإلكتروني");
+    if (!loginId) {
+      Alert.alert("تنبيه", "لا يمكن إنشاء الحساب قبل تسجيل رقم الهوية في بطاقة المالك.");
       return;
     }
 
     if (!password.trim() || password.trim().length < 6) {
-      Alert.alert("تنبيه", "كلمة المرور لا تقل عن 6 أحرف");
+      Alert.alert("تنبيه", "الرقم السري لا يقل عن 6 أحرف");
       return;
     }
 
@@ -92,8 +101,9 @@ export default function OwnerAccountsScreen() {
 
       await apiPost("/owner-accounts", {
         owner_id: ownerId,
-        name: name.trim(),
-        email: email.trim(),
+        name: name.trim() || selectedOwner?.name || "مالك",
+        email: email.trim() || `owner-${ownerId}@my-rentals.local`,
+        username: loginId,
         password: password.trim(),
       });
 
@@ -102,7 +112,7 @@ export default function OwnerAccountsScreen() {
       setPassword("");
       setShowForm(false);
 
-      Alert.alert("تم", "تم إنشاء حساب المالك بنجاح");
+      Alert.alert("تم", "تم إنشاء حساب المالك. الدخول يكون برقم الهوية والرقم السري.");
       load();
     } catch (e) {
       Alert.alert("خطأ", e instanceof Error ? e.message : "تعذر إنشاء الحساب");
@@ -136,6 +146,9 @@ export default function OwnerAccountsScreen() {
     load();
   }, []);
 
+  const selectedOwner = owners.find((owner) => owner.id === ownerId) || null;
+  const selectedLoginId = normalizeNationalId(selectedOwner?.national_id);
+
   return (
     <SafeAreaView style={styles.safe}>
       <ScrollView
@@ -143,134 +156,76 @@ export default function OwnerAccountsScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refreshScreen} tintColor="#0F9B6F" />}
       >
         <Text style={styles.title}>حسابات الملاك</Text>
-        <Text style={styles.subtitle}>
-          إنشاء حساب لكل مالك لعرض وإدارة عقاراته فقط لاحقًا
-        </Text>
+        <Text style={styles.subtitle}>إنشاء حساب خاص لكل مالك، ويكون دخوله برقم الهوية والرقم السري.</Text>
 
         <View style={styles.warningBox}>
-          <Text style={styles.warningText}>
-            هذه المرحلة تنشئ حسابات الملاك وتربطها بالمالك. تفعيل تسجيل الدخول والصلاحيات الفعلية سيكون في الخطوة التالية.
-          </Text>
+          <Text style={styles.warningText}>حساب المالك يعرض له أملاكه وحساباته فقط. رقم الهوية يؤخذ من بيانات المالك، لذلك يجب تعبئته قبل إنشاء الحساب.</Text>
         </View>
 
-        <TouchableOpacity
-          style={styles.primaryButton}
-          onPress={() => setShowForm(!showForm)}
-        >
-          <Text style={styles.primaryButtonText}>
-            {showForm ? "إغلاق نموذج الإضافة" : "إضافة حساب مالك"}
-          </Text>
+        <TouchableOpacity style={styles.primaryButton} onPress={() => setShowForm(!showForm)}>
+          <Text style={styles.primaryButtonText}>{showForm ? "إغلاق نموذج الإضافة" : "إضافة حساب مالك"}</Text>
         </TouchableOpacity>
 
         {showForm ? (
           <View style={styles.formCard}>
-            <Text style={styles.formTitle}>بيانات الحساب</Text>
+            <Text style={styles.formTitle}>بيانات حساب المالك</Text>
 
             <Text style={styles.label}>اختر المالك</Text>
             <View style={styles.chips}>
               {owners.map((owner) => (
-                <TouchableOpacity
-                  key={owner.id}
-                  style={[styles.chip, ownerId === owner.id ? styles.chipActive : null]}
-                  onPress={() => setOwnerId(owner.id)}
-                >
-                  <Text style={[styles.chipText, ownerId === owner.id ? styles.chipTextActive : null]}>
-                    {owner.name || "مالك"}
-                  </Text>
+                <TouchableOpacity key={owner.id} style={[styles.chip, ownerId === owner.id ? styles.chipActive : null]} onPress={() => setOwnerId(owner.id)}>
+                  <Text style={[styles.chipText, ownerId === owner.id ? styles.chipTextActive : null]}>{owner.name || "مالك"}</Text>
                 </TouchableOpacity>
               ))}
             </View>
 
-            <TextInput
-              style={styles.input}
-              placeholder="اسم المستخدم"
-              value={name}
-              onChangeText={setName}
-              textAlign="right"
-            />
+            <View style={[styles.loginBox, !selectedLoginId ? styles.loginBoxDanger : null]}>
+              <Text style={styles.loginLabel}>رقم الهوية للدخول</Text>
+              <Text style={styles.loginValue}>{selectedLoginId || "غير مسجل في بيانات المالك"}</Text>
+            </View>
 
-            <TextInput
-              style={styles.input}
-              placeholder="البريد الإلكتروني"
-              value={email}
-              onChangeText={setEmail}
-              keyboardType="email-address"
-              autoCapitalize="none"
-              textAlign="right"
-            />
+            <TextInput style={styles.input} placeholder="اسم الحساب اختياري" value={name} onChangeText={setName} textAlign="right" />
 
-            <TextInput
-              style={styles.input}
-              placeholder="كلمة المرور"
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry
-              textAlign="right"
-            />
+            <TextInput style={styles.input} placeholder="البريد الإلكتروني اختياري" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" textAlign="right" />
 
-            <TouchableOpacity
-              style={styles.saveButton}
-              onPress={saveAccount}
-              disabled={saving}
-            >
-              <Text style={styles.saveButtonText}>
-                {saving ? "جاري الحفظ..." : "حفظ الحساب"}
-              </Text>
+            <TextInput style={styles.input} placeholder="الرقم السري" value={password} onChangeText={setPassword} secureTextEntry textAlign="right" />
+
+            <TouchableOpacity style={styles.saveButton} onPress={saveAccount} disabled={saving}>
+              <Text style={styles.saveButtonText}>{saving ? "جاري الحفظ..." : "حفظ الحساب"}</Text>
             </TouchableOpacity>
           </View>
         ) : null}
 
         {loading ? (
-          <View style={styles.box}>
-            <ActivityIndicator />
-            <Text style={styles.boxText}>جاري تحميل الحسابات...</Text>
-          </View>
+          <View style={styles.box}><ActivityIndicator /><Text style={styles.boxText}>جاري تحميل الحسابات...</Text></View>
         ) : null}
 
         {error ? (
           <View style={styles.errorBox}>
             <Text style={styles.errorTitle}>تعذر تحميل الحسابات</Text>
             <Text style={styles.errorText}>{error}</Text>
-            <TouchableOpacity style={styles.button} onPress={load}>
-              <Text style={styles.buttonText}>إعادة المحاولة</Text>
-            </TouchableOpacity>
+            <TouchableOpacity style={styles.button} onPress={load}><Text style={styles.buttonText}>إعادة المحاولة</Text></TouchableOpacity>
           </View>
         ) : null}
 
         {!loading && !error && users.length === 0 ? (
-          <View style={styles.box}>
-            <Text style={styles.emptyText}>لا توجد حسابات حاليًا</Text>
-          </View>
+          <View style={styles.box}><Text style={styles.emptyText}>لا توجد حسابات حاليًا</Text></View>
         ) : null}
 
         {users.map((user) => (
           <View key={user.id} style={styles.card}>
             <View style={styles.rowBetween}>
-              <Text style={styles.badge}>
-                {user.role === "owner" ? "مالك" : "مدير"}
-              </Text>
+              <Text style={styles.badge}>{user.role === "owner" ? "مالك" : "مدير"}</Text>
               <Text style={styles.cardTitle}>{user.name || "مستخدم"}</Text>
             </View>
 
-            <Text style={styles.detail}>البريد: {user.email || "-"}</Text>
+            <Text style={styles.detail}>رقم الدخول: {user.username || "-"}</Text>
+            <Text style={styles.detail}>البريد: {user.email?.includes("@my-rentals.local") ? "-" : user.email || "-"}</Text>
             <Text style={styles.detail}>المالك المرتبط: {user.owner_name || "-"}</Text>
             <Text style={styles.detail}>الحالة: {user.status === "disabled" ? "معطل" : "نشط"}</Text>
 
-            <TouchableOpacity
-              style={[
-                styles.statusButton,
-                user.status === "disabled" ? styles.activateButton : styles.disableButton,
-              ]}
-              onPress={() => toggleStatus(user.id)}
-              disabled={updatingId === user.id}
-            >
-              <Text style={styles.statusButtonText}>
-                {updatingId === user.id
-                  ? "..."
-                  : user.status === "disabled"
-                    ? "تفعيل الحساب"
-                    : "تعطيل الحساب"}
-              </Text>
+            <TouchableOpacity style={[styles.statusButton, user.status === "disabled" ? styles.activateButton : styles.disableButton]} onPress={() => toggleStatus(user.id)} disabled={updatingId === user.id}>
+              <Text style={styles.statusButtonText}>{updatingId === user.id ? "..." : user.status === "disabled" ? "تفعيل الحساب" : "تعطيل الحساب"}</Text>
             </TouchableOpacity>
           </View>
         ))}
@@ -296,6 +251,10 @@ const styles = StyleSheet.create({
   chipActive: { backgroundColor: "#111827" },
   chipText: { color: "#374151", fontWeight: "700" },
   chipTextActive: { color: "#fff" },
+  loginBox: { backgroundColor: "#ECFDF5", borderWidth: 1, borderColor: "#A7F3D0", borderRadius: 14, padding: 12, marginBottom: 10, alignItems: "flex-end" },
+  loginBoxDanger: { backgroundColor: "#FEF2F2", borderColor: "#FECACA" },
+  loginLabel: { color: "#64748B", fontWeight: "800", fontSize: 12 },
+  loginValue: { color: "#111827", fontWeight: "900", fontSize: 18, marginTop: 4 },
   input: { backgroundColor: "#F7F6F4", borderWidth: 1, borderColor: "#DDDBD6", borderRadius: 12, padding: 12, marginBottom: 10, color: "#111827" },
   saveButton: { backgroundColor: "#16a34a", padding: 13, borderRadius: 12, alignItems: "center" },
   saveButtonText: { color: "#fff", fontWeight: "800" },
