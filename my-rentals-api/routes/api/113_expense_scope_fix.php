@@ -111,3 +111,9 @@ Route::get('/expenses', function (Request $request) {
 Route::get('/my/expenses', function (Request $request) {
     return my_rentals_expense_scope_response($request, true);
 });
+
+// تحميل مسارات إدارة المستخدمين بعد مسارات الصلاحيات حتى يعمل رابط شاشة #S-453.
+$userAccountsRouteFile = __DIR__ . '/114_user_accounts.php';
+if (is_file($userAccountsRouteFile)) {
+    require_once $userAccountsRouteFile;
+}
