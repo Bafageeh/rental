@@ -54,27 +54,132 @@ if (! function_exists('myRentalsUniqueUsername')) {
     }
 }
 
+if (! function_exists('myRentalsAccountPayload')) {
+    function myRentalsAccountPayload(\App\Models\User $user, ?\Illuminate\Support\Collection $owners = null): array
+    {
+        $owners = $owners ?: Owner::get(['id', 'name', 'type']);
+        $owner = $owners->firstWhere('id', $user->owner_id ?? null);
+
+        return [
+            'id' => $user->id,
+            'name' => $user->name,
+            'username' => Schema::hasColumn('users', 'username') ? ($user->username ?? null) : null,
+            'email' => $user->email,
+            'role' => function_exists('myRentalsEffectiveRole') ? myRentalsEffectiveRole($user) : ($user->role ?? 'admin'),
+            'owner_id' => $user->owner_id ?? null,
+            'owner_name' => $owner?->name,
+            'status' => $user->status ?? 'active',
+            'notes' => Schema::hasColumn('users', 'notes') ? ($user->notes ?? null) : null,
+            'created_at' => $user->created_at,
+            'updated_at' => $user->updated_at,
+        ];
+    }
+}
+
+if (! function_exists('myRentalsUpdateUserAccount')) {
+    function myRentalsUpdateUserAccount(Request $request, \App\Models\User $user)
+    {
+        $input = $request->all();
+
+        if (array_key_exists('password', $input) && trim((string) $input['password']) === '') {
+            unset($input['password']);
+        }
+
+        $rules = [
+            'name' => ['sometimes', 'required', 'string', 'max:255'],
+            'email' => ['sometimes', 'nullable', 'email', 'max:255', 'unique:users,email,' . $user->id],
+            'password' => ['sometimes', 'string', 'min:6'],
+            'role' => ['sometimes', 'nullable', 'string', 'max:50'],
+            'owner_id' => ['sometimes', 'nullable', 'integer', 'exists:owners,id'],
+            'status' => ['sometimes', 'nullable', 'string', 'max:50'],
+            'notes' => ['sometimes', 'nullable', 'string'],
+        ];
+
+        if (Schema::hasColumn('users', 'username')) {
+            $rules['username'] = ['sometimes', 'nullable', 'string', 'max:255', 'unique:users,username,' . $user->id];
+        }
+
+        $validator = \Illuminate\Support\Facades\Validator::make($input, $rules);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'تعذر حفظ بيانات الحساب، راجع الحقول المدخلة.',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        $data = $validator->validated();
+
+        if (array_key_exists('name', $data)) {
+            $user->name = $data['name'];
+        }
+
+        if (array_key_exists('email', $data) && $data['email'] !== null) {
+            $user->email = $data['email'];
+        }
+
+        if (Schema::hasColumn('users', 'username') && array_key_exists('username', $data)) {
+            $baseUsername = trim((string) ($data['username'] ?? ''));
+            if ($baseUsername === '') {
+                $baseUsername = $user->email ? myRentalsAccountUsernameFromEmail((string) $user->email) : 'user';
+            }
+            $user->username = myRentalsUniqueUsername($baseUsername, $user->id);
+        }
+
+        if (array_key_exists('password', $data)) {
+            $user->password = \Illuminate\Support\Facades\Hash::make($data['password']);
+        }
+
+        if (Schema::hasColumn('users', 'role') && array_key_exists('role', $data)) {
+            $role = strtolower(trim((string) ($data['role'] ?? '')));
+            $user->role = $role !== '' ? $role : ($user->role ?? 'owner');
+        }
+
+        if (Schema::hasColumn('users', 'owner_id') && array_key_exists('owner_id', $data)) {
+            $user->owner_id = $data['owner_id'] ?: null;
+        }
+
+        if (Schema::hasColumn('users', 'status') && array_key_exists('status', $data)) {
+            $status = strtolower(trim((string) ($data['status'] ?? '')));
+            $user->status = in_array($status, ['disabled', 'inactive', 'blocked'], true) ? 'disabled' : 'active';
+        }
+
+        if (Schema::hasColumn('users', 'notes') && array_key_exists('notes', $data)) {
+            $user->notes = $data['notes'] ?? null;
+        }
+
+        $user->save();
+
+        return response()->json([
+            'status' => 'ok',
+            'message' => 'تم تحديث الحساب بنجاح',
+            'user' => myRentalsAccountPayload($user->fresh()),
+        ]);
+    }
+}
+
 Route::get('/owner-accounts', function () {
     $owners = Owner::orderBy('name')->get(['id', 'name', 'type']);
 
     $users = \App\Models\User::query()
         ->orderBy('id', 'desc')
         ->get()
-        ->map(function ($user) use ($owners) {
-            $owner = $owners->firstWhere('id', $user->owner_id ?? null);
+        ->map(fn ($user) => myRentalsAccountPayload($user, $owners));
 
-            return [
-                'id' => $user->id,
-                'name' => $user->name,
-                'username' => Schema::hasColumn('users', 'username') ? ($user->username ?? null) : null,
-                'email' => $user->email,
-                'role' => function_exists('myRentalsEffectiveRole') ? myRentalsEffectiveRole($user) : ($user->role ?? 'admin'),
-                'owner_id' => $user->owner_id ?? null,
-                'owner_name' => $owner?->name,
-                'status' => $user->status ?? 'active',
-                'created_at' => $user->created_at,
-            ];
-        });
+    return response()->json([
+        'owners' => $owners,
+        'users' => $users,
+    ]);
+});
+
+Route::get('/user-accounts', function () {
+    $owners = Owner::orderBy('name')->get(['id', 'name', 'type']);
+
+    $users = \App\Models\User::query()
+        ->orderBy('id', 'desc')
+        ->get()
+        ->map(fn ($user) => myRentalsAccountPayload($user, $owners));
 
     return response()->json([
         'owners' => $owners,
@@ -143,6 +248,16 @@ Route::post('/owner-accounts', function (Request $request) {
         ],
     ], 201);
 });
+
+Route::post('/owner-accounts/{user}/update', fn (Request $request, \App\Models\User $user) => myRentalsUpdateUserAccount($request, $user));
+Route::put('/owner-accounts/{user}', fn (Request $request, \App\Models\User $user) => myRentalsUpdateUserAccount($request, $user));
+Route::patch('/owner-accounts/{user}', fn (Request $request, \App\Models\User $user) => myRentalsUpdateUserAccount($request, $user));
+
+// Alias used by the users management screen (#S-453). Keep this route in addition to owner-accounts
+// so older Expo bundles do not fail with: api/user-accounts/{id}/update could not be found.
+Route::post('/user-accounts/{user}/update', fn (Request $request, \App\Models\User $user) => myRentalsUpdateUserAccount($request, $user));
+Route::put('/user-accounts/{user}', fn (Request $request, \App\Models\User $user) => myRentalsUpdateUserAccount($request, $user));
+Route::patch('/user-accounts/{user}', fn (Request $request, \App\Models\User $user) => myRentalsUpdateUserAccount($request, $user));
 
 Route::post('/owner-accounts/{user}/toggle-status', function (\App\Models\User $user) {
     $newStatus = (($user->status ?? 'active') === 'active') ? 'disabled' : 'active';
