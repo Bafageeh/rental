@@ -156,7 +156,7 @@ Route::get('/relation-manager/related/{entity}/{id}', function (Request $request
         return response()->json(mr_official_sort_payment_sections($response->getData(true)), $response->getStatusCode());
     }
     return $response;
-})->middleware('admin.only');
+});
 
 Route::get('/my/relation-manager/related/{entity}/{id}', function (Request $request, string $entity, $id) {
     if (mr_official_contract_normalized_entity($entity) === 'contract') {
