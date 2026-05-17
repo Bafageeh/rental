@@ -242,6 +242,23 @@ Route::get('/contracts', function (Request $request) {
     return $query->orderBy('id', 'desc')->get();
 });
 
+Route::get('/contracts/{contract}', function (Request $request, Contract $contract) {
+    if (function_exists('mrr_request_owner_scope_id') && function_exists('mrr_record_belongs_to_owner')) {
+        $ownerScopeId = mrr_request_owner_scope_id($request);
+        if ($ownerScopeId === 0 || ($ownerScopeId !== null && !mrr_record_belongs_to_owner('contracts', $contract, $ownerScopeId))) {
+            return mrr_owner_scope_forbidden_response();
+        }
+    }
+
+    return $contract->load([
+        'tenant',
+        'unit.property.owner',
+        'parkingSpot',
+        'files',
+        'payments' => function ($query) { $query->orderBy('due_date'); },
+    ]);
+});
+
 Route::post('/contracts/{contract}/close', function (Contract $contract) {
     $contract->update(['status' => 'ended']);
     if ($contract->unit_id) Unit::where('id', $contract->unit_id)->update(['status' => 'available']);
