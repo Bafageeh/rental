@@ -75,6 +75,7 @@ export default function MyPropertiesScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [showAddChooser, setShowAddChooser] = useState(false);
+  const canManage = auth.isAdmin;
 
   async function load(refresh = false) {
     try {
@@ -90,12 +91,9 @@ export default function MyPropertiesScreen() {
       const profileResult = await apiGet("/profile/properties").catch(() => []);
       let list = responseList(profileResult) as PropertyItem[];
 
-      // شاشة عقاراتي لا تستخدم المسار العام /properties إطلاقًا حتى لا تظهر عقارات ملاك آخرين.
-      // إن كان الحساب مرتبطًا بمالك محدد، نثبت الفلترة على owner_id في الواجهة أيضًا كطبقة أمان إضافية.
       if (ownerId) {
         list = list.filter((property) => propertyOwnerId(property) === ownerId);
       } else if (!auth.isAdmin) {
-        // حساب المالك غير المرتبط بمالك لا يجب أن يرى أي عقارات بالخطأ.
         list = [];
       }
 
@@ -120,6 +118,7 @@ export default function MyPropertiesScreen() {
   }
 
   function openAddProperty() {
+    if (!canManage) return;
     setShowAddChooser(true);
   }
 
@@ -134,6 +133,7 @@ export default function MyPropertiesScreen() {
   }
 
   function openEditProperty(property: PropertyItem) {
+    if (!canManage) return;
     router.push(`/property-form?id=${property.id}` as never);
   }
 
@@ -147,21 +147,15 @@ export default function MyPropertiesScreen() {
   }
 
   function confirmDeleteProperty(property: PropertyItem) {
-    Alert.alert(
-      "حذف العقار",
-      `هل تريد حذف ${property.name || `عقار #${property.id}`}؟\nسيتم حذف الارتباطات التابعة له حسب نظام الحذف الحالي.`,
-      [
-        { text: "إلغاء", style: "cancel" },
-        {
-          text: "حذف",
-          style: "destructive",
-          onPress: () => deleteProperty(property),
-        },
-      ],
-    );
+    if (!canManage) return;
+    Alert.alert("حذف العقار", `هل تريد حذف ${property.name || `عقار #${property.id}`}؟\nسيتم حذف الارتباطات التابعة له حسب نظام الحذف الحالي.`, [
+      { text: "إلغاء", style: "cancel" },
+      { text: "حذف", style: "destructive", onPress: () => deleteProperty(property) },
+    ]);
   }
 
   async function deleteProperty(property: PropertyItem) {
+    if (!canManage) return;
     try {
       setDeletingId(property.id);
       await apiPost(`/edit-delete-center/properties/${property.id}/delete`, {});
@@ -176,23 +170,23 @@ export default function MyPropertiesScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
-      <ScrollView
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor="#0f766e" />}
-      >
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor="#0f766e" />}>
         <View style={styles.hero}>
           <View style={styles.heroTopRow}>
-            <TouchableOpacity style={styles.addButton} activeOpacity={0.88} onPress={openAddProperty}>
-              <Ionicons name="add" size={22} color="#fff" />
-              <Text style={styles.addButtonText}>إضافة عقار</Text>
-            </TouchableOpacity>
+            {canManage ? (
+              <TouchableOpacity style={styles.addButton} activeOpacity={0.88} onPress={openAddProperty}>
+                <Ionicons name="add" size={22} color="#fff" />
+                <Text style={styles.addButtonText}>إضافة عقار</Text>
+              </TouchableOpacity>
+            ) : (
+              <View style={styles.readOnlyBadge}><Text style={styles.readOnlyBadgeText}>اطلاع فقط</Text></View>
+            )}
             <View style={styles.heroTitleBox}>
               <Text style={styles.heroIcon}>🏢</Text>
               <Text style={styles.heroTitle}>عقاراتي</Text>
             </View>
           </View>
-          <Text style={styles.heroSubtitle}>{auth.isAdmin ? "تعرض عقارات المدير فقط، ولا تعرض عقارات بقية الملاك." : "تعرض العقارات التابعة لمالك الحساب الحالي فقط."}</Text>
+          <Text style={styles.heroSubtitle}>{auth.isAdmin ? "تعرض عقارات المدير فقط، ولا تعرض عقارات بقية الملاك." : "تعرض العقارات التابعة لمالك الحساب الحالي فقط بدون صلاحيات تعديل أو حذف."}</Text>
         </View>
 
         <View style={styles.summaryRow}>
@@ -201,19 +195,19 @@ export default function MyPropertiesScreen() {
           <View style={styles.summaryCard}><Text style={styles.summaryValue}>{count(rentedUnits)}</Text><Text style={styles.summaryLabel}>مؤجرة</Text></View>
         </View>
 
-        {loading ? (
-          <View style={styles.stateCard}><ActivityIndicator /><Text style={styles.stateText}>جاري تحميل عقاراتك...</Text></View>
-        ) : null}
+        {loading ? <View style={styles.stateCard}><ActivityIndicator /><Text style={styles.stateText}>جاري تحميل عقاراتك...</Text></View> : null}
 
         {!loading && properties.length === 0 ? (
           <View style={styles.emptyCard}>
             <View style={styles.emptyIcon}><Ionicons name="business-outline" size={26} color="#0F766E" /></View>
             <Text style={styles.emptyTitle}>لا توجد عقارات</Text>
             <Text style={styles.emptyText}>{accountOwnerId || auth.isAdmin ? "لا توجد عقارات مرتبطة مباشرة بهذا الحساب." : "لم يتم العثور على عقارات خاصة بهذا الحساب."}</Text>
-            <TouchableOpacity style={styles.emptyAddButton} activeOpacity={0.88} onPress={openAddProperty}>
-              <Ionicons name="add-circle-outline" size={20} color="#fff" />
-              <Text style={styles.emptyAddText}>إضافة عقار جديد</Text>
-            </TouchableOpacity>
+            {canManage ? (
+              <TouchableOpacity style={styles.emptyAddButton} activeOpacity={0.88} onPress={openAddProperty}>
+                <Ionicons name="add-circle-outline" size={20} color="#fff" />
+                <Text style={styles.emptyAddText}>إضافة عقار جديد</Text>
+              </TouchableOpacity>
+            ) : null}
           </View>
         ) : null}
 
@@ -222,17 +216,21 @@ export default function MyPropertiesScreen() {
           return (
             <TouchableOpacity key={property.id} style={styles.propertyCard} activeOpacity={0.9} onPress={() => router.push(`/property/${property.id}` as never)}>
               <View style={styles.cardHeader}>
-                <View style={styles.cardActions}>
-                  <TouchableOpacity style={styles.iconButton} activeOpacity={0.82} onPress={() => openEditProperty(property)}>
-                    <Ionicons name="pencil" size={17} color="#4B5563" />
-                  </TouchableOpacity>
-                  <TouchableOpacity style={[styles.iconButton, styles.mediaIconButton]} activeOpacity={0.82} onPress={() => openPropertyRepository(property)}>
-                    <Ionicons name="folder-open" size={18} color="#0F766E" />
-                  </TouchableOpacity>
-                  <TouchableOpacity style={[styles.iconButton, styles.deleteIconButton, isDeleting ? styles.disabledAction : null]} activeOpacity={0.82} disabled={isDeleting} onPress={() => confirmDeleteProperty(property)}>
-                    {isDeleting ? <ActivityIndicator size="small" color="#991B1B" /> : <Ionicons name="trash" size={17} color="#991B1B" />}
-                  </TouchableOpacity>
-                </View>
+                {canManage ? (
+                  <View style={styles.cardActions}>
+                    <TouchableOpacity style={styles.iconButton} activeOpacity={0.82} onPress={() => openEditProperty(property)}>
+                      <Ionicons name="pencil" size={17} color="#4B5563" />
+                    </TouchableOpacity>
+                    <TouchableOpacity style={[styles.iconButton, styles.mediaIconButton]} activeOpacity={0.82} onPress={() => openPropertyRepository(property)}>
+                      <Ionicons name="folder-open" size={18} color="#0F766E" />
+                    </TouchableOpacity>
+                    <TouchableOpacity style={[styles.iconButton, styles.deleteIconButton, isDeleting ? styles.disabledAction : null]} activeOpacity={0.82} disabled={isDeleting} onPress={() => confirmDeleteProperty(property)}>
+                      {isDeleting ? <ActivityIndicator size="small" color="#991B1B" /> : <Ionicons name="trash" size={17} color="#991B1B" />}
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <View style={styles.readOnlySmall}><Text style={styles.readOnlySmallText}>عرض</Text></View>
+                )}
                 <View style={styles.cardTitleBox}>
                   <View style={styles.titleLine}>
                     <Text style={styles.typeBadge}>{propertyTypeText(property.property_type)}</Text>
@@ -243,21 +241,9 @@ export default function MyPropertiesScreen() {
               </View>
 
               <View style={styles.metricsRow}>
-                <View style={styles.metricBox}>
-                  <MaterialCommunityIcons name="home-city-outline" size={18} color="#0F766E" />
-                  <Text style={styles.metricValue}>{count(property.units_count)}</Text>
-                  <Text style={styles.metricLabel}>وحدات</Text>
-                </View>
-                <View style={styles.metricBox}>
-                  <MaterialCommunityIcons name="account-key-outline" size={18} color="#0F766E" />
-                  <Text style={styles.metricValue}>{count(property.rented_units_count)}</Text>
-                  <Text style={styles.metricLabel}>مؤجرة</Text>
-                </View>
-                <View style={styles.metricBox}>
-                  <MaterialCommunityIcons name="file-sign" size={18} color="#0F766E" />
-                  <Text style={styles.metricValue}>{count(property.active_contracts_count)}</Text>
-                  <Text style={styles.metricLabel}>عقود</Text>
-                </View>
+                <View style={styles.metricBox}><MaterialCommunityIcons name="home-city-outline" size={18} color="#0F766E" /><Text style={styles.metricValue}>{count(property.units_count)}</Text><Text style={styles.metricLabel}>وحدات</Text></View>
+                <View style={styles.metricBox}><MaterialCommunityIcons name="account-key-outline" size={18} color="#0F766E" /><Text style={styles.metricValue}>{count(property.rented_units_count)}</Text><Text style={styles.metricLabel}>مؤجرة</Text></View>
+                <View style={styles.metricBox}><MaterialCommunityIcons name="file-sign" size={18} color="#0F766E" /><Text style={styles.metricValue}>{count(property.active_contracts_count)}</Text><Text style={styles.metricLabel}>عقود</Text></View>
               </View>
 
               <TouchableOpacity style={styles.repositoryRow} activeOpacity={0.86} onPress={() => openPropertyRepository(property)}>
@@ -277,32 +263,21 @@ export default function MyPropertiesScreen() {
         })}
       </ScrollView>
 
-      <Modal visible={showAddChooser} transparent animationType="fade" onRequestClose={() => setShowAddChooser(false)}>
+      <Modal visible={showAddChooser && canManage} transparent animationType="fade" onRequestClose={() => setShowAddChooser(false)}>
         <Pressable style={styles.modalOverlay} onPress={() => setShowAddChooser(false)}>
           <Pressable style={styles.chooserCard}>
             <View style={styles.chooserHandle} />
             <Text style={styles.chooserTitle}>طريقة إضافة العقار</Text>
             <Text style={styles.chooserSubtitle}>اختر الإدخال اليدوي أو رفع صك PDF، وعند رفع الصك سيتم تحديث العقار الموجود إذا تطابق رقم الصك.</Text>
-
             <TouchableOpacity style={styles.chooserOption} activeOpacity={0.88} onPress={openPdfAdd}>
               <View style={styles.chooserIconBox}><Ionicons name="document-text-outline" size={25} color="#0F766E" /></View>
-              <View style={styles.chooserTextBox}>
-                <Text style={styles.chooserOptionTitle}>رفع صك PDF</Text>
-                <Text style={styles.chooserOptionText}>قراءة بيانات الصك تلقائيًا ومقارنة رقم الصك للتحديث أو الإنشاء.</Text>
-              </View>
+              <View style={styles.chooserTextBox}><Text style={styles.chooserOptionTitle}>رفع صك PDF</Text><Text style={styles.chooserOptionText}>قراءة بيانات الصك تلقائيًا ومقارنة رقم الصك للتحديث أو الإنشاء.</Text></View>
             </TouchableOpacity>
-
             <TouchableOpacity style={styles.chooserOption} activeOpacity={0.88} onPress={openManualAdd}>
               <View style={styles.chooserIconBox}><Ionicons name="create-outline" size={25} color="#0F766E" /></View>
-              <View style={styles.chooserTextBox}>
-                <Text style={styles.chooserOptionTitle}>إدخال يدوي</Text>
-                <Text style={styles.chooserOptionText}>فتح شاشة جديدة لإدخال بيانات العقار يدويًا.</Text>
-              </View>
+              <View style={styles.chooserTextBox}><Text style={styles.chooserOptionTitle}>إدخال يدوي</Text><Text style={styles.chooserOptionText}>فتح شاشة جديدة لإدخال بيانات العقار يدويًا.</Text></View>
             </TouchableOpacity>
-
-            <TouchableOpacity style={styles.cancelChooserButton} activeOpacity={0.88} onPress={() => setShowAddChooser(false)}>
-              <Text style={styles.cancelChooserText}>إلغاء</Text>
-            </TouchableOpacity>
+            <TouchableOpacity style={styles.cancelChooserButton} activeOpacity={0.88} onPress={() => setShowAddChooser(false)}><Text style={styles.cancelChooserText}>إلغاء</Text></TouchableOpacity>
           </Pressable>
         </Pressable>
       </Modal>
@@ -321,6 +296,10 @@ const styles = StyleSheet.create({
   heroSubtitle: { color: "#CBD5E1", marginTop: 8, fontWeight: "800", textAlign: "right", lineHeight: 22 },
   addButton: { backgroundColor: "#0F766E", borderRadius: 18, paddingHorizontal: 12, paddingVertical: 11, flexDirection: "row-reverse", alignItems: "center", gap: 6, shadowColor: "#000", shadowOpacity: 0.14, shadowRadius: 8, elevation: 2 },
   addButtonText: { color: "#fff", fontWeight: "900", fontSize: 13 },
+  readOnlyBadge: { backgroundColor: "#D1FAE5", borderRadius: 999, paddingHorizontal: 12, paddingVertical: 7 },
+  readOnlyBadgeText: { color: "#064E3B", fontWeight: "900" },
+  readOnlySmall: { backgroundColor: "#ECFDF5", borderRadius: 999, paddingHorizontal: 11, paddingVertical: 7, marginTop: 4 },
+  readOnlySmallText: { color: "#0F766E", fontWeight: "900", fontSize: 12 },
   summaryRow: { flexDirection: "row-reverse", gap: 8, marginBottom: 12 },
   summaryCard: { flex: 1, backgroundColor: "#fff", borderRadius: 20, padding: 14, alignItems: "center", borderWidth: 1, borderColor: "#ECEFF3" },
   summaryValue: { color: "#111827", fontSize: 20, fontWeight: "900" },
