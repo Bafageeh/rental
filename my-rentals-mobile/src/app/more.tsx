@@ -15,7 +15,7 @@ import {
 } from '../components/ui/phase3';
 
 export default function MoreScreen() {
-  const { loggedIn, isAdmin } = useAuth();
+  const { loggedIn, isAdmin, logout } = useAuth();
 
   function requireLogin(path: string, title: string) {
     if (!loggedIn) {
@@ -44,6 +44,25 @@ export default function MoreScreen() {
     }
 
     router.push(path as any);
+  }
+
+  function confirmLogout() {
+    if (!loggedIn) {
+      router.push('/login' as any);
+      return;
+    }
+
+    Alert.alert('تسجيل الخروج', 'هل تريد تسجيل الخروج من الحساب الحالي؟', [
+      { text: 'إلغاء', style: 'cancel' },
+      {
+        text: 'خروج',
+        style: 'destructive',
+        onPress: async () => {
+          await logout();
+          router.replace('/login' as any);
+        },
+      },
+    ]);
   }
 
   return (
@@ -84,6 +103,15 @@ export default function MoreScreen() {
             title="التقارير"
             subtitle="التقرير الشهري، كشف الإيجار، وتقارير أداء المحفظة العقارية."
             onPress={() => requireLogin('/statistics', 'التقارير')}
+          />
+        </View>
+
+        <View style={styles.card}>
+          <ActionTile
+            icon="log-out-outline"
+            title="خروج"
+            subtitle="تسجيل الخروج من الحساب الحالي والعودة لشاشة الدخول."
+            onPress={confirmLogout}
           />
         </View>
 
