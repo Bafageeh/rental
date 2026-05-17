@@ -231,7 +231,6 @@ export default function OwnersScreen() {
             ) : null}
             <TouchableOpacity activeOpacity={0.9} onPress={() => openOwnerDetails(owner)}>
               <View style={styles.cardTopRow}>
-                <Text style={styles.badge}>مالك</Text>
                 <View style={styles.titleWrap}>
                   <Text numberOfLines={2} style={styles.cardTitle}>{owner.name || "مالك بدون اسم"}</Text>
                   <Text style={styles.cardSub}>اضغط لفتح عقارات ووحدات هذا المالك</Text>
@@ -315,7 +314,6 @@ const styles = StyleSheet.create({
   ownerMenuText: { color: "#0F172A", fontWeight: "900", fontSize: 12, textAlign: "right" },
   cardTopRow: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 10, paddingLeft: 38 },
   titleWrap: { flex: 1, alignItems: "flex-end" },
-  badge: { backgroundColor: "#E0F2FE", color: "#075985", paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999, overflow: "hidden", fontWeight: "900", fontSize: 12 },
   cardTitle: { fontSize: 19, fontWeight: "900", color: "#111827", textAlign: "right" },
   cardSub: { color: "#64748B", fontWeight: "800", fontSize: 12, marginTop: 4, textAlign: "right" },
   metricsRow: { flexDirection: "row-reverse", gap: 8, marginBottom: 10 },
