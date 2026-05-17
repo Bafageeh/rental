@@ -52,12 +52,14 @@ class EnforceApiAccessScope
         }
 
         // شاشة تفاصيل العقار القديمة تستخدم /properties/{id}.
-        // نسمح لحساب المالك فقط إذا كان العقار المطلوب مرتبطًا بنفس owner_id،
-        // وبهذا لا يرى المالك عقارات غيره ولا يتعطل فتح التفاصيل من شاشة عقاراتي.
+        // في بعض إصدارات Laravel تكون قيمة route('property') موديل Property بعد الربط التلقائي،
+        // لذلك نقرأ المفتاح بأمان بدل تحويل كائن كامل إلى int حتى لا ينتج Server Error.
         if ($request->isMethod('get') && ($request->is('api/properties/*') || $request->is('properties/*'))) {
-            $propertyId = $request->route('property') ?: $request->segment($request->is('api/*') ? 3 : 2);
+            $routeProperty = $request->route('property');
+            $propertyId = $this->routeModelKey($routeProperty)
+                ?? $this->positiveInt($request->segment($request->is('api/*') ? 3 : 2));
 
-            if ($this->ownsProperty((int) $propertyId, $ownerId)) {
+            if ($propertyId && $this->ownsProperty($propertyId, $ownerId)) {
                 return $next($request);
             }
         }
@@ -109,6 +111,27 @@ class EnforceApiAccessScope
         }
 
         return false;
+    }
+
+    private function routeModelKey($value): ?int
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        if (is_object($value)) {
+            if (method_exists($value, 'getKey')) {
+                return $this->positiveInt($value->getKey());
+            }
+
+            if (isset($value->id)) {
+                return $this->positiveInt($value->id);
+            }
+
+            return null;
+        }
+
+        return $this->positiveInt($value);
     }
 
     private function positiveInt($value): ?int
