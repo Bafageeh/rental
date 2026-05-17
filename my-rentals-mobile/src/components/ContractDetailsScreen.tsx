@@ -2,7 +2,7 @@ import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { router, useNavigation } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, BackHandler, RefreshControl, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
-import { apiGet, apiPost } from "../lib/api";
+import { apiGet } from "../lib/api";
 import ContractPaymentCard from "./ContractPaymentCard";
 
 type PaymentItem = {
@@ -50,10 +50,6 @@ type ContractRecord = {
 
 function isPayment(item: PaymentItem) {
   return String(item.entity || "").toLowerCase() === "payment";
-}
-
-function responseList(payload: any) {
-  return Array.isArray(payload?.data) ? payload.data : Array.isArray(payload) ? payload : [];
 }
 
 function display(value: unknown, fallback = "-") {
@@ -110,10 +106,10 @@ function firstFilled<T>(...values: Array<T | null | undefined>): T | null {
   return null;
 }
 
-function normalizeContractPayload(payload: any): ContractRecord | null {
+function normalizeContractPayload(payload: any, expectedId: string | number): ContractRecord | null {
   const candidate = payload?.contract || payload?.data || payload;
   if (!candidate || Array.isArray(candidate) || typeof candidate !== "object") return null;
-  if (!hasText(candidate.id)) return null;
+  if (!hasText(candidate.id) || String(candidate.id) !== String(expectedId)) return null;
   return candidate as ContractRecord;
 }
 
@@ -139,7 +135,7 @@ function numberOrUndefined(value: unknown) {
 }
 
 function contractFromRelatedPayload(payload: any, id: string | number): ContractRecord | null {
-  if (!payload || payload.entity !== "contract") return null;
+  if (!payload || payload.entity !== "contract" || String(payload.id) !== String(id)) return null;
 
   const tenantId = numberOrUndefined(fieldRaw(payload, "tenant_id"));
   const unitId = numberOrUndefined(fieldRaw(payload, "unit_id"));
@@ -207,19 +203,16 @@ export default function ContractDetailsScreen({ id }: { id: string | number }) {
       if (refresh) setRefreshing(true);
       else setLoading(true);
       setError("");
-      const [relatedResult, contractResult, contractsResult] = await Promise.all([
+      const [relatedResult, contractResult] = await Promise.all([
         apiGet(`/relation-manager/related/contract/${id}`),
         apiGet(`/contracts/${id}`).catch(() => null),
-        apiGet(`/contracts`).catch(() => []),
       ]);
       const relatedPayload = relatedResult as ContractPayload;
       setData(relatedPayload);
 
-      const list = responseList(contractsResult) as ContractRecord[];
-      const listContract = list.find((item) => String(item.id) === String(id)) || null;
-      const directContract = normalizeContractPayload(contractResult);
+      const directContract = normalizeContractPayload(contractResult, id);
       const relatedContract = contractFromRelatedPayload(relatedPayload, id);
-      setContract(mergeContractRecords(mergeContractRecords(directContract, listContract), relatedContract));
+      setContract(mergeContractRecords(directContract, relatedContract));
     } catch (e) {
       setError(e instanceof Error ? e.message : "تعذر تحميل العقد");
     } finally {
