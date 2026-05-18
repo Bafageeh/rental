@@ -103,12 +103,6 @@ export default function OwnersScreen() {
     router.push(`/owner/${owner.id}` as never);
   }
 
-  function openOwnerPayments(owner: Owner) {
-    setOpenMenuOwnerId(null);
-    const ownerName = encodeURIComponent(owner.name || "مالك");
-    router.push(`/payments?owner_id=${owner.id}&owner_name=${ownerName}` as never);
-  }
-
   async function load() {
     if (!canAccess) return;
     try {
@@ -221,6 +215,10 @@ export default function OwnersScreen() {
             </TouchableOpacity>
             {openMenuOwnerId === owner.id ? (
               <View style={styles.ownerMenu}>
+                <TouchableOpacity style={styles.ownerMenuItem} activeOpacity={0.85} onPress={() => openOwnerDetails(owner)}>
+                  <Ionicons name="eye-outline" size={18} color="#0F766E" />
+                  <Text style={styles.ownerMenuText}>تفاصيل</Text>
+                </TouchableOpacity>
                 <TouchableOpacity style={styles.ownerMenuItem} activeOpacity={0.85} onPress={() => openEditOwnerForm(owner)}>
                   <Ionicons name="create-outline" size={18} color="#0F766E" />
                   <Text style={styles.ownerMenuText}>تعديل</Text>
@@ -228,10 +226,6 @@ export default function OwnersScreen() {
                 <TouchableOpacity style={styles.ownerMenuItem} activeOpacity={0.85} onPress={() => confirmDeleteOwner(owner)}>
                   <Ionicons name="trash-outline" size={18} color="#DC2626" />
                   <Text style={[styles.ownerMenuText, { color: "#DC2626" }]}>حذف</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.ownerMenuItem} activeOpacity={0.85} onPress={() => openOwnerPayments(owner)}>
-                  <Ionicons name="cash-outline" size={18} color="#0F766E" />
-                  <Text style={styles.ownerMenuText}>الدفعات</Text>
                 </TouchableOpacity>
               </View>
             ) : null}
@@ -315,7 +309,7 @@ const styles = StyleSheet.create({
   buttonText: { color: "#fff", fontWeight: "900" },
   card: { backgroundColor: "#fff", borderRadius: 24, padding: 14, marginBottom: 12, borderWidth: 1, borderColor: "#EDECE9", shadowColor: "#000", shadowOpacity: 0.05, shadowRadius: 10, elevation: 1, position: "relative" },
   ownerMenuButton: { position: "absolute", left: 12, top: 12, width: 36, height: 36, borderRadius: 18, backgroundColor: "#F8FAFC", borderWidth: 1, borderColor: "#E5E7EB", alignItems: "center", justifyContent: "center", zIndex: 12 },
-  ownerMenu: { position: "absolute", left: 12, top: 52, width: 132, backgroundColor: "#fff", borderRadius: 16, borderWidth: 1, borderColor: "#E5E7EB", paddingVertical: 5, zIndex: 20, shadowColor: "#0F172A", shadowOpacity: 0.16, shadowRadius: 14, shadowOffset: { width: 0, height: 7 }, elevation: 8 },
+  ownerMenu: { position: "absolute", left: 12, top: 52, width: 128, backgroundColor: "#fff", borderRadius: 16, borderWidth: 1, borderColor: "#E5E7EB", paddingVertical: 5, zIndex: 20, shadowColor: "#0F172A", shadowOpacity: 0.16, shadowRadius: 14, shadowOffset: { width: 0, height: 7 }, elevation: 8 },
   ownerMenuItem: { minHeight: 39, flexDirection: "row-reverse", alignItems: "center", justifyContent: "flex-start", gap: 8, paddingHorizontal: 12 },
   ownerMenuText: { color: "#0F172A", fontWeight: "900", fontSize: 12, textAlign: "right" },
   cardTopRow: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 10, paddingLeft: 38 },
