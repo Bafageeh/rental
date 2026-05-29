@@ -22,9 +22,16 @@ if (!function_exists('mrco_amt')) {
 if (!function_exists('mrco_paid')) {
     function mrco_paid($p): float
     {
-        // المدفوعات الفعلية هي فقط ما تم حفظه يدويًا على البطاقة أو عبر زر دفع.
-        // لا نعتمد الحالة paid وحدها حتى لا تتحول الأقساط المغطاة حسابيًا إلى مدفوعات فعلية جديدة.
-        return max(0.0, mrco_n($p->paid_amount ?? 0));
+        // المدفوع الفعلي: paid_amount إن وجد، أو القسط الذي تم تسجيل paid_date له من زر دفع.
+        $paid = mrco_n($p->paid_amount ?? 0);
+        if ($paid > 0) return $paid;
+
+        $status = trim(mb_strtolower((string) ($p->status ?? '')));
+        if (!empty($p->paid_date) && in_array($status, ['paid', 'مدفوع', 'مدفوعة', 'مسدد'], true)) {
+            return mrco_amt($p);
+        }
+
+        return 0.0;
     }
 }
 
