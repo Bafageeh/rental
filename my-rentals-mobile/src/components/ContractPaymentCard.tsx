@@ -23,6 +23,7 @@ type RelatedPayment = {
   display_amount?: number | string | null;
   remaining_amount?: number | string | null;
   paid_amount?: number | string | null;
+  actual_paid_amount?: number | string | null;
   due_date?: string | null;
   paid_date?: string | null;
   deadline_date?: string | null;
@@ -40,11 +41,6 @@ type Props = {
   onToggle: () => void;
   onChanged: () => void | Promise<void>;
 };
-
-function valueOrDash(value: unknown) {
-  if (value === null || value === undefined || value === "") return "-";
-  return String(value);
-}
 
 function amountNumber(value: unknown) {
   const n = Number(String(value ?? "").replace(/,/g, ""));
@@ -110,14 +106,14 @@ export default function ContractPaymentCard({ item, index, expanded, onToggle, o
 
   useEffect(() => {
     setLocalItem(item);
-  }, [item.id, item.amount, item.display_amount, item.remaining_amount, item.paid_amount, item.notes, item.status, item.badge, item.paid_date, item.due_date, item.title, item.subtitle]);
+  }, [item.id, item.amount, item.display_amount, item.remaining_amount, item.paid_amount, item.actual_paid_amount, item.notes, item.status, item.badge, item.paid_date, item.due_date, item.title, item.subtitle]);
 
   const displayItem = localItem;
   const bottomSafeGap = Math.max(insets.bottom, 10) + 48;
   const meta = useMemo(() => statusMeta(displayItem), [displayItem.status, displayItem.badge]);
   const isPaid = statusKey(displayItem) === "paid";
   const shownAmount = isPaid
-    ? (displayItem.paid_amount ?? displayItem.display_amount ?? displayItem.amount)
+    ? (displayItem.paid_amount ?? displayItem.actual_paid_amount ?? displayItem.display_amount ?? displayItem.amount)
     : (displayItem.display_amount ?? displayItem.remaining_amount ?? displayItem.amount);
   const originalAmount = displayItem.amount;
   const dueDate = displayItem.due_date || displayItem.title || "-";
@@ -136,27 +132,37 @@ export default function ContractPaymentCard({ item, index, expanded, onToggle, o
     setSheetVisible(false);
   }
 
-  function refreshFromServer() {
-    Promise.resolve(onChanged()).catch(() => undefined);
+  async function refreshFromServer() {
+    await Promise.resolve(onChanged()).catch(() => undefined);
+  }
+
+  async function registerPayment(paymentAmount: string, notes: string) {
+    await apiPostAny(
+      [`/payments/${displayItem.id}/pay`, `/my/payments/${displayItem.id}/pay`, `/edit-delete-center/payments/${displayItem.id}/pay`, `/my/edit-delete-center/payments/${displayItem.id}/pay`],
+      { amount: paymentAmount, notes },
+    );
   }
 
   async function payFullAmount() {
     const fullAmount = amountInput(shownAmount);
+    if (amountNumber(fullAmount) <= 0) {
+      Alert.alert("تنبيه", "لا توجد قيمة مطلوبة لاعتمادها كدفعة.");
+      return;
+    }
     try {
       setSaving(true);
-      await apiPostAny(
-        [`/edit-delete-center/payments/${displayItem.id}/update`, `/my/edit-delete-center/payments/${displayItem.id}/update`],
-        { fields: { amount: fullAmount, notes: displayItem.notes || "تم السداد كاملًا." } },
-      );
+      await registerPayment(fullAmount, displayItem.notes || "تم السداد كاملًا.");
       setLocalItem((current) => ({
         ...current,
         status: "paid",
         badge: "مدفوعة",
         paid_date: todayText(),
         paid_amount: fullAmount,
+        actual_paid_amount: fullAmount,
         display_amount: fullAmount,
+        remaining_amount: 0,
       }));
-      refreshFromServer();
+      await refreshFromServer();
       Alert.alert("تم", "تم اعتماد قيمة الدفعة المطلوبة كدفعة مستلمة");
     } catch (e) {
       Alert.alert("خطأ", e instanceof Error ? e.message : "تعذر تسجيل الدفع");
@@ -174,13 +180,14 @@ export default function ContractPaymentCard({ item, index, expanded, onToggle, o
 
     try {
       setSaving(true);
-      const fields: Record<string, string> = { notes: note.trim() };
-      if (numericAmount > 0) fields.amount = String(numericAmount);
-
-      await apiPostAny(
-        [`/edit-delete-center/payments/${displayItem.id}/update`, `/my/edit-delete-center/payments/${displayItem.id}/update`],
-        { fields },
-      );
+      if (numericAmount > 0) {
+        await registerPayment(String(numericAmount), note.trim());
+      } else {
+        await apiPostAny(
+          [`/edit-delete-center/payments/${displayItem.id}/update`, `/my/edit-delete-center/payments/${displayItem.id}/update`],
+          { fields: { notes: note.trim() } },
+        );
+      }
 
       setLocalItem((current) => ({
         ...current,
@@ -189,10 +196,12 @@ export default function ContractPaymentCard({ item, index, expanded, onToggle, o
         badge: numericAmount > 0 ? "مدفوعة" : current.badge,
         paid_date: numericAmount > 0 ? todayText() : current.paid_date,
         paid_amount: numericAmount > 0 ? String(numericAmount) : current.paid_amount,
+        actual_paid_amount: numericAmount > 0 ? String(numericAmount) : current.actual_paid_amount,
         display_amount: numericAmount > 0 ? String(numericAmount) : current.display_amount,
+        remaining_amount: numericAmount > 0 ? 0 : current.remaining_amount,
       }));
       setSheetVisible(false);
-      refreshFromServer();
+      await refreshFromServer();
       Alert.alert("تم", numericAmount > 0 ? "تم اعتماد المبلغ المكتوب كدفعة مستلمة" : "تم حفظ التعديل بدون تسجيل مبلغ دفع");
     } catch (e) {
       Alert.alert("خطأ", e instanceof Error ? e.message : "تعذر حفظ الدفعة");
@@ -213,7 +222,7 @@ export default function ContractPaymentCard({ item, index, expanded, onToggle, o
               [`/edit-delete-center/payments/${displayItem.id}/delete`, `/my/edit-delete-center/payments/${displayItem.id}/delete`, `/payments/${displayItem.id}/delete`],
               {},
             );
-            refreshFromServer();
+            await refreshFromServer();
             Alert.alert("تم", "تم حذف الدفعة");
           } catch (e) {
             Alert.alert("تعذر الحذف", e instanceof Error ? e.message : "تعذر حذف الدفعة");
@@ -254,7 +263,7 @@ export default function ContractPaymentCard({ item, index, expanded, onToggle, o
         {expanded ? (
           <View style={styles.expandedArea}>
             <View style={styles.actionRow}>
-              {!isPaid ? <ActionPill icon="💳" label="دفع" tone="success" onPress={payFullAmount} /> : null}
+              {!isPaid ? <ActionPill icon="💳" label={saving ? "جاري..." : "دفع"} tone="success" onPress={payFullAmount} /> : null}
               <ActionPill icon="✎" label="تعديل" tone="dark" onPress={() => openSheet("edit")} />
               <ActionPill icon="🗑" label="حذف" tone="danger" onPress={confirmDelete} />
             </View>
