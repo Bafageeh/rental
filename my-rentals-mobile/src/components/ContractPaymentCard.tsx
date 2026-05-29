@@ -27,7 +27,7 @@ type RelatedPayment = {
   status?: string | null;
 };
 
-type Mode = "pay" | "edit";
+type Mode = "edit";
 type ActionTone = "dark" | "danger" | "success";
 
 type Props = {
@@ -43,16 +43,19 @@ function valueOrDash(value: unknown) {
   return String(value);
 }
 
-function amountText(value: unknown) {
+function amountNumber(value: unknown) {
   const n = Number(String(value ?? "").replace(/,/g, ""));
-  if (!Number.isFinite(n)) return valueOrDash(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function amountText(value: unknown) {
+  const n = amountNumber(value);
   return `${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ريال`;
 }
 
 function amountInput(value: unknown) {
-  const n = Number(String(value ?? "").replace(/,/g, ""));
-  if (!Number.isFinite(n)) return "";
-  return String(n);
+  const n = amountNumber(value);
+  return Number.isFinite(n) ? String(n) : "0";
 }
 
 function todayText() {
@@ -97,8 +100,8 @@ export default function ContractPaymentCard({ item, index, expanded, onToggle, o
   const insets = useSafeAreaInsets();
   const [localItem, setLocalItem] = useState<RelatedPayment>(item);
   const [sheetVisible, setSheetVisible] = useState(false);
-  const [mode, setMode] = useState<Mode>("pay");
-  const [amount, setAmount] = useState(amountInput(item.amount));
+  const [mode, setMode] = useState<Mode>("edit");
+  const [amount, setAmount] = useState("0");
   const [note, setNote] = useState(item.notes || "");
   const [saving, setSaving] = useState(false);
 
@@ -116,7 +119,7 @@ export default function ContractPaymentCard({ item, index, expanded, onToggle, o
 
   function openSheet(nextMode: Mode) {
     setMode(nextMode);
-    setAmount(amountInput(displayItem.amount));
+    setAmount("0");
     setNote(displayItem.notes || "");
     setSheetVisible(true);
   }
@@ -130,35 +133,56 @@ export default function ContractPaymentCard({ item, index, expanded, onToggle, o
     Promise.resolve(onChanged()).catch(() => undefined);
   }
 
+  async function payFullAmount() {
+    const fullAmount = amountInput(displayItem.amount);
+    try {
+      setSaving(true);
+      await apiPostAny(
+        [`/edit-delete-center/payments/${displayItem.id}/update`, `/my/edit-delete-center/payments/${displayItem.id}/update`],
+        { fields: { amount: fullAmount, notes: displayItem.notes || "تم السداد كاملًا." } },
+      );
+      setLocalItem((current) => ({
+        ...current,
+        status: "paid",
+        badge: "مدفوعة",
+        paid_date: todayText(),
+      }));
+      refreshFromServer();
+      Alert.alert("تم", "تم اعتماد قيمة الدفعة كاملة كدفعة مستلمة");
+    } catch (e) {
+      Alert.alert("خطأ", e instanceof Error ? e.message : "تعذر تسجيل الدفع");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function saveSheet() {
     const numericAmount = Number(String(amount || "0").replace(/,/g, ""));
-    if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
+    if (!Number.isFinite(numericAmount) || numericAmount < 0) {
       Alert.alert("تنبيه", "أدخل قيمة صحيحة للدفعة.");
       return;
     }
 
     try {
       setSaving(true);
+      const fields: Record<string, string> = { notes: note.trim() };
+      if (numericAmount > 0) fields.amount = String(numericAmount);
+
       await apiPostAny(
         [`/edit-delete-center/payments/${displayItem.id}/update`, `/my/edit-delete-center/payments/${displayItem.id}/update`],
-        { fields: { amount: String(numericAmount), notes: note.trim() } },
+        { fields },
       );
-
-      if (mode === "pay") {
-        await apiPostAny([`/payments/${displayItem.id}/mark-paid`, `/my/payments/${displayItem.id}/mark-paid`], {});
-      }
 
       setLocalItem((current) => ({
         ...current,
-        amount: String(numericAmount),
         notes: note.trim(),
-        status: mode === "pay" ? "paid" : current.status,
-        badge: mode === "pay" ? "مدفوعة" : current.badge,
-        paid_date: mode === "pay" ? todayText() : current.paid_date,
+        status: numericAmount > 0 ? "paid" : current.status,
+        badge: numericAmount > 0 ? "مدفوعة" : current.badge,
+        paid_date: numericAmount > 0 ? todayText() : current.paid_date,
       }));
       setSheetVisible(false);
       refreshFromServer();
-      Alert.alert("تم", mode === "pay" ? "تم تسجيل الدفع بنجاح" : "تم حفظ تعديل الدفعة");
+      Alert.alert("تم", numericAmount > 0 ? "تم اعتماد المبلغ المكتوب كدفعة مستلمة" : "تم حفظ التعديل بدون تسجيل مبلغ دفع");
     } catch (e) {
       Alert.alert("خطأ", e instanceof Error ? e.message : "تعذر حفظ الدفعة");
     } finally {
@@ -219,7 +243,7 @@ export default function ContractPaymentCard({ item, index, expanded, onToggle, o
         {expanded ? (
           <View style={styles.expandedArea}>
             <View style={styles.actionRow}>
-              {!isPaid ? <ActionPill icon="💳" label="دفع" tone="success" onPress={() => openSheet("pay")} /> : null}
+              {!isPaid ? <ActionPill icon="💳" label="دفع" tone="success" onPress={payFullAmount} /> : null}
               <ActionPill icon="✎" label="تعديل" tone="dark" onPress={() => openSheet("edit")} />
               <ActionPill icon="🗑" label="حذف" tone="danger" onPress={confirmDelete} />
             </View>
@@ -238,8 +262,8 @@ export default function ContractPaymentCard({ item, index, expanded, onToggle, o
                   <Text style={styles.closeText}>×</Text>
                 </TouchableOpacity>
                 <View style={styles.sheetTitleBlock}>
-                  <Text style={styles.sheetEyebrow}>{mode === "pay" ? "دفع من تفاصيل العقد" : "تعديل بيانات القسط"}</Text>
-                  <Text style={styles.sheetTitle}>{mode === "pay" ? "تسجيل الدفعة" : "تعديل الدفعة"}</Text>
+                  <Text style={styles.sheetEyebrow}>تعديل بيانات القسط</Text>
+                  <Text style={styles.sheetTitle}>تعديل الدفعة</Text>
                   <Text style={styles.sheetSubtitle}>القسط {index + 1} • {dueDate}</Text>
                 </View>
               </View>
@@ -247,22 +271,25 @@ export default function ContractPaymentCard({ item, index, expanded, onToggle, o
               <View style={[styles.sheetSummary, { borderColor: meta.border, backgroundColor: meta.card }]}> 
                 <View style={styles.sheetSummaryTop}>
                   <Text style={[styles.sheetStatus, { backgroundColor: meta.bg, color: meta.fg }]}>{meta.label}</Text>
-                  <Text style={styles.summaryLabel}>{mode === "pay" ? "المبلغ المراد سداده" : "المبلغ الحالي"}</Text>
+                  <Text style={styles.summaryLabel}>قيمة القسط الأصلية</Text>
                 </View>
                 <Text style={styles.summaryAmount}>{amountText(displayItem.amount)}</Text>
               </View>
 
               <View style={styles.quickActions}>
+                <TouchableOpacity style={styles.helperButton} onPress={() => setAmount("0")} activeOpacity={0.85}>
+                  <Text style={styles.helperText}>تصفير المبلغ</Text>
+                </TouchableOpacity>
                 <TouchableOpacity style={styles.helperButton} onPress={() => setAmount(amountInput(displayItem.amount))} activeOpacity={0.85}>
-                  <Text style={styles.helperText}>اعتماد المبلغ</Text>
+                  <Text style={styles.helperText}>اعتماد مبلغ القسط</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.helperButton} onPress={() => setNote("تم السداد عبر حوالة بنكية.")} activeOpacity={0.85}>
                   <Text style={styles.helperText}>ملاحظة جاهزة</Text>
                 </TouchableOpacity>
               </View>
 
-              <Text style={styles.fieldLabel}>قيمة الدفعة</Text>
-              <TextInput value={amount} onChangeText={setAmount} style={styles.input} keyboardType="decimal-pad" textAlign="right" placeholder="مثال: 2500" placeholderTextColor="#9CA3AF" />
+              <Text style={styles.fieldLabel}>مبلغ مدفوع جديد</Text>
+              <TextInput value={amount} onChangeText={setAmount} style={styles.input} keyboardType="decimal-pad" textAlign="right" placeholder="0" placeholderTextColor="#9CA3AF" />
 
               <Text style={styles.fieldLabel}>الملاحظات / نص الحوالة</Text>
               <TextInput value={note} onChangeText={setNote} style={[styles.input, styles.notesInput]} textAlign="right" multiline placeholder="مثال: حوالة الراجحي - رقم العملية..." placeholderTextColor="#9CA3AF" />
@@ -274,7 +301,7 @@ export default function ContractPaymentCard({ item, index, expanded, onToggle, o
                   <Text style={styles.cancelText}>إلغاء</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={[styles.saveButton, saving ? styles.disabled : null]} onPress={saveSheet} disabled={saving} activeOpacity={0.85}>
-                  <Text style={styles.saveText}>{saving ? "جاري الحفظ..." : mode === "pay" ? "حفظ الدفع" : "حفظ التعديل"}</Text>
+                  <Text style={styles.saveText}>{saving ? "جاري الحفظ..." : "حفظ التعديل"}</Text>
                 </TouchableOpacity>
               </View>
             </View>
