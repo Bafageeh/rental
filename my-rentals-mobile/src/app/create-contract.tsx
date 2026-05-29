@@ -23,9 +23,7 @@ type Unit = {
   property_id?: number | string | null;
   property?: {
     name?: string | null;
-    owner?: {
-      name?: string | null;
-    } | null;
+    owner?: { name?: string | null } | null;
   } | null;
 };
 
@@ -43,7 +41,7 @@ type ContractScope = "property" | "unit";
 
 function money(value: string) {
   const number = Number(value || 0);
-  return `${Math.round(number).toLocaleString()} ريال`;
+  return `${Math.round(number).toLocaleString("ar-SA")} ريال`;
 }
 
 function cycleLabel(value: PaymentCycle) {
@@ -96,8 +94,7 @@ export default function CreateContractScreen() {
   const [saving, setSaving] = useState(false);
 
   const [tenantName, setTenantName] = useState("");
-  const [unitId, setUnitId] = useState<number | null>(null);
-
+  const [unitId, setUnitId] = useState<number | null>(scopedUnitId);
   const [contractNumber, setContractNumber] = useState("");
   const [startDate, setStartDate] = useState("2026-05-01");
   const [endDate, setEndDate] = useState("2027-04-30");
@@ -126,6 +123,8 @@ export default function CreateContractScreen() {
   const contextUnitName = isPropertyContract
     ? "العقار كامل"
     : scopedUnitName || selectedUnit?.unit_number || selectedUnit?.label || (scopedUnitId ? `وحدة #${scopedUnitId}` : unitId ? `وحدة #${unitId}` : "اختر الوحدة");
+
+  const targetUnitId = isPropertyContract ? null : (scopedUnitId || unitId);
 
   async function load() {
     try {
@@ -168,9 +167,7 @@ export default function CreateContractScreen() {
             } as Unit;
           });
 
-        if (ownerUnits.length > 0) {
-          loadedUnitsList = ownerUnits;
-        }
+        if (ownerUnits.length > 0) loadedUnitsList = ownerUnits;
       }
 
       const unitsList = scopedUnitId
@@ -181,7 +178,7 @@ export default function CreateContractScreen() {
 
       if (isPropertyContract) {
         setUnitId(null);
-      } else if (scopedUnitId && unitsList.some((unit: Unit) => Number(unit.id) === Number(scopedUnitId))) {
+      } else if (scopedUnitId) {
         setUnitId(scopedUnitId);
       } else if (!unitId && unitsList.length > 0) {
         const availableUnit = unitsList.find((unit: Unit) => unit.status !== "rented");
@@ -203,48 +200,43 @@ export default function CreateContractScreen() {
     addQueryParam(parts, "contract_scope", contractScope);
     addQueryParam(parts, "target_type", contractScope);
     if (!isPropertyContract) {
-      addQueryParam(parts, "unit_id", scopedUnitId || unitId || null);
+      addQueryParam(parts, "unit_id", targetUnitId);
       addQueryParam(parts, "unit_name", contextUnitName);
+      addQueryParam(parts, "return_to", targetUnitId ? `/unit/${targetUnitId}` : null);
     } else {
       addQueryParam(parts, "unit_name", "العقار كامل");
+      addQueryParam(parts, "return_to", scopedPropertyId ? `/property/${scopedPropertyId}` : null);
     }
 
     const query = parts.length ? `?${parts.join("&")}` : "";
     router.push(`/upload-contract${query}` as any);
   }
 
+  function goAfterSave() {
+    if (!isPropertyContract && targetUnitId) {
+      router.replace(`/unit/${targetUnitId}` as never);
+      return;
+    }
+    if (scopedPropertyId) {
+      router.replace(`/property/${scopedPropertyId}` as never);
+      return;
+    }
+    router.replace("/properties" as never);
+  }
+
   async function saveContract() {
-    if (!tenantName.trim()) {
-      Alert.alert("تنبيه", "أدخل اسم المستأجر");
-      return;
-    }
-
-    if (!isPropertyContract && !unitId) {
-      Alert.alert("تنبيه", "اختر الوحدة");
-      return;
-    }
-
-    if (isPropertyContract && !scopedPropertyId) {
-      Alert.alert("تنبيه", "يجب تحديد العقار لإنشاء عقد على العقار بالكامل");
-      return;
-    }
-
-    if (!startDate.trim() || !endDate.trim()) {
-      Alert.alert("تنبيه", "أدخل تاريخ البداية والنهاية بصيغة YYYY-MM-DD");
-      return;
-    }
-
-    if (!rentAmount.trim()) {
-      Alert.alert("تنبيه", "أدخل قيمة الإيجار");
-      return;
-    }
+    if (!tenantName.trim()) return Alert.alert("تنبيه", "أدخل اسم المستأجر");
+    if (!isPropertyContract && !targetUnitId) return Alert.alert("تنبيه", "اختر الوحدة");
+    if (isPropertyContract && !scopedPropertyId) return Alert.alert("تنبيه", "يجب تحديد العقار لإنشاء عقد على العقار بالكامل");
+    if (!startDate.trim() || !endDate.trim()) return Alert.alert("تنبيه", "أدخل تاريخ البداية والنهاية بصيغة YYYY-MM-DD");
+    if (!rentAmount.trim()) return Alert.alert("تنبيه", "أدخل قيمة الإيجار");
 
     try {
       setSaving(true);
 
       const result = await apiPost("/contracts", {
         tenant_name: tenantName.trim(),
-        unit_id: isPropertyContract ? null : unitId,
+        unit_id: isPropertyContract ? null : targetUnitId,
         property_id: scopedPropertyId || selectedUnit?.property_id || null,
         contract_scope: contractScope,
         contract_number: contractNumber.trim() || null,
@@ -266,8 +258,9 @@ export default function CreateContractScreen() {
       setDepositAmount("");
       setPaymentsCount("12");
 
-      Alert.alert("تم", result.message || "تم إنشاء العقد بنجاح");
-      load();
+      Alert.alert("تم", result.message || "تم إنشاء العقد بنجاح", [
+        { text: "حسنًا", onPress: goAfterSave },
+      ]);
     } catch (e) {
       Alert.alert("خطأ", e instanceof Error ? e.message : "تعذر إنشاء العقد");
     } finally {
@@ -275,9 +268,7 @@ export default function CreateContractScreen() {
     }
   }
 
-  useEffect(() => {
-    load();
-  }, [propertyIdParam, unitIdParam, ownerIdParam, contractScope]);
+  useEffect(() => { load(); }, [propertyIdParam, unitIdParam, ownerIdParam, contractScope]);
 
   const cycleOptions: PaymentCycle[] = ["monthly", "quarterly", "semi_annual", "annual"];
   const installmentValue = money(String(Number(rentAmount || 0) / Math.max(Number(paymentsCount || 1), 1)));
@@ -286,13 +277,11 @@ export default function CreateContractScreen() {
     <SafeAreaView style={styles.safe} edges={["bottom"]}>
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
         <View style={styles.heroCard}>
-          <View style={styles.heroIcon}>
-            <Ionicons name="document-text-outline" size={24} color="#ffffff" />
-          </View>
+          <View style={styles.heroIcon}><Ionicons name="document-text-outline" size={24} color="#ffffff" /></View>
           <View style={styles.heroTextWrap}>
             <Text style={styles.eyebrow}>عقد إيجار جديد</Text>
             <Text style={styles.title}>{isPropertyContract ? "إنشاء عقد وربطه بالعقار" : "إنشاء عقد وربطه بالوحدة"}</Text>
-            <Text style={styles.subtitle}>تأكد من بيانات المالك والعقار ونطاق العقد ثم أدخل اسم المستأجر والبيانات المالية.</Text>
+            <Text style={styles.subtitle}>بعد الحفظ سيتم الرجوع مباشرة إلى شاشة الوحدة المرتبطة بالعقد.</Text>
           </View>
           <TouchableOpacity style={styles.uploadButton} onPress={openUploadContract} activeOpacity={0.82}>
             <Ionicons name="cloud-upload-outline" size={18} color="#ffffff" />
@@ -306,210 +295,55 @@ export default function CreateContractScreen() {
             <Text style={styles.sectionHint}>تظهر هذه البيانات في العقد الجديد</Text>
           </View>
           <View style={styles.contextGrid}>
-            <View style={styles.contextItem}>
-              <Ionicons name="person-outline" size={18} color="#0f766e" />
-              <View style={styles.contextTextWrap}>
-                <Text style={styles.contextLabel}>المالك</Text>
-                <Text style={styles.contextValue} numberOfLines={1}>{contextOwnerName}</Text>
-              </View>
-            </View>
-            <View style={styles.contextItem}>
-              <Ionicons name="business-outline" size={18} color="#0f766e" />
-              <View style={styles.contextTextWrap}>
-                <Text style={styles.contextLabel}>العقار</Text>
-                <Text style={styles.contextValue} numberOfLines={1}>{contextPropertyName}</Text>
-              </View>
-            </View>
-            <View style={styles.contextItemWide}>
-              <Ionicons name={isPropertyContract ? "business" : "home-outline"} size={18} color="#0f766e" />
-              <View style={styles.contextTextWrap}>
-                <Text style={styles.contextLabel}>نطاق العقد</Text>
-                <Text style={styles.contextValue} numberOfLines={1}>{contextUnitName}</Text>
-              </View>
-            </View>
+            <View style={styles.contextItem}><Ionicons name="person-outline" size={18} color="#0f766e" /><View style={styles.contextTextWrap}><Text style={styles.contextLabel}>المالك</Text><Text style={styles.contextValue} numberOfLines={1}>{contextOwnerName}</Text></View></View>
+            <View style={styles.contextItem}><Ionicons name="business-outline" size={18} color="#0f766e" /><View style={styles.contextTextWrap}><Text style={styles.contextLabel}>العقار</Text><Text style={styles.contextValue} numberOfLines={1}>{contextPropertyName}</Text></View></View>
+            <View style={styles.contextItemWide}><Ionicons name={isPropertyContract ? "business" : "home-outline"} size={18} color="#0f766e" /><View style={styles.contextTextWrap}><Text style={styles.contextLabel}>نطاق العقد</Text><Text style={styles.contextValue} numberOfLines={1}>{contextUnitName}</Text></View></View>
           </View>
         </View>
 
-        {loading ? (
-          <View style={styles.loadingBox}>
-            <ActivityIndicator />
-            <Text style={styles.loadingText}>جاري تحميل بيانات العقد...</Text>
-          </View>
-        ) : null}
+        {loading ? <View style={styles.loadingBox}><ActivityIndicator /><Text style={styles.loadingText}>جاري تحميل بيانات العقد...</Text></View> : null}
 
         <View style={styles.card}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>بيانات المستأجر</Text>
-            <Text style={styles.sectionHint}>أدخل اسم المستأجر يدويًا كما تريد ظهوره في العقد</Text>
-          </View>
-
-          <TextInput
-            style={styles.input}
-            placeholder="اسم المستأجر"
-            value={tenantName}
-            onChangeText={setTenantName}
-            textAlign="right"
-            returnKeyType="next"
-          />
+          <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>بيانات المستأجر</Text><Text style={styles.sectionHint}>أدخل اسم المستأجر يدويًا كما تريد ظهوره في العقد</Text></View>
+          <TextInput style={styles.input} placeholder="اسم المستأجر" value={tenantName} onChangeText={setTenantName} textAlign="right" returnKeyType="next" />
         </View>
 
         {!isPropertyContract ? (
           <View style={styles.card}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>اختيار الوحدة</Text>
-              <Text style={styles.sectionHint}>
-                {scopedUnitId
-                  ? "هذا العقد مرتبط بهذه الوحدة فقط"
-                  : scopedPropertyId
-                    ? "تظهر هنا وحدات هذا العقار فقط"
-                    : scopedOwnerId
-                      ? "تظهر هنا وحدات هذا المالك فقط"
-                      : "اختر الوحدة التي سيصدر عليها العقد"}
-              </Text>
-            </View>
-
+            <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>اختيار الوحدة</Text><Text style={styles.sectionHint}>{scopedUnitId ? "هذا العقد مرتبط بهذه الوحدة فقط" : "اختر الوحدة التي سيصدر عليها العقد"}</Text></View>
             <View style={styles.chips}>
               {units.map((unit) => (
-                <TouchableOpacity
-                  key={unit.id}
-                  style={[styles.unitChip, unitId === unit.id ? styles.chipActive : null]}
-                  onPress={() => {
-                    if (scopedUnitId) return;
-                    setUnitId(unit.id);
-                  }}
-                  activeOpacity={0.82}
-                >
-                  <Text style={[styles.unitChipTitle, unitId === unit.id ? styles.chipTextActive : null]} numberOfLines={1}>
-                    {unit.unit_number || unit.label || "وحدة"}
-                  </Text>
-                  <Text style={[styles.unitChipMeta, unitId === unit.id ? styles.chipMetaActive : null]} numberOfLines={1}>
-                    {unit.property?.name || "وحدة مباشرة"}
-                  </Text>
+                <TouchableOpacity key={unit.id} style={[styles.unitChip, unitId === unit.id ? styles.chipActive : null]} onPress={() => { if (!scopedUnitId) setUnitId(unit.id); }} activeOpacity={0.82}>
+                  <Text style={[styles.unitChipTitle, unitId === unit.id ? styles.chipTextActive : null]} numberOfLines={1}>{unit.unit_number || unit.label || "وحدة"}</Text>
+                  <Text style={[styles.unitChipMeta, unitId === unit.id ? styles.chipMetaActive : null]} numberOfLines={1}>{unit.property?.name || "وحدة مباشرة"}</Text>
                 </TouchableOpacity>
               ))}
             </View>
-            {!loading && units.length === 0 ? (
-              <Text style={styles.emptyHint}>
-                {scopedUnitId
-                  ? "تعذر العثور على هذه الوحدة."
-                  : scopedOwnerId
-                    ? "لا توجد وحدات لهذا المالك. أضف وحدة أولًا ثم أنشئ العقد."
-                    : "لا توجد وحدات متاحة لهذا العقار. أضف وحدة أولًا ثم أنشئ العقد."}
-              </Text>
-            ) : null}
+            {!loading && units.length === 0 ? <Text style={styles.emptyHint}>لا توجد وحدات متاحة لهذا الاختيار.</Text> : null}
           </View>
         ) : null}
 
         <View style={styles.card}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>بيانات العقد</Text>
-            <Text style={styles.sectionHint}>البيانات الأساسية وتواريخ العقد</Text>
-          </View>
-
-          <TextInput
-            style={styles.input}
-            placeholder="رقم العقد اختياري"
-            value={contractNumber}
-            onChangeText={setContractNumber}
-            textAlign="right"
-          />
-
+          <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>بيانات العقد</Text><Text style={styles.sectionHint}>البيانات الأساسية وتواريخ العقد</Text></View>
+          <TextInput style={styles.input} placeholder="رقم العقد اختياري" value={contractNumber} onChangeText={setContractNumber} textAlign="right" />
           <View style={styles.inputRow}>
-            <TextInput
-              style={[styles.input, styles.halfInput]}
-              placeholder="تاريخ البداية YYYY-MM-DD"
-              value={startDate}
-              onChangeText={setStartDate}
-              textAlign="right"
-            />
-            <TextInput
-              style={[styles.input, styles.halfInput]}
-              placeholder="تاريخ النهاية YYYY-MM-DD"
-              value={endDate}
-              onChangeText={setEndDate}
-              textAlign="right"
-            />
+            <TextInput style={[styles.input, styles.halfInput]} placeholder="تاريخ البداية YYYY-MM-DD" value={startDate} onChangeText={setStartDate} textAlign="right" />
+            <TextInput style={[styles.input, styles.halfInput]} placeholder="تاريخ النهاية YYYY-MM-DD" value={endDate} onChangeText={setEndDate} textAlign="right" />
           </View>
         </View>
 
         <View style={styles.card}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>القيم المالية</Text>
-            <Text style={styles.sectionHint}>سيتم إنشاء الدفعات بناءً على هذه القيم</Text>
-          </View>
-
-          <TextInput
-            style={styles.input}
-            placeholder="قيمة الإيجار الإجمالية"
-            value={rentAmount}
-            onChangeText={setRentAmount}
-            keyboardType="number-pad"
-            textAlign="right"
-          />
-
+          <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>القيم المالية</Text><Text style={styles.sectionHint}>سيتم إنشاء الدفعات بناءً على هذه القيم</Text></View>
+          <TextInput style={styles.input} placeholder="قيمة الإيجار الإجمالية" value={rentAmount} onChangeText={setRentAmount} keyboardType="number-pad" textAlign="right" />
           <View style={styles.inputRow}>
-            <TextInput
-              style={[styles.input, styles.thirdInput]}
-              placeholder="رسوم الموقف"
-              value={parkingFee}
-              onChangeText={setParkingFee}
-              keyboardType="number-pad"
-              textAlign="right"
-            />
-            <TextInput
-              style={[styles.input, styles.thirdInput]}
-              placeholder="رسوم الخدمات"
-              value={servicesFee}
-              onChangeText={setServicesFee}
-              keyboardType="number-pad"
-              textAlign="right"
-            />
-            <TextInput
-              style={[styles.input, styles.thirdInput]}
-              placeholder="مبلغ الضمان"
-              value={depositAmount}
-              onChangeText={setDepositAmount}
-              keyboardType="number-pad"
-              textAlign="right"
-            />
+            <TextInput style={[styles.input, styles.thirdInput]} placeholder="رسوم الموقف" value={parkingFee} onChangeText={setParkingFee} keyboardType="number-pad" textAlign="right" />
+            <TextInput style={[styles.input, styles.thirdInput]} placeholder="رسوم الخدمات" value={servicesFee} onChangeText={setServicesFee} keyboardType="number-pad" textAlign="right" />
+            <TextInput style={[styles.input, styles.thirdInput]} placeholder="مبلغ الضمان" value={depositAmount} onChangeText={setDepositAmount} keyboardType="number-pad" textAlign="right" />
           </View>
-
-          <TextInput
-            style={styles.input}
-            placeholder="عدد الدفعات"
-            value={paymentsCount}
-            onChangeText={setPaymentsCount}
-            keyboardType="number-pad"
-            textAlign="right"
-          />
-
+          <TextInput style={styles.input} placeholder="عدد الدفعات" value={paymentsCount} onChangeText={setPaymentsCount} keyboardType="number-pad" textAlign="right" />
           <Text style={styles.label}>دورة السداد</Text>
-
-          <View style={styles.chips}>
-            {cycleOptions.map((cycle) => (
-              <TouchableOpacity
-                key={cycle}
-                style={[styles.chip, paymentCycle === cycle ? styles.chipActive : null]}
-                onPress={() => setPaymentCycle(cycle)}
-                activeOpacity={0.8}
-              >
-                <Text style={[styles.chipText, paymentCycle === cycle ? styles.chipTextActive : null]}>
-                  {cycleLabel(cycle)}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          <View style={styles.summaryBox}>
-            <View style={styles.summaryIcon}>
-              <Ionicons name="calculator-outline" size={18} color="#1d4ed8" />
-            </View>
-            <View style={styles.summaryContent}>
-              <Text style={styles.summaryLabel}>قيمة الدفعة التقريبية</Text>
-              <Text style={styles.summaryText}>{installmentValue}</Text>
-            </View>
-          </View>
-
+          <View style={styles.chips}>{cycleOptions.map((cycle) => <TouchableOpacity key={cycle} style={[styles.chip, paymentCycle === cycle ? styles.chipActive : null]} onPress={() => setPaymentCycle(cycle)} activeOpacity={0.8}><Text style={[styles.chipText, paymentCycle === cycle ? styles.chipTextActive : null]}>{cycleLabel(cycle)}</Text></TouchableOpacity>)}</View>
+          <View style={styles.summaryBox}><View style={styles.summaryIcon}><Ionicons name="calculator-outline" size={18} color="#1d4ed8" /></View><View style={styles.summaryContent}><Text style={styles.summaryLabel}>قيمة الدفعة التقريبية</Text><Text style={styles.summaryText}>{installmentValue}</Text></View></View>
           <TouchableOpacity style={[styles.saveButton, saving ? styles.saveButtonDisabled : null]} onPress={saveContract} disabled={saving} activeOpacity={0.86}>
             <Ionicons name="checkmark-circle-outline" size={19} color="#ffffff" />
             <Text style={styles.saveButtonText}>{saving ? "جاري إنشاء العقد..." : "إنشاء العقد والدفعات"}</Text>
@@ -523,147 +357,35 @@ export default function CreateContractScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: "#F7F6F4" },
   container: { padding: 14, paddingBottom: 50 },
-  heroCard: {
-    backgroundColor: "#111827",
-    borderRadius: 24,
-    padding: 16,
-    marginBottom: 14,
-    flexDirection: "row-reverse",
-    alignItems: "center",
-    gap: 12,
-  },
-  heroIcon: {
-    width: 46,
-    height: 46,
-    borderRadius: 18,
-    backgroundColor: "rgba(255,255,255,0.14)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
+  heroCard: { backgroundColor: "#111827", borderRadius: 24, padding: 16, marginBottom: 14, flexDirection: "row-reverse", alignItems: "center", gap: 12 },
+  heroIcon: { width: 46, height: 46, borderRadius: 18, backgroundColor: "rgba(255,255,255,0.14)", alignItems: "center", justifyContent: "center" },
   heroTextWrap: { flex: 1 },
   eyebrow: { color: "#A7F3D0", fontSize: 12, fontWeight: "900", textAlign: "right", marginBottom: 4 },
   title: { fontSize: 22, fontWeight: "900", color: "#ffffff", textAlign: "right" },
   subtitle: { marginTop: 6, color: "#D1D5DB", fontSize: 13, lineHeight: 21, textAlign: "right" },
-  uploadButton: {
-    backgroundColor: "#16a34a",
-    borderRadius: 16,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 5,
-    minWidth: 78,
-  },
+  uploadButton: { backgroundColor: "#16a34a", borderRadius: 16, paddingHorizontal: 12, paddingVertical: 10, alignItems: "center", justifyContent: "center", gap: 5, minWidth: 78 },
   uploadButtonText: { color: "#ffffff", fontWeight: "900", fontSize: 12 },
-  loadingBox: {
-    backgroundColor: "#fff",
-    padding: 16,
-    borderRadius: 18,
-    alignItems: "center",
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: "#EEEAE3",
-  },
+  loadingBox: { backgroundColor: "#fff", padding: 16, borderRadius: 18, alignItems: "center", marginBottom: 12, borderWidth: 1, borderColor: "#EEEAE3" },
   loadingText: { marginTop: 8, color: "#5E5B55", fontWeight: "700" },
-  card: {
-    backgroundColor: "#fff",
-    borderRadius: 22,
-    padding: 15,
-    marginBottom: 14,
-    borderWidth: 1,
-    borderColor: "#EEEAE3",
-  },
-  contextCard: {
-    backgroundColor: "#ecfdf5",
-    borderRadius: 22,
-    padding: 15,
-    marginBottom: 14,
-    borderWidth: 1,
-    borderColor: "#bbf7d0",
-  },
+  card: { backgroundColor: "#fff", borderRadius: 22, padding: 15, marginBottom: 14, borderWidth: 1, borderColor: "#EEEAE3" },
+  contextCard: { backgroundColor: "#ecfdf5", borderRadius: 22, padding: 15, marginBottom: 14, borderWidth: 1, borderColor: "#bbf7d0" },
   sectionHeader: { marginBottom: 12 },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: "900",
-    color: "#111827",
-    textAlign: "right",
-  },
-  sectionHint: {
-    color: "#7A766F",
-    fontSize: 13,
-    textAlign: "right",
-    marginTop: 4,
-    lineHeight: 20,
-  },
+  sectionTitle: { fontSize: 18, fontWeight: "900", color: "#111827", textAlign: "right" },
+  sectionHint: { color: "#7A766F", fontSize: 13, textAlign: "right", marginTop: 4, lineHeight: 20 },
   contextGrid: { flexDirection: "row-reverse", flexWrap: "wrap", gap: 10 },
-  contextItem: {
-    flexGrow: 1,
-    flexBasis: "47%",
-    backgroundColor: "#ffffff",
-    borderRadius: 16,
-    padding: 11,
-    flexDirection: "row-reverse",
-    alignItems: "center",
-    gap: 8,
-  },
-  contextItemWide: {
-    flexBasis: "100%",
-    backgroundColor: "#ffffff",
-    borderRadius: 16,
-    padding: 11,
-    flexDirection: "row-reverse",
-    alignItems: "center",
-    gap: 8,
-  },
+  contextItem: { flexGrow: 1, flexBasis: "47%", backgroundColor: "#ffffff", borderRadius: 16, padding: 11, flexDirection: "row-reverse", alignItems: "center", gap: 8 },
+  contextItemWide: { flexBasis: "100%", backgroundColor: "#ffffff", borderRadius: 16, padding: 11, flexDirection: "row-reverse", alignItems: "center", gap: 8 },
   contextTextWrap: { flex: 1 },
   contextLabel: { color: "#0f766e", fontSize: 12, fontWeight: "900", textAlign: "right" },
   contextValue: { color: "#111827", fontSize: 14, fontWeight: "900", textAlign: "right", marginTop: 3 },
-  input: {
-    backgroundColor: "#F7F6F4",
-    borderWidth: 1,
-    borderColor: "#DDDBD6",
-    borderRadius: 14,
-    padding: 12,
-    marginBottom: 10,
-    color: "#111827",
-    fontWeight: "700",
-  },
-  inputRow: {
-    flexDirection: "row-reverse",
-    gap: 8,
-  },
+  input: { backgroundColor: "#F7F6F4", borderWidth: 1, borderColor: "#DDDBD6", borderRadius: 14, padding: 12, marginBottom: 10, color: "#111827", fontWeight: "700" },
+  inputRow: { flexDirection: "row-reverse", gap: 8 },
   halfInput: { flex: 1 },
   thirdInput: { flex: 1 },
-  label: {
-    color: "#374151",
-    fontWeight: "900",
-    textAlign: "right",
-    marginBottom: 8,
-    marginTop: 2,
-  },
-  chips: {
-    flexDirection: "row-reverse",
-    flexWrap: "wrap",
-    gap: 8,
-  },
-  chip: {
-    backgroundColor: "#f3f4f6",
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
-  },
-  unitChip: {
-    backgroundColor: "#f3f4f6",
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
-    minWidth: 132,
-    maxWidth: "100%",
-  },
+  label: { color: "#374151", fontWeight: "900", textAlign: "right", marginBottom: 8, marginTop: 2 },
+  chips: { flexDirection: "row-reverse", flexWrap: "wrap", gap: 8 },
+  chip: { backgroundColor: "#f3f4f6", paddingHorizontal: 12, paddingVertical: 9, borderRadius: 999, borderWidth: 1, borderColor: "#e5e7eb" },
+  unitChip: { backgroundColor: "#f3f4f6", paddingHorizontal: 12, paddingVertical: 10, borderRadius: 16, borderWidth: 1, borderColor: "#e5e7eb", minWidth: 132, maxWidth: "100%" },
   chipActive: { backgroundColor: "#111827", borderColor: "#111827" },
   chipText: { color: "#374151", fontWeight: "800" },
   chipTextActive: { color: "#fff" },
@@ -671,46 +393,12 @@ const styles = StyleSheet.create({
   unitChipTitle: { color: "#111827", fontWeight: "900", textAlign: "right" },
   unitChipMeta: { color: "#7A766F", marginTop: 4, fontSize: 12, fontWeight: "700", textAlign: "right" },
   emptyHint: { color: "#b91c1c", fontWeight: "800", textAlign: "right", marginTop: 10, lineHeight: 22 },
-  summaryBox: {
-    backgroundColor: "#eff6ff",
-    borderRadius: 16,
-    padding: 12,
-    marginTop: 4,
-    marginBottom: 12,
-    flexDirection: "row-reverse",
-    alignItems: "center",
-    gap: 10,
-  },
-  summaryIcon: {
-    width: 34,
-    height: 34,
-    borderRadius: 12,
-    backgroundColor: "#dbeafe",
-    alignItems: "center",
-    justifyContent: "center",
-  },
+  summaryBox: { backgroundColor: "#eff6ff", borderRadius: 16, padding: 12, marginTop: 4, marginBottom: 12, flexDirection: "row-reverse", alignItems: "center", gap: 10 },
+  summaryIcon: { width: 34, height: 34, borderRadius: 12, backgroundColor: "#dbeafe", alignItems: "center", justifyContent: "center" },
   summaryContent: { flex: 1 },
   summaryLabel: { color: "#1d4ed8", fontWeight: "800", fontSize: 12, textAlign: "right" },
-  summaryText: {
-    color: "#1d4ed8",
-    fontWeight: "900",
-    fontSize: 18,
-    textAlign: "right",
-    marginTop: 2,
-  },
-  saveButton: {
-    backgroundColor: "#16a34a",
-    padding: 14,
-    borderRadius: 16,
-    alignItems: "center",
-    justifyContent: "center",
-    flexDirection: "row-reverse",
-    gap: 8,
-  },
+  summaryText: { color: "#1d4ed8", fontWeight: "900", fontSize: 18, textAlign: "right", marginTop: 2 },
+  saveButton: { backgroundColor: "#16a34a", padding: 14, borderRadius: 16, alignItems: "center", justifyContent: "center", flexDirection: "row-reverse", gap: 8 },
   saveButtonDisabled: { opacity: 0.65 },
-  saveButtonText: {
-    color: "#fff",
-    fontWeight: "900",
-    fontSize: 15,
-  },
+  saveButtonText: { color: "#fff", fontWeight: "900", fontSize: 15 },
 });
