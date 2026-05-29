@@ -12,6 +12,10 @@ type PaymentItem = {
   subtitle?: string;
   badge?: string | null;
   amount?: number | string | null;
+  display_amount?: number | string | null;
+  remaining_amount?: number | string | null;
+  paid_amount?: number | string | null;
+  actual_paid_amount?: number | string | null;
   due_date?: string | null;
   paid_date?: string | null;
   deadline_date?: string | null;
@@ -44,8 +48,11 @@ type ContractRecord = {
   end_date?: string | null;
   rent_amount?: number | string | null;
   total_contract_value?: number | string | null;
+  paid_total_amount?: number | string | null;
+  due_total_until_today?: number | string | null;
   tenant?: { id?: number; name?: string | null } | null;
   unit?: { id?: number; unit_number?: string | null; property?: { id?: number; name?: string | null } | null } | null;
+  payments?: PaymentItem[];
 };
 
 function isPayment(item: PaymentItem) {
@@ -174,6 +181,8 @@ function mergeContractRecords(primary: ContractRecord | null, fallback: Contract
     end_date: firstFilled(primary.end_date, fallback.end_date) as string | null,
     rent_amount: firstFilled(primary.rent_amount, fallback.rent_amount),
     total_contract_value: firstFilled(primary.total_contract_value, fallback.total_contract_value),
+    paid_total_amount: firstFilled(primary.paid_total_amount, fallback.paid_total_amount),
+    due_total_until_today: firstFilled(primary.due_total_until_today, fallback.due_total_until_today),
     tenant: {
       id: primary.tenant?.id || fallback.tenant?.id,
       name: firstFilled(primary.tenant?.name, fallback.tenant?.name) as string | null,
@@ -186,13 +195,35 @@ function mergeContractRecords(primary: ContractRecord | null, fallback: Contract
         name: firstFilled(primary.unit?.property?.name, fallback.unit?.property?.name) as string | null,
       },
     },
+    payments: primary.payments || fallback.payments,
   };
+}
+
+function normalizeApiPayment(payment: PaymentItem, index: number): PaymentItem {
+  return {
+    ...payment,
+    id: Number(payment.id),
+    entity: "payment",
+    title: payment.title || `القسط ${index + 1}`,
+    badge: payment.badge || (payment.status === "paid" ? "مدفوعة" : payment.status === "overdue" ? "متأخرة" : "مستحقة"),
+  };
+}
+
+function paidAmountForSummary(payment: PaymentItem) {
+  return numberValue(payment.paid_amount ?? payment.actual_paid_amount ?? 0);
+}
+
+function requiredAmountForDisplay(payment: PaymentItem) {
+  const status = paymentStatusLabel(payment.status, payment.badge);
+  if (status === "paid") return payment.paid_amount ?? payment.actual_paid_amount ?? payment.display_amount ?? payment.amount;
+  return payment.display_amount ?? payment.remaining_amount ?? payment.amount;
 }
 
 export default function ContractDetailsScreen({ id }: { id: string | number }) {
   const navigation = useNavigation();
   const [data, setData] = useState<ContractPayload | null>(null);
   const [contract, setContract] = useState<ContractRecord | null>(null);
+  const [apiPayments, setApiPayments] = useState<PaymentItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
@@ -213,6 +244,7 @@ export default function ContractDetailsScreen({ id }: { id: string | number }) {
       const directContract = normalizeContractPayload(contractResult, id);
       const relatedContract = contractFromRelatedPayload(relatedPayload, id);
       setContract(mergeContractRecords(directContract, relatedContract));
+      setApiPayments(Array.isArray(directContract?.payments) ? directContract.payments.map(normalizeApiPayment) : []);
     } catch (e) {
       setError(e instanceof Error ? e.message : "تعذر تحميل العقد");
     } finally {
@@ -276,7 +308,8 @@ export default function ContractDetailsScreen({ id }: { id: string | number }) {
     router.push(`/edit-delete-center?resource=contracts&id=${id}${unitId ? `&return_to=${encodeURIComponent(`/unit/${unitId}`)}` : ""}` as never);
   }
 
-  const payments = (data?.sections || []).flatMap((section) => section.items || []).filter(isPayment);
+  const relatedPayments = (data?.sections || []).flatMap((section) => section.items || []).filter(isPayment);
+  const payments = apiPayments.length > 0 ? apiPayments : relatedPayments;
   const tenantName = display(contract?.tenant?.name, "المستأجر غير محدد");
   const contractNumber = display(contract?.government_contract_number || contract?.contract_number || cleanTitleTitle(data?.title) || id);
   const startDate = prettyDate(contract?.start_date, "بلا بداية");
@@ -290,14 +323,14 @@ export default function ContractDetailsScreen({ id }: { id: string | number }) {
     const overdue = payments.filter((payment) => paymentStatusLabel(payment.status, payment.badge) === "overdue").length;
     const due = payments.filter((payment) => paymentStatusLabel(payment.status, payment.badge) === "due").length;
     const totalAmount = payments.reduce((sum, payment) => sum + numberValue(payment.amount), 0);
-    const paidAmount = payments
-      .filter((payment) => paymentStatusLabel(payment.status, payment.badge) === "paid")
-      .reduce((sum, payment) => sum + numberValue(payment.amount), 0);
+    const paidAmount = hasText(contract?.paid_total_amount)
+      ? numberValue(contract?.paid_total_amount)
+      : payments.reduce((sum, payment) => sum + paidAmountForSummary(payment), 0);
     const nextPayment = payments
       .filter((payment) => paymentStatusLabel(payment.status, payment.badge) !== "paid")
       .sort((a, b) => String(a.due_date || "9999-99-99").localeCompare(String(b.due_date || "9999-99-99")))[0];
     return { paid, overdue, due, totalAmount, paidAmount, nextPayment };
-  }, [payments]);
+  }, [payments, contract?.paid_total_amount]);
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -393,7 +426,7 @@ export default function ContractDetailsScreen({ id }: { id: string | number }) {
               <Text style={styles.nextPaymentTitle}>الدفعة القادمة</Text>
               <Text style={styles.nextPaymentMeta}>{paymentSummary.nextPayment.title} • {prettyDate(paymentSummary.nextPayment.due_date)}</Text>
             </View>
-            <Text style={styles.nextPaymentAmount}>{money(paymentSummary.nextPayment.amount)}</Text>
+            <Text style={styles.nextPaymentAmount}>{money(requiredAmountForDisplay(paymentSummary.nextPayment))}</Text>
           </View>
         ) : null}
 
