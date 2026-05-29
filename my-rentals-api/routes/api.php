@@ -197,6 +197,7 @@ Route::middleware(['auth.api', 'api.scope'])->group(function () {
         __DIR__ . '/api/113_expense_scope_fix.php',
         __DIR__ . '/api/115_contracts_unit_lookup_fix.php',
         __DIR__ . '/api/116_contract_expiry_status.php',
+        __DIR__ . '/api/119_payment_pay_endpoint.php',
     ] as $routeModule) {
         if (is_file($routeModule)) {
             require $routeModule;
