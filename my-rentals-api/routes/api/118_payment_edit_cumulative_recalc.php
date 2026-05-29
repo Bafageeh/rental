@@ -90,12 +90,14 @@ if (!function_exists('mrpec_sync_contract')) {
                 if (Schema::hasColumn('payments', 'status')) $updates['status'] = 'paid';
                 if (Schema::hasColumn('payments', 'paid_amount')) $updates['paid_amount'] = $amount;
                 if (Schema::hasColumn('payments', 'remaining_amount')) $updates['remaining_amount'] = 0;
+                if (Schema::hasColumn('payments', 'paid_date') && empty($payment->paid_date)) $updates['paid_date'] = $today;
                 $remainingPaid -= $amount;
             } elseif ($isDue && $markedLate < $lateCount && $remainingLate > 0) {
                 $remaining = min($amount > 0 ? $amount : $remainingLate, $remainingLate);
                 if (Schema::hasColumn('payments', 'status')) $updates['status'] = 'overdue';
                 if (Schema::hasColumn('payments', 'paid_amount')) $updates['paid_amount'] = max(0, $remainingPaid);
                 if (Schema::hasColumn('payments', 'remaining_amount')) $updates['remaining_amount'] = $remaining;
+                if (Schema::hasColumn('payments', 'paid_date') && $remainingPaid <= 0) $updates['paid_date'] = null;
                 $remainingPaid = 0;
                 $remainingLate -= $remaining;
                 $markedLate++;
@@ -103,6 +105,7 @@ if (!function_exists('mrpec_sync_contract')) {
                 if (Schema::hasColumn('payments', 'status')) $updates['status'] = 'due';
                 if (Schema::hasColumn('payments', 'paid_amount')) $updates['paid_amount'] = 0;
                 if (Schema::hasColumn('payments', 'remaining_amount')) $updates['remaining_amount'] = $amount;
+                if (Schema::hasColumn('payments', 'paid_date')) $updates['paid_date'] = null;
             }
 
             if (Schema::hasColumn('payments', 'updated_at')) $updates['updated_at'] = now();
@@ -119,7 +122,7 @@ if (!function_exists('mrpec_cast_payment_value')) {
             if ($value === null) return null;
             return Carbon::parse((string) $value)->toDateString();
         }
-        if ($field === 'amount') return $value === null ? null : (float) str_replace(',', '', (string) $value);
+        if (in_array($field, ['amount', 'paid_amount'], true)) return $value === null ? null : (float) str_replace(',', '', (string) $value);
         if (in_array($field, ['contract_id', 'sequence', 'rental_period_days'], true)) return $value === null ? null : (int) $value;
         return $value;
     }
@@ -143,9 +146,26 @@ if (!function_exists('mrpec_update_payment')) {
             $payload = $request->input('fields', $request->all());
             unset($payload['_auth_user'], $payload['status']);
             $updates = [];
+            $writtenPaidAmount = null;
+
             foreach ($editable as $field) {
-                if (array_key_exists($field, $payload)) $updates[$field] = mrpec_cast_payment_value($field, $payload[$field]);
+                if (!array_key_exists($field, $payload)) continue;
+
+                if ($field === 'amount') {
+                    // في شاشة تفاصيل العقد: المبلغ المكتوب عند الضغط على حفظ يعتبر مبلغًا مدفوعًا، وليس تعديلًا لقيمة القسط الأصلية.
+                    $writtenPaidAmount = mrpec_cast_payment_value('paid_amount', $payload[$field]);
+                    continue;
+                }
+
+                $updates[$field] = mrpec_cast_payment_value($field, $payload[$field]);
             }
+
+            if ($writtenPaidAmount !== null) {
+                if (Schema::hasColumn('payments', 'paid_amount')) $updates['paid_amount'] = $writtenPaidAmount;
+                if (Schema::hasColumn('payments', 'paid_date')) $updates['paid_date'] = now()->toDateString();
+                if (Schema::hasColumn('payments', 'status')) $updates['status'] = 'paid';
+            }
+
             if (!$updates) return response()->json(['message' => 'لا توجد حقول قابلة للتحديث.'], 422);
             if (Schema::hasColumn('payments', 'updated_at')) $updates['updated_at'] = now();
 
@@ -155,7 +175,7 @@ if (!function_exists('mrpec_update_payment')) {
             $fresh = Payment::find($payment->id);
 
             return response()->json([
-                'message' => 'تم حفظ القسط وإعادة حساب المدفوع والمتأخر حسب المجموع التراكمي.',
+                'message' => 'تم اعتماد المبلغ كدفعة مدفوعة وإعادة حساب المدفوع والمتأخر حسب المجموع التراكمي.',
                 'item' => $fresh,
             ]);
         } catch (Throwable $e) {
