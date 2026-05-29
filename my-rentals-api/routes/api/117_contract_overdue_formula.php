@@ -12,13 +12,6 @@ if (!function_exists('mrco_n')) {
     }
 }
 
-if (!function_exists('mrco_s')) {
-    function mrco_s($v): string
-    {
-        return trim(mb_strtolower((string) ($v ?? '')));
-    }
-}
-
 if (!function_exists('mrco_amt')) {
     function mrco_amt($p): float
     {
@@ -29,10 +22,9 @@ if (!function_exists('mrco_amt')) {
 if (!function_exists('mrco_paid')) {
     function mrco_paid($p): float
     {
-        $paid = mrco_n($p->paid_amount ?? 0);
-        if ($paid > 0) return $paid;
-        if (!empty($p->paid_date)) return mrco_amt($p);
-        return in_array(mrco_s($p->status ?? null), ['paid', 'مدفوع', 'مدفوعة', 'مسدد'], true) ? mrco_amt($p) : 0.0;
+        // المدفوعات الفعلية هي فقط ما تم حفظه يدويًا على البطاقة أو عبر زر دفع.
+        // لا نعتمد الحالة paid وحدها حتى لا تتحول الأقساط المغطاة حسابيًا إلى مدفوعات فعلية جديدة.
+        return max(0.0, mrco_n($p->paid_amount ?? 0));
     }
 }
 
@@ -48,40 +40,55 @@ if (!function_exists('mrco_apply_contract_calc')) {
     {
         $payments = $contract->payments ? $contract->payments->sortBy([['due_date', 'asc'], ['id', 'asc']])->values() : collect();
         $today = now()->toDateString();
-        $dueTotal = $payments->filter(fn ($p) => preg_match('/^\d{4}-\d{2}-\d{2}$/', mrco_due($p)) && mrco_due($p) <= $today)->sum(fn ($p) => mrco_amt($p));
+        $dueTotal = $payments
+            ->filter(fn ($p) => preg_match('/^\d{4}-\d{2}-\d{2}$/', mrco_due($p)) && mrco_due($p) <= $today)
+            ->sum(fn ($p) => mrco_amt($p));
         $paidTotal = $payments->sum(fn ($p) => mrco_paid($p));
         $lateAmount = max(0.0, $dueTotal - $paidTotal);
         $payValue = 0.0;
-        foreach ($payments as $p) { $a = mrco_amt($p); if ($a > 0) { $payValue = $a; break; } }
+
+        foreach ($payments as $p) {
+            $a = mrco_amt($p);
+            if ($a > 0) {
+                $payValue = $a;
+                break;
+            }
+        }
+
         $lateCount = ($lateAmount > 0 && $payValue > 0) ? (int) ceil($lateAmount / $payValue) : 0;
-        $remainingPaid = $paidTotal;
-        $remainingLate = $lateAmount;
+        $remainingPaidForDisplay = $paidTotal;
+        $remainingLateForDisplay = $lateAmount;
         $markedLate = 0;
 
         foreach ($payments as $p) {
             $amount = mrco_amt($p);
+            $actualPaidOnThisCard = mrco_paid($p);
             $due = mrco_due($p);
             $isDue = preg_match('/^\d{4}-\d{2}-\d{2}$/', $due) && $due <= $today;
-            if ($amount > 0 && $remainingPaid >= $amount) {
+
+            if ($amount > 0 && $remainingPaidForDisplay >= $amount) {
                 $p->setAttribute('status', 'paid');
                 $p->setAttribute('badge', 'مدفوعة');
-                $p->setAttribute('paid_amount', $amount);
+                $p->setAttribute('display_amount', $amount);
                 $p->setAttribute('remaining_amount', 0);
-                $remainingPaid -= $amount;
-            } elseif ($isDue && $markedLate < $lateCount && $remainingLate > 0) {
-                $rem = min($amount > 0 ? $amount : $remainingLate, $remainingLate);
+                $p->setAttribute('actual_paid_amount', $actualPaidOnThisCard);
+                $remainingPaidForDisplay -= $amount;
+            } elseif ($isDue && $markedLate < $lateCount && $remainingLateForDisplay > 0) {
+                $required = min($amount > 0 ? $amount : $remainingLateForDisplay, $remainingLateForDisplay);
                 $p->setAttribute('status', 'overdue');
                 $p->setAttribute('badge', 'متأخرة');
-                $p->setAttribute('paid_amount', max(0, $remainingPaid));
-                $p->setAttribute('remaining_amount', $rem);
-                $remainingPaid = 0;
-                $remainingLate -= $rem;
+                $p->setAttribute('display_amount', $required);
+                $p->setAttribute('remaining_amount', $required);
+                $p->setAttribute('actual_paid_amount', $actualPaidOnThisCard);
+                $remainingPaidForDisplay = 0;
+                $remainingLateForDisplay -= $required;
                 $markedLate++;
             } else {
                 $p->setAttribute('status', 'due');
                 $p->setAttribute('badge', 'مستحقة');
-                $p->setAttribute('paid_amount', 0);
+                $p->setAttribute('display_amount', $amount);
                 $p->setAttribute('remaining_amount', $amount);
+                $p->setAttribute('actual_paid_amount', $actualPaidOnThisCard);
             }
         }
 
