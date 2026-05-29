@@ -20,6 +20,9 @@ type RelatedPayment = {
   subtitle?: string;
   badge?: string | null;
   amount?: number | string | null;
+  display_amount?: number | string | null;
+  remaining_amount?: number | string | null;
+  paid_amount?: number | string | null;
   due_date?: string | null;
   paid_date?: string | null;
   deadline_date?: string | null;
@@ -107,12 +110,16 @@ export default function ContractPaymentCard({ item, index, expanded, onToggle, o
 
   useEffect(() => {
     setLocalItem(item);
-  }, [item.id, item.amount, item.notes, item.status, item.badge, item.paid_date, item.due_date, item.title, item.subtitle]);
+  }, [item.id, item.amount, item.display_amount, item.remaining_amount, item.paid_amount, item.notes, item.status, item.badge, item.paid_date, item.due_date, item.title, item.subtitle]);
 
   const displayItem = localItem;
   const bottomSafeGap = Math.max(insets.bottom, 10) + 48;
   const meta = useMemo(() => statusMeta(displayItem), [displayItem.status, displayItem.badge]);
   const isPaid = statusKey(displayItem) === "paid";
+  const shownAmount = isPaid
+    ? (displayItem.paid_amount ?? displayItem.display_amount ?? displayItem.amount)
+    : (displayItem.display_amount ?? displayItem.remaining_amount ?? displayItem.amount);
+  const originalAmount = displayItem.amount;
   const dueDate = displayItem.due_date || displayItem.title || "-";
   const paidDate = displayItem.paid_date || "لم تسجل بعد";
   const deadlineDate = displayItem.deadline_date || displayItem.subtitle || "";
@@ -134,7 +141,7 @@ export default function ContractPaymentCard({ item, index, expanded, onToggle, o
   }
 
   async function payFullAmount() {
-    const fullAmount = amountInput(displayItem.amount);
+    const fullAmount = amountInput(shownAmount);
     try {
       setSaving(true);
       await apiPostAny(
@@ -146,9 +153,11 @@ export default function ContractPaymentCard({ item, index, expanded, onToggle, o
         status: "paid",
         badge: "مدفوعة",
         paid_date: todayText(),
+        paid_amount: fullAmount,
+        display_amount: fullAmount,
       }));
       refreshFromServer();
-      Alert.alert("تم", "تم اعتماد قيمة الدفعة كاملة كدفعة مستلمة");
+      Alert.alert("تم", "تم اعتماد قيمة الدفعة المطلوبة كدفعة مستلمة");
     } catch (e) {
       Alert.alert("خطأ", e instanceof Error ? e.message : "تعذر تسجيل الدفع");
     } finally {
@@ -179,6 +188,8 @@ export default function ContractPaymentCard({ item, index, expanded, onToggle, o
         status: numericAmount > 0 ? "paid" : current.status,
         badge: numericAmount > 0 ? "مدفوعة" : current.badge,
         paid_date: numericAmount > 0 ? todayText() : current.paid_date,
+        paid_amount: numericAmount > 0 ? String(numericAmount) : current.paid_amount,
+        display_amount: numericAmount > 0 ? String(numericAmount) : current.display_amount,
       }));
       setSheetVisible(false);
       refreshFromServer();
@@ -226,7 +237,7 @@ export default function ContractPaymentCard({ item, index, expanded, onToggle, o
         <View style={styles.compactBodyRow}>
           <View style={styles.amountPanel}>
             <Text style={styles.amountLabel}>{isPaid ? "المسدد" : "المطلوب"}</Text>
-            <Text numberOfLines={1} adjustsFontSizeToFit style={styles.amountValue}>{amountText(displayItem.amount)}</Text>
+            <Text numberOfLines={1} adjustsFontSizeToFit style={styles.amountValue}>{amountText(shownAmount)}</Text>
           </View>
           <View style={styles.infoBlock}>
             <Text style={styles.dateText} numberOfLines={1}>استحقاق: {dueDate}</Text>
@@ -273,15 +284,15 @@ export default function ContractPaymentCard({ item, index, expanded, onToggle, o
                   <Text style={[styles.sheetStatus, { backgroundColor: meta.bg, color: meta.fg }]}>{meta.label}</Text>
                   <Text style={styles.summaryLabel}>قيمة القسط الأصلية</Text>
                 </View>
-                <Text style={styles.summaryAmount}>{amountText(displayItem.amount)}</Text>
+                <Text style={styles.summaryAmount}>{amountText(originalAmount)}</Text>
               </View>
 
               <View style={styles.quickActions}>
                 <TouchableOpacity style={styles.helperButton} onPress={() => setAmount("0")} activeOpacity={0.85}>
                   <Text style={styles.helperText}>تصفير المبلغ</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.helperButton} onPress={() => setAmount(amountInput(displayItem.amount))} activeOpacity={0.85}>
-                  <Text style={styles.helperText}>اعتماد مبلغ القسط</Text>
+                <TouchableOpacity style={styles.helperButton} onPress={() => setAmount(amountInput(shownAmount))} activeOpacity={0.85}>
+                  <Text style={styles.helperText}>اعتماد المطلوب</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.helperButton} onPress={() => setNote("تم السداد عبر حوالة بنكية.")} activeOpacity={0.85}>
                   <Text style={styles.helperText}>ملاحظة جاهزة</Text>
@@ -313,17 +324,7 @@ export default function ContractPaymentCard({ item, index, expanded, onToggle, o
 }
 
 const styles = StyleSheet.create({
-  card: {
-    borderRadius: 16,
-    padding: 9,
-    marginTop: 7,
-    borderWidth: 1,
-    shadowColor: "#111827",
-    shadowOpacity: 0.035,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 1,
-  },
+  card: { borderRadius: 16, padding: 9, marginTop: 7, borderWidth: 1, shadowColor: "#111827", shadowOpacity: 0.035, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 1 },
   compactTopRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 6 },
   statusWrap: { flexDirection: "row", alignItems: "center", gap: 6 },
   statusChip: { overflow: "hidden", borderRadius: 999, paddingHorizontal: 8, paddingVertical: 3, fontSize: 10, fontWeight: "900" },
