@@ -20,6 +20,9 @@ type PaymentRow = {
   id: number;
   title?: string;
   amount?: number | string | null;
+  display_amount?: number | string | null;
+  remaining_amount?: number | string | null;
+  paid_amount?: number | string | null;
   due_date?: string | null;
   paid_date?: string | null;
   deadline_date?: string | null;
@@ -41,6 +44,7 @@ type ContractRecord = {
   last_payment_amount?: number | string | null;
   tenant?: { name?: string | null } | null;
   unit?: { unit_number?: string | null; property?: { name?: string | null } | null } | null;
+  payments?: PaymentRow[];
 };
 
 function firstParam(value: string | string[] | undefined) {
@@ -50,6 +54,13 @@ function firstParam(value: string | string[] | undefined) {
 
 function responseList(payload: any) {
   return Array.isArray(payload?.data) ? payload.data : Array.isArray(payload) ? payload : [];
+}
+
+function contractPayload(payload: any, expectedId: string): ContractRecord | null {
+  const candidate = payload?.contract || payload?.data || payload;
+  if (!candidate || Array.isArray(candidate) || typeof candidate !== "object") return null;
+  if (String(candidate.id || "") !== String(expectedId)) return null;
+  return candidate as ContractRecord;
 }
 
 function onlyDate(value: unknown) {
@@ -85,6 +96,14 @@ function paymentTitle(payment: PaymentRow, index: number) {
   return payment.title || `الدفعة ${index + 1}`;
 }
 
+function normalizePayment(payment: PaymentRow, index: number): PaymentRow {
+  return {
+    ...payment,
+    entity: payment.entity || "payment",
+    title: payment.title || `الدفعة ${index + 1}`,
+  };
+}
+
 export default function ContractEditScreen() {
   const params = useLocalSearchParams<{ id: string; return_to?: string }>();
   const id = String(params.id || "");
@@ -104,18 +123,23 @@ export default function ContractEditScreen() {
   async function load() {
     try {
       setLoading(true);
-      const [contractsResult, relatedResult] = await Promise.all([
-        apiGet("/contracts").catch(() => []),
-        apiGet(`/relation-manager/related/contract/${id}`),
+      const [contractResult, relatedResult] = await Promise.all([
+        apiGet(`/contracts/${id}`).catch(() => null),
+        apiGet(`/relation-manager/related/contract/${id}`).catch(() => null),
       ]);
-      const list = responseList(contractsResult) as ContractRecord[];
-      const current = list.find((item) => String(item.id) === String(id)) || null;
+
+      const current = contractPayload(contractResult, id);
+      const directPayments = Array.isArray(current?.payments)
+        ? current.payments.map((payment, index) => normalizePayment(payment, index))
+        : [];
       const relatedPayments = ((relatedResult as any)?.sections || [])
         .flatMap((section: any) => section.items || [])
-        .filter((item: PaymentRow) => String(item.entity || "").toLowerCase() === "payment") as PaymentRow[];
+        .filter((item: PaymentRow) => String(item.entity || "").toLowerCase() === "payment")
+        .map((payment: PaymentRow, index: number) => normalizePayment(payment, index)) as PaymentRow[];
+      const loadedPayments = directPayments.length > 0 ? directPayments : relatedPayments;
 
       setContract(current);
-      setPayments(relatedPayments);
+      setPayments(loadedPayments);
       setForm({
         rent_amount: String(current?.rent_amount ?? ""),
         total_contract_value: String(current?.total_contract_value ?? current?.rent_amount ?? ""),
@@ -124,7 +148,7 @@ export default function ContractEditScreen() {
       });
 
       const nextPaymentForms: Record<string, { amount: string; due_date: string; paid_date: string; status: string; notes: string }> = {};
-      relatedPayments.forEach((payment) => {
+      loadedPayments.forEach((payment) => {
         nextPaymentForms[String(payment.id)] = {
           amount: String(payment.amount ?? ""),
           due_date: onlyDate(payment.due_date),
@@ -179,10 +203,12 @@ export default function ContractEditScreen() {
         const row = paymentForms[String(payment.id)];
         if (!row) continue;
         await apiPost(`/edit-delete-center/payments/${payment.id}/update`, {
+          _schedule_edit: true,
           fields: {
+            _schedule_edit: true,
             amount: row.amount,
             due_date: row.due_date,
-            paid_date: row.status === "paid" ? row.paid_date : "",
+            paid_date: row.paid_date,
             status: row.status,
             notes: row.notes,
           },
