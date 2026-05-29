@@ -34,8 +34,8 @@ function InfoItem({ icon, label, value }: { icon: keyof typeof Ionicons.glyphMap
   return <View style={styles.infoItem}><View style={styles.infoIconBox}><Ionicons name={icon} size={17} color="#D9FBEF" /></View><View style={styles.infoTextBox}><Text style={styles.infoLabel}>{label}</Text><Text numberOfLines={1} style={styles.infoValue}>{valueOrDash(value)}</Text></View></View>;
 }
 
-function SummaryCard({ icon, label, value }: { icon: keyof typeof MaterialCommunityIcons.glyphMap; label: string; value: string }) {
-  return <View style={styles.summaryCard}><View style={styles.summaryIconBox}><MaterialCommunityIcons name={icon} size={23} color="#0F766E" /></View><View style={styles.summaryTextBox}><Text style={styles.summaryLabel}>{label}</Text><Text style={styles.summaryValue}>{value}</Text></View></View>;
+function SummaryCard({ icon, label, value, danger = false }: { icon: keyof typeof MaterialCommunityIcons.glyphMap; label: string; value: string; danger?: boolean }) {
+  return <View style={[styles.summaryCard, danger ? styles.summaryCardDanger : null]}><View style={[styles.summaryIconBox, danger ? styles.summaryIconDanger : null]}><MaterialCommunityIcons name={icon} size={23} color={danger ? "#DC2626" : "#0F766E"} /></View><View style={styles.summaryTextBox}><Text style={[styles.summaryLabel, danger ? styles.summaryLabelDanger : null]}>{label}</Text><Text style={[styles.summaryValue, danger ? styles.summaryValueDanger : null]}>{value}</Text></View></View>;
 }
 
 function StatCard({ icon, label, value }: { icon: keyof typeof MaterialCommunityIcons.glyphMap; label: string; value: string }) {
@@ -116,7 +116,7 @@ export default function OwnerAssetsDashboardScreen({ id }: { id: string | number
         {loading ? <View style={styles.stateBox}><ActivityIndicator /><Text style={styles.stateText}>جاري تحميل تفاصيل الأملاك...</Text></View> : null}
         {error ? <View style={styles.errorBox}><Text style={styles.errorTitle}>تعذر تحميل تفاصيل الأملاك</Text><Text style={styles.errorText}>{error}</Text><TouchableOpacity style={styles.retryButton} onPress={() => load(false)}><Text style={styles.retryText}>إعادة المحاولة</Text></TouchableOpacity></View> : null}
 
-        {!loading && !error && activeTab === "summary" ? <View><View style={styles.sectionHeader}><Text style={styles.sectionTitle}>ملخص المالك</Text><Text style={styles.sectionSubtitle}>إحصائيات خاصة بأملاك هذا المالك فقط</Text></View><View style={styles.statsGrid}><StatCard icon="office-building" label="العقارات" value={count(summary.properties_count ?? properties.length)} /><StatCard icon="home-city-outline" label="الوحدات" value={count(summary.units_count ?? units.length)} /><StatCard icon="file-document-check-outline" label="العقود النشطة" value={count(summary.active_contracts_count)} /><SummaryCard icon="cash-check" label="المحصل" value={money(summary.paid_income)} /><SummaryCard icon="cash-clock" label="المستحق" value={money(summary.due_income)} /><SummaryCard icon="cash-alert" label="الدفعات المتأخرة" value={money(summary.overdue_income)} /><SummaryCard icon="chart-line" label="الصافي" value={money(summary.net_income)} /></View></View> : null}
+        {!loading && !error && activeTab === "summary" ? <View><View style={styles.sectionHeader}><Text style={styles.sectionTitle}>ملخص المالك</Text><Text style={styles.sectionSubtitle}>إحصائيات خاصة بأملاك هذا المالك فقط</Text></View><View style={styles.statsGrid}><StatCard icon="office-building" label="العقارات" value={count(summary.properties_count ?? properties.length)} /><StatCard icon="home-city-outline" label="الوحدات" value={count(summary.units_count ?? units.length)} /><StatCard icon="file-document-check-outline" label="العقود النشطة" value={count(summary.active_contracts_count)} /><SummaryCard icon="cash-check" label="المحصل" value={money(summary.paid_income)} /><SummaryCard icon="cash-clock" label="المستحق" value={money(summary.due_income)} /><SummaryCard icon="cash-alert" label="الدفعات المتأخرة" value={money(summary.overdue_income)} danger={asNumber(summary.overdue_income) > 0} /><SummaryCard icon="chart-line" label="الصافي" value={money(summary.net_income)} /></View></View> : null}
 
         {!loading && !error && activeTab === "properties" ? <View>
           <TouchableOpacity style={styles.addPropertyButton} onPress={openAddPrivateProperty} activeOpacity={0.88} accessibilityRole="button" accessibilityLabel="إضافة عقار للمالك">
@@ -191,10 +191,14 @@ const styles = StyleSheet.create({
   statValue: { color: "#111827", fontWeight: "900", fontSize: 21, textAlign: "center" },
   statLabel: { color: "#7A766F", fontWeight: "800", fontSize: 12, marginTop: 5, textAlign: "center" },
   summaryCard: { width: "48.6%", backgroundColor: "#fff", borderRadius: 18, padding: 12, borderWidth: 1, borderColor: "#E7E9EA", minHeight: 78, flexDirection: "row-reverse", alignItems: "center", gap: 10 },
+  summaryCardDanger: { backgroundColor: "#FEF2F2", borderColor: "#FECACA" },
   summaryIconBox: { width: 43, height: 43, borderRadius: 16, backgroundColor: "#ECFDF5", alignItems: "center", justifyContent: "center" },
+  summaryIconDanger: { backgroundColor: "#FEE2E2" },
   summaryTextBox: { flex: 1, alignItems: "flex-end" },
   summaryLabel: { color: "#7A766F", fontWeight: "800", fontSize: 12 },
+  summaryLabelDanger: { color: "#991B1B" },
   summaryValue: { color: "#111827", fontWeight: "900", fontSize: 15, marginTop: 4, textAlign: "right" },
+  summaryValueDanger: { color: "#DC2626" },
   propertyCard: { backgroundColor: "#fff", borderRadius: 24, padding: 14, marginBottom: 12, borderWidth: 1, borderColor: "#E7E9EA", shadowColor: "#0F172A", shadowOpacity: 0.045, shadowRadius: 12, shadowOffset: { width: 0, height: 5 }, elevation: 2 },
   propertyHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
   openHintIcon: { width: 43, height: 43, borderRadius: 17, backgroundColor: "#ECFDF5", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#A7F3D0" },
