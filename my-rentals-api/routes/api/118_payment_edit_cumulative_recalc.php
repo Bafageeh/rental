@@ -15,13 +15,6 @@ if (!function_exists('mrpec_num')) {
     }
 }
 
-if (!function_exists('mrpec_status')) {
-    function mrpec_status($value): string
-    {
-        return trim(mb_strtolower((string) ($value ?? '')));
-    }
-}
-
 if (!function_exists('mrpec_amount')) {
     function mrpec_amount($payment): float
     {
@@ -32,10 +25,9 @@ if (!function_exists('mrpec_amount')) {
 if (!function_exists('mrpec_paid_amount')) {
     function mrpec_paid_amount($payment): float
     {
-        $paid = mrpec_num($payment->paid_amount ?? 0);
-        if ($paid > 0) return $paid;
-        if (!empty($payment->paid_date)) return mrpec_amount($payment);
-        return in_array(mrpec_status($payment->status ?? null), ['paid', 'مدفوع', 'مدفوعة', 'مسدد'], true) ? mrpec_amount($payment) : 0.0;
+        // المدفوع الفعلي فقط: ما تم حفظه من البطاقة أو زر دفع.
+        // لا نعتمد status=paid وحدها؛ لأنها قد تكون نتيجة عرض حسابي فقط.
+        return max(0.0, mrpec_num($payment->paid_amount ?? 0));
     }
 }
 
@@ -76,8 +68,8 @@ if (!function_exists('mrpec_sync_contract')) {
         }
 
         $lateCount = ($lateAmount > 0 && $paymentValue > 0) ? (int) ceil($lateAmount / $paymentValue) : 0;
-        $remainingPaid = $paidTotal;
-        $remainingLate = $lateAmount;
+        $remainingPaidForDisplay = $paidTotal;
+        $remainingLateForDisplay = $lateAmount;
         $markedLate = 0;
 
         foreach ($payments as $payment) {
@@ -86,26 +78,22 @@ if (!function_exists('mrpec_sync_contract')) {
             $isDue = preg_match('/^\d{4}-\d{2}-\d{2}$/', $dueDate) && $dueDate <= $today;
             $updates = [];
 
-            if ($amount > 0 && $remainingPaid >= $amount) {
+            if ($amount > 0 && $remainingPaidForDisplay >= $amount) {
+                // هذه حالة عرض فقط: القسط مغطى من إجمالي المدفوعات.
+                // لا نكتب paid_amount جديد ولا paid_date جديد هنا.
                 if (Schema::hasColumn('payments', 'status')) $updates['status'] = 'paid';
-                if (Schema::hasColumn('payments', 'paid_amount')) $updates['paid_amount'] = $amount;
                 if (Schema::hasColumn('payments', 'remaining_amount')) $updates['remaining_amount'] = 0;
-                if (Schema::hasColumn('payments', 'paid_date') && empty($payment->paid_date)) $updates['paid_date'] = $today;
-                $remainingPaid -= $amount;
-            } elseif ($isDue && $markedLate < $lateCount && $remainingLate > 0) {
-                $remaining = min($amount > 0 ? $amount : $remainingLate, $remainingLate);
+                $remainingPaidForDisplay -= $amount;
+            } elseif ($isDue && $markedLate < $lateCount && $remainingLateForDisplay > 0) {
+                $remaining = min($amount > 0 ? $amount : $remainingLateForDisplay, $remainingLateForDisplay);
                 if (Schema::hasColumn('payments', 'status')) $updates['status'] = 'overdue';
-                if (Schema::hasColumn('payments', 'paid_amount')) $updates['paid_amount'] = max(0, $remainingPaid);
                 if (Schema::hasColumn('payments', 'remaining_amount')) $updates['remaining_amount'] = $remaining;
-                if (Schema::hasColumn('payments', 'paid_date') && $remainingPaid <= 0) $updates['paid_date'] = null;
-                $remainingPaid = 0;
-                $remainingLate -= $remaining;
+                $remainingPaidForDisplay = 0;
+                $remainingLateForDisplay -= $remaining;
                 $markedLate++;
             } else {
                 if (Schema::hasColumn('payments', 'status')) $updates['status'] = 'due';
-                if (Schema::hasColumn('payments', 'paid_amount')) $updates['paid_amount'] = 0;
                 if (Schema::hasColumn('payments', 'remaining_amount')) $updates['remaining_amount'] = $amount;
-                if (Schema::hasColumn('payments', 'paid_date')) $updates['paid_date'] = null;
             }
 
             if (Schema::hasColumn('payments', 'updated_at')) $updates['updated_at'] = now();
@@ -152,7 +140,7 @@ if (!function_exists('mrpec_update_payment')) {
                 if (!array_key_exists($field, $payload)) continue;
 
                 if ($field === 'amount') {
-                    // في شاشة تفاصيل العقد: المبلغ المكتوب عند الضغط على حفظ يعتبر مبلغًا مدفوعًا، وليس تعديلًا لقيمة القسط الأصلية.
+                    // في شاشة تفاصيل العقد: المبلغ المكتوب أو زر دفع يعتبر مبلغًا مدفوعًا فعليًا.
                     $writtenPaidAmount = mrpec_cast_payment_value('paid_amount', $payload[$field]);
                     continue;
                 }
@@ -160,7 +148,7 @@ if (!function_exists('mrpec_update_payment')) {
                 $updates[$field] = mrpec_cast_payment_value($field, $payload[$field]);
             }
 
-            if ($writtenPaidAmount !== null) {
+            if ($writtenPaidAmount !== null && $writtenPaidAmount > 0) {
                 if (Schema::hasColumn('payments', 'paid_amount')) $updates['paid_amount'] = $writtenPaidAmount;
                 if (Schema::hasColumn('payments', 'paid_date')) $updates['paid_date'] = now()->toDateString();
                 if (Schema::hasColumn('payments', 'status')) $updates['status'] = 'paid';
@@ -175,7 +163,7 @@ if (!function_exists('mrpec_update_payment')) {
             $fresh = Payment::find($payment->id);
 
             return response()->json([
-                'message' => 'تم اعتماد المبلغ كدفعة مدفوعة وإعادة حساب المدفوع والمتأخر حسب المجموع التراكمي.',
+                'message' => 'تم اعتماد الدفعة الفعلية فقط وإعادة حساب المطلوب والمتأخر.',
                 'item' => $fresh,
             ]);
         } catch (Throwable $e) {
