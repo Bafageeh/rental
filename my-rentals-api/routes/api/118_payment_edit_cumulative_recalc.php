@@ -15,6 +15,13 @@ if (!function_exists('mrpec_num')) {
     }
 }
 
+if (!function_exists('mrpec_status')) {
+    function mrpec_status($value): string
+    {
+        return trim(mb_strtolower((string) ($value ?? '')));
+    }
+}
+
 if (!function_exists('mrpec_amount')) {
     function mrpec_amount($payment): float
     {
@@ -22,10 +29,20 @@ if (!function_exists('mrpec_amount')) {
     }
 }
 
+if (!function_exists('mrpec_is_explicitly_paid')) {
+    function mrpec_is_explicitly_paid($payment): bool
+    {
+        if (mrpec_num($payment->paid_amount ?? 0) > 0) return true;
+        return !empty($payment->paid_date) && in_array(mrpec_status($payment->status ?? null), ['paid', 'مدفوع', 'مدفوعة', 'مسدد'], true);
+    }
+}
+
 if (!function_exists('mrpec_paid_amount')) {
     function mrpec_paid_amount($payment): float
     {
-        return max(0.0, mrpec_num($payment->paid_amount ?? 0));
+        $paid = mrpec_num($payment->paid_amount ?? 0);
+        if ($paid > 0) return $paid;
+        return mrpec_is_explicitly_paid($payment) ? mrpec_amount($payment) : 0.0;
     }
 }
 
@@ -76,7 +93,12 @@ if (!function_exists('mrpec_sync_contract')) {
             $isDue = preg_match('/^\d{4}-\d{2}-\d{2}$/', $dueDate) && $dueDate <= $today;
             $updates = [];
 
-            if ($amount > 0 && $remainingPaidForDisplay >= $amount) {
+            // الدفعة التي تم اعتمادها مسبقًا تبقى مدفوعة ولا تتحول إلى متأخرة عند تعديل جدول العقد.
+            if (mrpec_is_explicitly_paid($payment)) {
+                if (Schema::hasColumn('payments', 'status')) $updates['status'] = 'paid';
+                if (Schema::hasColumn('payments', 'remaining_amount')) $updates['remaining_amount'] = 0;
+                $remainingPaidForDisplay = max(0, $remainingPaidForDisplay - max($amount, mrpec_paid_amount($payment)));
+            } elseif ($amount > 0 && $remainingPaidForDisplay >= $amount) {
                 if (Schema::hasColumn('payments', 'status')) $updates['status'] = 'paid';
                 if (Schema::hasColumn('payments', 'remaining_amount')) $updates['remaining_amount'] = 0;
                 $remainingPaidForDisplay -= $amount;
@@ -128,6 +150,7 @@ if (!function_exists('mrpec_update_payment')) {
             $payment = $query->where('id', $id)->first();
             if (!$payment) return response()->json(['message' => 'السجل غير موجود أو خارج صلاحياتك.'], 404);
 
+            $wasPaid = mrpec_is_explicitly_paid($payment);
             $payload = $request->input('fields', $request->all());
             unset($payload['_auth_user'], $payload['_schedule_edit'], $payload['schedule_edit']);
             $updates = [];
@@ -141,6 +164,11 @@ if (!function_exists('mrpec_update_payment')) {
                     continue;
                 }
 
+                // تعديل جدول العقد لا يسمح بإلغاء تاريخ السداد أو تغيير حالة الدفعات المدفوعة.
+                if ($isScheduleEdit && $wasPaid && in_array($field, ['paid_date'], true)) {
+                    continue;
+                }
+
                 if ($field === 'paid_date' && !$isScheduleEdit) {
                     continue;
                 }
@@ -149,7 +177,11 @@ if (!function_exists('mrpec_update_payment')) {
             }
 
             if ($isScheduleEdit) {
-                if (array_key_exists('status', $payload) && Schema::hasColumn('payments', 'status')) {
+                if ($wasPaid) {
+                    if (Schema::hasColumn('payments', 'status')) $updates['status'] = 'paid';
+                    if (Schema::hasColumn('payments', 'remaining_amount')) $updates['remaining_amount'] = 0;
+                    // لا نلمس paid_amount ولا paid_date للدفعة المدفوعة.
+                } elseif (array_key_exists('status', $payload) && Schema::hasColumn('payments', 'status')) {
                     $updates['status'] = (string) $payload['status'];
                 }
             } elseif ($writtenPaidAmount !== null && $writtenPaidAmount > 0) {
@@ -167,7 +199,7 @@ if (!function_exists('mrpec_update_payment')) {
             $fresh = Payment::find($payment->id);
 
             return response()->json([
-                'message' => $isScheduleEdit ? 'تم حفظ قيم جدول الدفعات وإعادة حساب المطلوب والمتأخر.' : 'تم اعتماد الدفعة الفعلية فقط وإعادة حساب المطلوب والمتأخر.',
+                'message' => $isScheduleEdit ? 'تم حفظ قيم جدول الدفعات مع الحفاظ على الدفعات المدفوعة.' : 'تم اعتماد الدفعة الفعلية فقط وإعادة حساب المطلوب والمتأخر.',
                 'item' => $fresh,
             ]);
         } catch (Throwable $e) {
