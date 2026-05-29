@@ -428,7 +428,7 @@ export default function PropertyDetailScreen() {
         {activeTab === 'stats' ? (
           <View style={styles.sectionCard}>
             <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>إحصائيات العقار</Text>
+              <Text style={styles.sectionTitle}>الملخص</Text>
               <Text style={styles.sectionSubtitle}>ملخص سريع عن هذا العقار فقط، والدفعات المتأخرة محسوبة من العقود النشطة فقط</Text>
             </View>
             <View style={styles.statsGrid}>
