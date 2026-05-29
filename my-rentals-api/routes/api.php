@@ -38,7 +38,7 @@ if (!function_exists('mr_public_file_path_variants')) {
             return [];
         }
 
-        $path = trim(str_replace('\\\\', '/', $path));
+        $path = trim(str_replace('\\', '/', $path));
         $path = preg_replace('#^https?://[^/]+/#i', '', $path) ?: $path;
         $path = preg_replace('#^/?storage/#', '', $path) ?: $path;
         $path = preg_replace('#^/?app/public/#', '', $path) ?: $path;
@@ -182,7 +182,6 @@ Route::middleware(['auth.api', 'api.scope'])->group(function () {
         __DIR__ . '/api/103_property_deed_extract.php',
         __DIR__ . '/api/106_deed_398490000202_fields.php',
         __DIR__ . '/api/104_property_deed_upsert_and_qr.php',
-        // يحمّل أخيرًا ليحسم جدول الحدود للصكوك التي خرج نصها مقلوبًا.
         __DIR__ . '/api/110_verified_deed_boundaries.php',
         __DIR__ . '/api/019_payment_status_auto_edit_override.php',
         __DIR__ . '/api/019b_payment_cancel_instead_of_delete.php',
@@ -196,6 +195,8 @@ Route::middleware(['auth.api', 'api.scope'])->group(function () {
         __DIR__ . '/api/111_profile_password.php',
         __DIR__ . '/api/112_profile_properties.php',
         __DIR__ . '/api/113_expense_scope_fix.php',
+        __DIR__ . '/api/115_contracts_unit_lookup_fix.php',
+        __DIR__ . '/api/116_contract_expiry_status.php',
     ] as $routeModule) {
         if (is_file($routeModule)) {
             require $routeModule;
