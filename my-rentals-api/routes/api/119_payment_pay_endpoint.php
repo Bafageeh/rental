@@ -14,6 +14,13 @@ if (!function_exists('mrpay_num')) {
     }
 }
 
+if (!function_exists('mrpay_status')) {
+    function mrpay_status($value): string
+    {
+        return trim(mb_strtolower((string) ($value ?? '')));
+    }
+}
+
 if (!function_exists('mrpay_amount')) {
     function mrpay_amount($payment): float
     {
@@ -24,7 +31,14 @@ if (!function_exists('mrpay_amount')) {
 if (!function_exists('mrpay_paid_amount')) {
     function mrpay_paid_amount($payment): float
     {
-        return max(0.0, mrpay_num($payment->paid_amount ?? 0));
+        $paid = mrpay_num($payment->paid_amount ?? 0);
+        if ($paid > 0) return $paid;
+
+        if (!empty($payment->paid_date) && in_array(mrpay_status($payment->status ?? null), ['paid', 'مدفوع', 'مدفوعة', 'مسدد'], true)) {
+            return mrpay_amount($payment);
+        }
+
+        return 0.0;
     }
 }
 
@@ -111,12 +125,8 @@ if (!function_exists('mrpay_apply_payment')) {
 
         $requested = $request->input('amount', $request->input('paid_amount', $request->input('fields.amount', null)));
         $amount = mrpay_num($requested);
-        if ($amount <= 0) {
-            $amount = mrpay_num($payment->remaining_amount ?? 0);
-        }
-        if ($amount <= 0) {
-            $amount = mrpay_num($payment->amount ?? 0);
-        }
+        if ($amount <= 0) $amount = mrpay_num($payment->remaining_amount ?? 0);
+        if ($amount <= 0) $amount = mrpay_num($payment->amount ?? 0);
         if ($amount <= 0) {
             return response()->json(['message' => 'لا توجد قيمة صالحة لاعتمادها كدفعة.'], 422);
         }
