@@ -189,13 +189,14 @@ function ChoiceGroup({ options, value, onChange, disabled = false }: { options: 
 }
 
 export default function PropertyFormScreen() {
-  const params = useLocalSearchParams<{ id?: string; owner_id?: string; property_type?: string; lock_property_type?: string; source_property_id?: string; source_property_name?: string }>();
+  const params = useLocalSearchParams<{ id?: string; owner_id?: string; property_type?: string; lock_property_type?: string; source_property_id?: string; source_property_name?: string; reset_key?: string }>();
   const id = firstParam(params.id);
   const initialOwnerId = firstParam(params.owner_id);
   const requestedPropertyType = firstParam(params.property_type);
   const lockPropertyType = firstParam(params.lock_property_type) === "1";
   const sourcePropertyId = firstParam(params.source_property_id);
   const sourcePropertyName = firstParam(params.source_property_name);
+  const resetKey = firstParam(params.reset_key);
   const isEdit = Boolean(id);
   const lockedApartmentMode = !isEdit && lockPropertyType && requestedPropertyType === "apartment";
   const isAddingUnderBuilding = lockedApartmentMode && Boolean(sourcePropertyId);
@@ -214,6 +215,11 @@ export default function PropertyFormScreen() {
   const lockNotice = isAddingUnderBuilding
     ? `تنبيه: نوع العقار مثبت على شقة لأن الإضافة تتم تحت عقار${sourcePropertyName ? ` (${sourcePropertyName})` : ""}.`
     : "نوع العقار مثبت على شقة ولا يمكن تغييره من هذا المسار.";
+
+  function resetAddForm() {
+    setForm(emptyForm(initialOwnerId, initialPropertyType));
+    setLoading(false);
+  }
 
   function setField<K extends keyof PropertyForm>(key: K, value: PropertyForm[K]) {
     setForm((previous) => {
@@ -271,11 +277,18 @@ export default function PropertyFormScreen() {
     }
   }
 
-  useEffect(() => { loadProperty(); }, [id]);
   useEffect(() => {
-    if (!lockedApartmentMode) return;
-    setForm((previous) => ({ ...previous, property_type: "apartment", floors_count: "", parking_spots_count: "", elevators_count: "" }));
-  }, [lockedApartmentMode]);
+    if (isEdit) {
+      loadProperty();
+      return;
+    }
+    resetAddForm();
+  }, [id, initialOwnerId, requestedPropertyType, lockPropertyType, sourcePropertyId, resetKey]);
+
+  useEffect(() => {
+    if (!lockedApartmentMode || isEdit) return;
+    setForm(emptyForm(initialOwnerId, "apartment"));
+  }, [lockedApartmentMode, initialOwnerId, sourcePropertyId, resetKey]);
 
   async function save() {
     if (!form.name.trim()) return Alert.alert("تنبيه", isApartment ? "اسم الشقة مطلوب." : "اسم العقار مطلوب.");
@@ -310,7 +323,7 @@ export default function PropertyFormScreen() {
       const propertyId = Number(json?.property?.id || 0);
       Alert.alert("تم", isApartment ? "تم إنشاء الشقة." : "تم إنشاء العقار يدويًا.", [
         { text: isApartment ? "عرض الشقة" : "عرض العقار", onPress: () => propertyId ? router.replace(`/property/${propertyId}` as never) : router.replace("/properties" as never) },
-        { text: isApartment ? "إضافة شقة أخرى" : "إضافة آخر", onPress: () => setForm(emptyForm(initialOwnerId, initialPropertyType)) },
+        { text: isApartment ? "إضافة شقة أخرى" : "إضافة آخر", onPress: () => resetAddForm() },
       ]);
     } catch (e) {
       Alert.alert("تعذر الحفظ", e instanceof Error ? e.message : "حدث خطأ غير متوقع");
