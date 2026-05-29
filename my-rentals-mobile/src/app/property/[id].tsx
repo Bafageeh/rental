@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useDetail } from '../../hooks/useCrud';
-import { apiPost } from '../../lib/api';
+import { apiGet, apiPost } from '../../lib/api';
 import { smartBack } from '@/lib/navigationHistory';
 
 type PropertyTabKey = 'stats' | 'details' | 'units';
@@ -76,6 +76,21 @@ type PropertyDetail = {
   expenses?: Array<{ id: number; amount?: number | string | null; title?: string | null }>;
 };
 
+type PaymentItem = {
+  id?: number | string | null;
+  amount?: number | string | null;
+  remaining_amount?: number | string | null;
+  paid_amount?: number | string | null;
+  due_date?: string | null;
+  status?: string | null;
+};
+
+type ContractItem = {
+  id: number;
+  status?: string | null;
+  payments?: PaymentItem[];
+};
+
 const propertyTabs: Array<{ key: PropertyTabKey; label: string; icon: keyof typeof Ionicons.glyphMap }> = [
   { key: 'stats', label: 'إحصائيات', icon: 'stats-chart-outline' },
   { key: 'details', label: 'تفاصيل', icon: 'list-outline' },
@@ -132,6 +147,47 @@ function unitContractsCount(unit: PropertyUnit) {
 
 function queryValue(value: unknown) {
   return encodeURIComponent(String(value ?? ''));
+}
+
+function responseList(payload: any): ContractItem[] {
+  return Array.isArray(payload?.data) ? payload.data : Array.isArray(payload) ? payload : [];
+}
+
+function normalizedStatus(value?: string | null) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function isActiveContract(contract: ContractItem) {
+  const status = normalizedStatus(contract.status);
+  return ['active', 'نشط', 'open', 'current'].includes(status);
+}
+
+function dateOnly(value?: string | null) {
+  const match = String(value || '').match(/^(\d{4}-\d{2}-\d{2})/);
+  return match ? match[1] : '';
+}
+
+function todayYmd() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function isOverduePayment(payment: PaymentItem, today: string) {
+  const status = normalizedStatus(payment.status);
+  if (['paid', 'مدفوع', 'cancelled', 'canceled', 'ملغي'].includes(status)) return false;
+  if (['overdue', 'متأخر', 'متأخرة'].includes(status)) return true;
+  const dueDate = dateOnly(payment.due_date);
+  return /^\d{4}-\d{2}-\d{2}$/.test(dueDate) && dueDate < today;
+}
+
+function paymentRemainingAmount(payment: PaymentItem) {
+  if (hasValue(payment.remaining_amount)) return numberValue(payment.remaining_amount);
+  const amount = numberValue(payment.amount);
+  const paid = numberValue(payment.paid_amount);
+  return Math.max(0, amount - paid);
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -202,7 +258,51 @@ export default function PropertyDetailScreen() {
   const { data, loading, error, reload } = useDetail<PropertyDetail>({ endpoint: `/properties/${id}` });
   const [menuOpen, setMenuOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<PropertyTabKey>('stats');
+  const [propertyContracts, setPropertyContracts] = useState<ContractItem[]>([]);
+  const [contractsReloadKey, setContractsReloadKey] = useState(0);
+
   const shouldReturnAfterDelete = !!error && /No query results|not found|غير موجود/i.test(String(error));
+  const isApartmentProperty = String(data?.property_type || '') === 'apartment';
+  const units = data?.units || [];
+  const rented = units.filter((unit) => unit.status === 'rented').length;
+  const available = units.filter((unit) => unit.status === 'available').length;
+  const totalRent = data && hasValue(data.total_rent_amount) ? numberValue(data.total_rent_amount) : units.reduce((sum, unit) => sum + numberValue(unit.rent_amount), 0);
+  const totalExpenses = (data?.expenses || []).reduce((sum, expense) => sum + numberValue(expense.amount), 0);
+  const propertyId = data?.id || Number(id || 0);
+  const encodedPropertyName = queryValue(data?.name || `عقار #${propertyId}`);
+  const ownerQuery = data?.owner?.id ? `&owner_id=${data.owner.id}&owner_name=${queryValue(data.owner.name || '')}` : '';
+  const unitContracts = units.reduce((sum, unit) => sum + unitContractsCount(unit), 0);
+  const totalContracts = Number(data?.property_contracts_count || 0) + Number(data?.unit_contracts_count ?? unitContracts);
+  const propertyTypeLabel = typeMap[String(data?.property_type || '')] || data?.property_type || 'عقار';
+  const canCreateContract = data ? (typeof data.can_create_contract === 'boolean' ? data.can_create_contract : totalContracts === 0) : false;
+
+  const activeContracts = useMemo(() => propertyContracts.filter(isActiveContract), [propertyContracts]);
+  const activeContractsCount = propertyContracts.length > 0 ? activeContracts.length : totalContracts;
+  const overduePaymentStats = useMemo(() => {
+    const today = todayYmd();
+    const overduePayments = activeContracts.flatMap((contract) => contract.payments || []).filter((payment) => isOverduePayment(payment, today));
+    return {
+      count: overduePayments.length,
+      amount: overduePayments.reduce((sum, payment) => sum + paymentRemainingAmount(payment), 0),
+    };
+  }, [activeContracts]);
+
+  const detailsRows = useMemo(() => {
+    if (!data) return [] as Array<[string, unknown]>;
+    return [
+      ['النوع', propertyTypeLabel],
+      ['الاستخدام', usageMap[String(data.usage_type || '')] || data.usage_type],
+      ['الإدارة', mgmtMap[String(data.management_type || '')] || data.management_type],
+      ['رقم الصك', data.deed_number || data.document_number],
+      ['العنوان الوطني المختصر', data.national_short_address],
+      ['المساحة', hasValue(data.property_area) ? `${data.property_area} م²` : null],
+      ['عدد الأدوار', data.floors_count],
+      ['المواقف', data.parking_spots_count],
+      ['المصاعد', data.elevators_count],
+      ['العنوان', data.address],
+      ['ملاحظات', data.notes],
+    ] as Array<[string, unknown]>;
+  }, [data, propertyTypeLabel]);
 
   useEffect(() => {
     if (!shouldReturnAfterDelete) return;
@@ -214,6 +314,61 @@ export default function PropertyDetailScreen() {
     if (!data) return;
     navigation.setOptions({ title: detailTitleForType(data.property_type) });
   }, [data?.property_type, navigation]);
+
+  useEffect(() => {
+    if (!id) return;
+    let cancelled = false;
+    apiGet(`/contracts?property_id=${encodeURIComponent(String(id))}`)
+      .then((result) => {
+        if (!cancelled) setPropertyContracts(responseList(result));
+      })
+      .catch(() => {
+        if (!cancelled) setPropertyContracts([]);
+      });
+    return () => { cancelled = true; };
+  }, [id, data?.id, contractsReloadKey]);
+
+  function handleRefresh() {
+    reload();
+    setContractsReloadKey((value) => value + 1);
+  }
+
+  function closeMenu() { setMenuOpen(false); }
+  function openEditProperty() { closeMenu(); router.push(`/property-form?id=${propertyId}` as never); }
+  function openRepository() { closeMenu(); router.push(`/files?property_id=${propertyId}&property_name=${encodedPropertyName}${ownerQuery}` as never); }
+  function openAddUnit() {
+    closeMenu();
+    const query = new URLSearchParams();
+    if (data?.owner?.id) query.set('owner_id', String(data.owner.id));
+    query.set('property_type', 'apartment');
+    query.set('lock_property_type', '1');
+    query.set('source_property_id', String(propertyId));
+    query.set('source_property_name', data?.name || `عقار #${propertyId}`);
+    router.push(`/property-form?${query.toString()}` as never);
+  }
+  function openPropertyService(path: string) { closeMenu(); router.push(`${path}?property_id=${propertyId}&property_name=${encodedPropertyName}${ownerQuery}` as never); }
+  function openCreateContract() {
+    closeMenu();
+    Alert.alert('إضافة عقد', 'اختر طريقة إضافة العقد:', [
+      { text: 'رفع عقد PDF', onPress: () => router.push(`/upload-contract?property_id=${propertyId}&property_name=${encodedPropertyName}&contract_scope=property&target_type=property${ownerQuery}` as never) },
+      { text: 'إنشاء عقد يدوي', onPress: () => router.push(`/create-contract?property_id=${propertyId}&property_name=${encodedPropertyName}&contract_scope=property&target_type=property${ownerQuery}` as never) },
+      { text: 'إلغاء', style: 'cancel' },
+    ]);
+  }
+  function confirmDeleteProperty() {
+    closeMenu();
+    Alert.alert('حذف العقار', `هل تريد حذف ${data?.name || `عقار #${propertyId}`}؟`, [
+      { text: 'إلغاء', style: 'cancel' },
+      { text: 'حذف', style: 'destructive', onPress: async () => {
+        try {
+          await apiPost(`/edit-delete-center/properties/${propertyId}/delete`, {});
+          Alert.alert('تم', 'تم حذف العقار.', [{ text: 'حسنًا', onPress: () => smartBack() }]);
+        } catch (e) {
+          Alert.alert('تعذر الحذف', e instanceof Error ? e.message : 'حدث خطأ غير متوقع');
+        }
+      } },
+    ]);
+  }
 
   if (loading || shouldReturnAfterDelete) {
     return (
@@ -232,7 +387,7 @@ export default function PropertyDetailScreen() {
         <View style={styles.errorBox}>
           <Text style={styles.errorTitle}>تعذر عرض العقار</Text>
           <Text style={styles.errorText}>{String(error || 'غير موجود')}</Text>
-          <TouchableOpacity style={styles.retryButton} onPress={reload}>
+          <TouchableOpacity style={styles.retryButton} onPress={handleRefresh}>
             <Text style={styles.retryText}>إعادة المحاولة</Text>
           </TouchableOpacity>
         </View>
@@ -240,74 +395,9 @@ export default function PropertyDetailScreen() {
     );
   }
 
-  const isApartmentProperty = String(data.property_type || '') === 'apartment';
-  const units = data.units || [];
-  const rented = units.filter((unit) => unit.status === 'rented').length;
-  const available = units.filter((unit) => unit.status === 'available').length;
-  const totalRent = hasValue(data.total_rent_amount) ? numberValue(data.total_rent_amount) : units.reduce((sum, unit) => sum + numberValue(unit.rent_amount), 0);
-  const totalExpenses = (data.expenses || []).reduce((sum, expense) => sum + numberValue(expense.amount), 0);
-  const propertyId = data.id;
-  const encodedPropertyName = queryValue(data.name || `عقار #${propertyId}`);
-  const ownerQuery = data.owner?.id ? `&owner_id=${data.owner.id}&owner_name=${queryValue(data.owner.name || '')}` : '';
-  const unitContracts = units.reduce((sum, unit) => sum + unitContractsCount(unit), 0);
-  const totalContracts = Number(data.property_contracts_count || 0) + Number(data.unit_contracts_count ?? unitContracts);
-  const canCreateContract = typeof data.can_create_contract === 'boolean' ? data.can_create_contract : totalContracts === 0;
-  const propertyTypeLabel = typeMap[String(data.property_type || '')] || data.property_type || 'عقار';
-
-  const detailsRows = useMemo(() => [
-    ['النوع', propertyTypeLabel],
-    ['الاستخدام', usageMap[String(data.usage_type || '')] || data.usage_type],
-    ['الإدارة', mgmtMap[String(data.management_type || '')] || data.management_type],
-    ['رقم الصك', data.deed_number || data.document_number],
-    ['العنوان الوطني المختصر', data.national_short_address],
-    ['المساحة', hasValue(data.property_area) ? `${data.property_area} م²` : null],
-    ['عدد الأدوار', data.floors_count],
-    ['المواقف', data.parking_spots_count],
-    ['المصاعد', data.elevators_count],
-    ['العنوان', data.address],
-    ['ملاحظات', data.notes],
-  ] as Array<[string, unknown]>, [data, propertyTypeLabel]);
-
-  function closeMenu() { setMenuOpen(false); }
-  function openEditProperty() { closeMenu(); router.push(`/property-form?id=${propertyId}` as never); }
-  function openRepository() { closeMenu(); router.push(`/files?property_id=${propertyId}&property_name=${encodedPropertyName}${ownerQuery}` as never); }
-  function openAddUnit() {
-    closeMenu();
-    const query = new URLSearchParams();
-    if (data.owner?.id) query.set('owner_id', String(data.owner.id));
-    query.set('property_type', 'apartment');
-    query.set('lock_property_type', '1');
-    query.set('source_property_id', String(propertyId));
-    query.set('source_property_name', data.name || `عقار #${propertyId}`);
-    router.push(`/property-form?${query.toString()}` as never);
-  }
-  function openPropertyService(path: string) { closeMenu(); router.push(`${path}?property_id=${propertyId}&property_name=${encodedPropertyName}${ownerQuery}` as never); }
-  function openCreateContract() {
-    closeMenu();
-    Alert.alert('إضافة عقد', 'اختر طريقة إضافة العقد:', [
-      { text: 'رفع عقد PDF', onPress: () => router.push(`/upload-contract?property_id=${propertyId}&property_name=${encodedPropertyName}&contract_scope=property&target_type=property${ownerQuery}` as never) },
-      { text: 'إنشاء عقد يدوي', onPress: () => router.push(`/create-contract?property_id=${propertyId}&property_name=${encodedPropertyName}&contract_scope=property&target_type=property${ownerQuery}` as never) },
-      { text: 'إلغاء', style: 'cancel' },
-    ]);
-  }
-  function confirmDeleteProperty() {
-    closeMenu();
-    Alert.alert('حذف العقار', `هل تريد حذف ${data.name || `عقار #${propertyId}`}؟`, [
-      { text: 'إلغاء', style: 'cancel' },
-      { text: 'حذف', style: 'destructive', onPress: async () => {
-        try {
-          await apiPost(`/edit-delete-center/properties/${propertyId}/delete`, {});
-          Alert.alert('تم', 'تم حذف العقار.', [{ text: 'حسنًا', onPress: () => smartBack() }]);
-        } catch (e) {
-          Alert.alert('تعذر الحذف', e instanceof Error ? e.message : 'حدث خطأ غير متوقع');
-        }
-      } },
-    ]);
-  }
-
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={false} onRefresh={reload} tintColor="#0F766E" />}>
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={false} onRefresh={handleRefresh} tintColor="#0F766E" />}>
         <View style={styles.heroCard}>
           <View style={styles.heroTop}>
             <View style={styles.heroIcon}><Text style={styles.heroEmoji}>{data.property_type === 'villa' ? '🏡' : data.property_type === 'apartment' ? '🏠' : data.property_type === 'land' ? '🧭' : '🏢'}</Text></View>
@@ -339,15 +429,16 @@ export default function PropertyDetailScreen() {
           <View style={styles.sectionCard}>
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>إحصائيات العقار</Text>
-              <Text style={styles.sectionSubtitle}>ملخص سريع عن هذا العقار فقط</Text>
+              <Text style={styles.sectionSubtitle}>ملخص سريع عن هذا العقار فقط، والدفعات المتأخرة محسوبة من العقود النشطة فقط</Text>
             </View>
             <View style={styles.statsGrid}>
+              <StatTile icon="alert-circle-outline" value={money(overduePaymentStats.amount)} label={`دفعات متأخرة (${overduePaymentStats.count.toLocaleString('ar-SA')})`} danger={overduePaymentStats.count > 0} />
+              <StatTile icon="file-document-check-outline" value={activeContractsCount.toLocaleString('ar-SA')} label="العقود النشطة" />
               <StatTile icon="cash-multiple" value={money(totalRent)} label="إجمالي الإيجارات" />
               <StatTile icon="cash-minus" value={money(totalExpenses)} label="المصروفات" danger={totalExpenses > 0} />
               <StatTile icon="office-building" value={units.length.toLocaleString('ar-SA')} label="عدد الوحدات" />
               <StatTile icon="key-variant" value={rented.toLocaleString('ar-SA')} label="مؤجرة" />
               <StatTile icon="door-open" value={available.toLocaleString('ar-SA')} label="شاغرة" />
-              <StatTile icon="file-document-check-outline" value={totalContracts.toLocaleString('ar-SA')} label="العقود" />
             </View>
           </View>
         ) : null}
