@@ -7,48 +7,94 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
 
-if (!function_exists('mr_payment_auto_status_value')) {
-    function mr_payment_auto_status_value($payment): string
+if (!function_exists('mr_payment_num')) {
+    function mr_payment_num($value): float
     {
-        if (!empty($payment->paid_date)) {
-            return 'paid';
-        }
-
-        $lateReferenceDate = null;
-
-        if (Schema::hasColumn('payments', 'payment_deadline') && !empty($payment->payment_deadline)) {
-            $lateReferenceDate = $payment->payment_deadline;
-        } elseif (!empty($payment->notes) && preg_match('/نهاية\s+مهلة\s+السداد\s*:?\s*(\d{4}-\d{2}-\d{2})/u', (string) $payment->notes, $matches)) {
-            $lateReferenceDate = $matches[1];
-        } elseif (!empty($payment->due_date)) {
-            $lateReferenceDate = $payment->due_date;
-        }
-
-        if ($lateReferenceDate) {
-            try {
-                if (Carbon::parse($lateReferenceDate)->startOfDay()->lt(Carbon::today())) {
-                    return 'overdue';
-                }
-            } catch (Throwable $e) {
-                // Keep due when the stored date is not parseable.
-            }
-        }
-
-        return 'due';
+        if ($value === null || $value === '') return 0.0;
+        return is_numeric($value) ? (float) $value : (float) str_replace(',', '', (string) $value);
     }
 }
 
-if (!function_exists('mr_payment_apply_auto_status')) {
-    function mr_payment_apply_auto_status($payment): void
+if (!function_exists('mr_payment_amount')) {
+    function mr_payment_amount($payment): float
     {
-        if (!$payment || !Schema::hasColumn('payments', 'status')) {
-            return;
+        return mr_payment_num($payment->amount ?? 0);
+    }
+}
+
+if (!function_exists('mr_payment_paid_amount')) {
+    function mr_payment_paid_amount($payment): float
+    {
+        // المدفوع الفعلي فقط: paid_amount الذي تم تسجيله من زر دفع أو حفظ بطاقة القسط.
+        return max(0.0, mr_payment_num($payment->paid_amount ?? 0));
+    }
+}
+
+if (!function_exists('mr_payment_due_date')) {
+    function mr_payment_due_date($payment): string
+    {
+        return substr((string) ($payment->due_date ?? ''), 0, 10);
+    }
+}
+
+if (!function_exists('mr_payment_sync_contract_cumulative')) {
+    function mr_payment_sync_contract_cumulative(?int $contractId): void
+    {
+        if (!$contractId || !Schema::hasTable('payments')) return;
+
+        $payments = DB::table('payments')
+            ->where('contract_id', $contractId)
+            ->orderBy('due_date')
+            ->orderBy('id')
+            ->get();
+
+        if ($payments->isEmpty()) return;
+
+        $today = now()->toDateString();
+        $dueTotal = $payments
+            ->filter(fn ($payment) => preg_match('/^\d{4}-\d{2}-\d{2}$/', mr_payment_due_date($payment)) && mr_payment_due_date($payment) <= $today)
+            ->sum(fn ($payment) => mr_payment_amount($payment));
+        $paidTotal = $payments->sum(fn ($payment) => mr_payment_paid_amount($payment));
+        $lateAmount = max(0.0, $dueTotal - $paidTotal);
+        $paymentValue = 0.0;
+
+        foreach ($payments as $payment) {
+            $amount = mr_payment_amount($payment);
+            if ($amount > 0) {
+                $paymentValue = $amount;
+                break;
+            }
         }
 
-        $status = mr_payment_auto_status_value($payment);
-        if ((string) $payment->status !== $status) {
-            DB::table('payments')->where('id', $payment->id)->update(['status' => $status]);
-            $payment->status = $status;
+        $lateCount = ($lateAmount > 0 && $paymentValue > 0) ? (int) ceil($lateAmount / $paymentValue) : 0;
+        $remainingPaidForDisplay = $paidTotal;
+        $remainingLateForDisplay = $lateAmount;
+        $markedLate = 0;
+
+        foreach ($payments as $payment) {
+            $amount = mr_payment_amount($payment);
+            $dueDate = mr_payment_due_date($payment);
+            $isDue = preg_match('/^\d{4}-\d{2}-\d{2}$/', $dueDate) && $dueDate <= $today;
+            $updates = [];
+
+            if ($amount > 0 && $remainingPaidForDisplay >= $amount) {
+                if (Schema::hasColumn('payments', 'status')) $updates['status'] = 'paid';
+                if (Schema::hasColumn('payments', 'remaining_amount')) $updates['remaining_amount'] = 0;
+                $remainingPaidForDisplay -= $amount;
+            } elseif ($isDue && $markedLate < $lateCount && $remainingLateForDisplay > 0) {
+                $remaining = min($amount > 0 ? $amount : $remainingLateForDisplay, $remainingLateForDisplay);
+                if (Schema::hasColumn('payments', 'status')) $updates['status'] = 'overdue';
+                if (Schema::hasColumn('payments', 'remaining_amount')) $updates['remaining_amount'] = $remaining;
+                $remainingPaidForDisplay = 0;
+                $remainingLateForDisplay -= $remaining;
+                $markedLate++;
+            } else {
+                if (Schema::hasColumn('payments', 'status')) $updates['status'] = 'due';
+                if (Schema::hasColumn('payments', 'remaining_amount')) $updates['remaining_amount'] = $amount;
+            }
+
+            if (Schema::hasColumn('payments', 'updated_at')) $updates['updated_at'] = now();
+            if (!empty($updates)) DB::table('payments')->where('id', $payment->id)->update($updates);
         }
     }
 }
@@ -56,15 +102,10 @@ if (!function_exists('mr_payment_apply_auto_status')) {
 if (!function_exists('mr_payment_normalize_edit_value')) {
     function mr_payment_normalize_edit_value(string $field, mixed $value): mixed
     {
-        if ($value === '') {
-            return null;
-        }
+        if ($value === '') return null;
 
         if (in_array($field, ['due_date', 'paid_date', 'payment_deadline'], true)) {
-            if ($value === null) {
-                return null;
-            }
-
+            if ($value === null) return null;
             try {
                 return Carbon::parse((string) $value)->toDateString();
             } catch (Throwable $e) {
@@ -72,7 +113,7 @@ if (!function_exists('mr_payment_normalize_edit_value')) {
             }
         }
 
-        if ($field === 'amount') {
+        if (in_array($field, ['amount', 'paid_amount'], true)) {
             return $value === null ? null : (float) str_replace(',', '', (string) $value);
         }
 
@@ -91,9 +132,6 @@ if (!function_exists('mr_payment_normalize_edit_value')) {
 if (!function_exists('mr_payment_edit_payload')) {
     function mr_payment_edit_payload($payment, array $editableFields): array
     {
-        mr_payment_apply_auto_status($payment);
-        $payment = $payment->fresh() ?: $payment;
-
         $fields = [];
         foreach ($editableFields as $field) {
             $fields[$field] = $payment->{$field} ?? null;
@@ -126,7 +164,6 @@ if (!function_exists('mr_payment_edit_config')) {
             'label' => 'الدفعات',
             'model' => Payment::class,
             'table' => 'payments',
-            // الحالة لا تُعرض ولا تُحفظ يدويًا؛ تُحتسب آليًا من تاريخ السداد ونهاية مهلة السداد الرسمية إن وجدت.
             'editable' => ['contract_id', 'sequence', 'amount', 'due_date', 'payment_deadline', 'due_date_hijri', 'payment_deadline_hijri', 'rental_period_days', 'paid_date', 'notes'],
             'scope' => 'payment',
         ];
@@ -136,9 +173,7 @@ if (!function_exists('mr_payment_edit_config')) {
 if (!function_exists('mr_payment_edit_list_response')) {
     function mr_payment_edit_list_response(Request $request, ?\App\Models\User $user)
     {
-        if (!Schema::hasTable('payments')) {
-            return response()->json(['message' => 'جدول الدفعات غير موجود.'], 404);
-        }
+        if (!Schema::hasTable('payments')) return response()->json(['message' => 'جدول الدفعات غير موجود.'], 404);
 
         $config = mr_payment_edit_config();
         $editable = array_values(array_filter($config['editable'], fn ($field) => Schema::hasColumn('payments', $field)));
@@ -149,9 +184,7 @@ if (!function_exists('mr_payment_edit_list_response')) {
         }
 
         $id = $request->query('id');
-        if ($id !== null && $id !== '') {
-            $query->where('id', (int) $id);
-        }
+        if ($id !== null && $id !== '') $query->where('id', (int) $id);
 
         $items = $query->orderByDesc('id')->limit($id ? 1 : 150)->get();
 
@@ -168,10 +201,9 @@ if (!function_exists('mr_payment_edit_update_response')) {
     function mr_payment_edit_update_response(int $id, Request $request, ?\App\Models\User $user)
     {
         try {
-            if (!Schema::hasTable('payments')) {
-                return response()->json(['message' => 'جدول الدفعات غير موجود.'], 404);
-            }
+            if (!Schema::hasTable('payments')) return response()->json(['message' => 'جدول الدفعات غير موجود.'], 404);
 
+            $isScheduleEdit = $request->boolean('_schedule_edit') || $request->boolean('schedule_edit') || (bool) $request->input('fields._schedule_edit');
             $config = mr_payment_edit_config();
             $editable = array_values(array_filter($config['editable'], fn ($field) => Schema::hasColumn('payments', $field)));
             $query = Payment::query();
@@ -181,34 +213,41 @@ if (!function_exists('mr_payment_edit_update_response')) {
             }
 
             $payment = $query->where('id', $id)->first();
-            if (!$payment) {
-                return response()->json(['message' => 'السجل غير موجود أو خارج صلاحياتك.'], 404);
-            }
+            if (!$payment) return response()->json(['message' => 'السجل غير موجود أو خارج صلاحياتك.'], 404);
 
             $payload = $request->input('fields', $request->all());
-            unset($payload['_auth_user'], $payload['status']);
+            unset($payload['_auth_user'], $payload['_schedule_edit'], $payload['schedule_edit'], $payload['status']);
 
             $updates = [];
+            $writtenPaidAmount = null;
+
             foreach ($editable as $field) {
-                if (array_key_exists($field, $payload)) {
-                    $updates[$field] = mr_payment_normalize_edit_value($field, $payload[$field]);
+                if (!array_key_exists($field, $payload)) continue;
+
+                if ($field === 'amount' && !$isScheduleEdit) {
+                    // زر دفع / حفظ بطاقة قسط: المبلغ المرسل هو مبلغ مدفوع فعلي، وليس تعديل قيمة القسط.
+                    $writtenPaidAmount = mr_payment_normalize_edit_value('paid_amount', $payload[$field]);
+                    continue;
                 }
+
+                if ($field === 'paid_date' && !$isScheduleEdit) continue;
+
+                $updates[$field] = mr_payment_normalize_edit_value($field, $payload[$field]);
             }
 
-            if (!$updates) {
-                return response()->json(['message' => 'لا توجد حقول قابلة للتحديث.'], 422);
+            if (!$isScheduleEdit && $writtenPaidAmount !== null && $writtenPaidAmount > 0) {
+                if (Schema::hasColumn('payments', 'paid_amount')) $updates['paid_amount'] = $writtenPaidAmount;
+                if (Schema::hasColumn('payments', 'paid_date')) $updates['paid_date'] = now()->toDateString();
+                if (Schema::hasColumn('payments', 'status')) $updates['status'] = 'paid';
             }
 
-            if (Schema::hasColumn('payments', 'updated_at')) {
-                $updates['updated_at'] = now();
-            }
+            if (!$updates) return response()->json(['message' => 'لا توجد حقول قابلة للتحديث.'], 422);
+            if (Schema::hasColumn('payments', 'updated_at')) $updates['updated_at'] = now();
 
             $before = $payment->toArray();
-
-            // نستخدم Query Builder هنا بدل fill/save لتجنب أي أخطاء Mass Assignment أو casts قد تظهر عند الدفعات غير المسددة.
             DB::table('payments')->where('id', $payment->id)->update($updates);
             $fresh = Payment::find($payment->id);
-            mr_payment_apply_auto_status($fresh);
+            mr_payment_sync_contract_cumulative((int) ($fresh?->contract_id ?? $payment->contract_id ?? 0));
             $fresh = Payment::find($payment->id);
 
             if (function_exists('my_rentals_ed_save_activity')) {
@@ -216,7 +255,7 @@ if (!function_exists('mr_payment_edit_update_response')) {
             }
 
             return [
-                'message' => 'تم التحديث بنجاح. تم تحديد حالة الدفعة آليًا.',
+                'message' => $isScheduleEdit ? 'تم حفظ قيم جدول الدفعات وإعادة حساب المطلوب والمتأخر.' : 'تم تسجيل الدفعة ضمن المدفوعات وإعادة حساب المطلوب والمتأخر.',
                 'item' => mr_payment_edit_payload($fresh, $editable),
             ];
         } catch (InvalidArgumentException $e) {
