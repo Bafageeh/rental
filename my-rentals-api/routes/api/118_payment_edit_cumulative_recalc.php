@@ -25,8 +25,6 @@ if (!function_exists('mrpec_amount')) {
 if (!function_exists('mrpec_paid_amount')) {
     function mrpec_paid_amount($payment): float
     {
-        // المدفوع الفعلي فقط: ما تم حفظه من البطاقة أو زر دفع.
-        // لا نعتمد status=paid وحدها؛ لأنها قد تكون نتيجة عرض حسابي فقط.
         return max(0.0, mrpec_num($payment->paid_amount ?? 0));
     }
 }
@@ -79,8 +77,6 @@ if (!function_exists('mrpec_sync_contract')) {
             $updates = [];
 
             if ($amount > 0 && $remainingPaidForDisplay >= $amount) {
-                // هذه حالة عرض فقط: القسط مغطى من إجمالي المدفوعات.
-                // لا نكتب paid_amount جديد ولا paid_date جديد هنا.
                 if (Schema::hasColumn('payments', 'status')) $updates['status'] = 'paid';
                 if (Schema::hasColumn('payments', 'remaining_amount')) $updates['remaining_amount'] = 0;
                 $remainingPaidForDisplay -= $amount;
@@ -122,6 +118,7 @@ if (!function_exists('mrpec_update_payment')) {
         try {
             if (!Schema::hasTable('payments')) return response()->json(['message' => 'جدول الدفعات غير موجود.'], 404);
 
+            $isScheduleEdit = $request->boolean('_schedule_edit') || $request->boolean('schedule_edit') || (bool) $request->input('fields._schedule_edit');
             $editable = array_values(array_filter(['contract_id', 'sequence', 'amount', 'due_date', 'payment_deadline', 'due_date_hijri', 'payment_deadline_hijri', 'rental_period_days', 'paid_date', 'notes'], fn ($field) => Schema::hasColumn('payments', $field)));
             $query = Payment::query();
             if (function_exists('my_rentals_ed_apply_scope') && function_exists('my_rentals_ed_is_admin')) {
@@ -132,23 +129,30 @@ if (!function_exists('mrpec_update_payment')) {
             if (!$payment) return response()->json(['message' => 'السجل غير موجود أو خارج صلاحياتك.'], 404);
 
             $payload = $request->input('fields', $request->all());
-            unset($payload['_auth_user'], $payload['status']);
+            unset($payload['_auth_user'], $payload['_schedule_edit'], $payload['schedule_edit']);
             $updates = [];
             $writtenPaidAmount = null;
 
             foreach ($editable as $field) {
                 if (!array_key_exists($field, $payload)) continue;
 
-                if ($field === 'amount') {
-                    // في شاشة تفاصيل العقد: المبلغ المكتوب أو زر دفع يعتبر مبلغًا مدفوعًا فعليًا.
+                if ($field === 'amount' && !$isScheduleEdit) {
                     $writtenPaidAmount = mrpec_cast_payment_value('paid_amount', $payload[$field]);
+                    continue;
+                }
+
+                if ($field === 'paid_date' && !$isScheduleEdit) {
                     continue;
                 }
 
                 $updates[$field] = mrpec_cast_payment_value($field, $payload[$field]);
             }
 
-            if ($writtenPaidAmount !== null && $writtenPaidAmount > 0) {
+            if ($isScheduleEdit) {
+                if (array_key_exists('status', $payload) && Schema::hasColumn('payments', 'status')) {
+                    $updates['status'] = (string) $payload['status'];
+                }
+            } elseif ($writtenPaidAmount !== null && $writtenPaidAmount > 0) {
                 if (Schema::hasColumn('payments', 'paid_amount')) $updates['paid_amount'] = $writtenPaidAmount;
                 if (Schema::hasColumn('payments', 'paid_date')) $updates['paid_date'] = now()->toDateString();
                 if (Schema::hasColumn('payments', 'status')) $updates['status'] = 'paid';
@@ -163,7 +167,7 @@ if (!function_exists('mrpec_update_payment')) {
             $fresh = Payment::find($payment->id);
 
             return response()->json([
-                'message' => 'تم اعتماد الدفعة الفعلية فقط وإعادة حساب المطلوب والمتأخر.',
+                'message' => $isScheduleEdit ? 'تم حفظ قيم جدول الدفعات وإعادة حساب المطلوب والمتأخر.' : 'تم اعتماد الدفعة الفعلية فقط وإعادة حساب المطلوب والمتأخر.',
                 'item' => $fresh,
             ]);
         } catch (Throwable $e) {
