@@ -14,7 +14,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { apiGet, apiPost } from "../../lib/api";
+import { apiGet, apiPost, apiPostAny } from "../../lib/api";
 
 type PaymentRow = {
   id: number;
@@ -47,13 +47,17 @@ type ContractRecord = {
   payments?: PaymentRow[];
 };
 
+type PaymentFormRow = {
+  amount: string;
+  due_date: string;
+  paid_date: string;
+  status: string;
+  notes: string;
+};
+
 function firstParam(value: string | string[] | undefined) {
   if (Array.isArray(value)) return value[0] || "";
   return value || "";
-}
-
-function responseList(payload: any) {
-  return Array.isArray(payload?.data) ? payload.data : Array.isArray(payload) ? payload : [];
 }
 
 function contractPayload(payload: any, expectedId: string): ContractRecord | null {
@@ -71,13 +75,24 @@ function numericOnly(value: string) {
   return value.replace(/[^0-9.]/g, "").replace(/(\..*)\./g, "$1");
 }
 
+function numberValue(value: unknown) {
+  const n = Number(String(value ?? 0).replace(/,/g, ""));
+  return Number.isFinite(n) ? n : 0;
+}
+
 function statusValue(value?: string | null, badge?: string | null) {
   const text = String(value || badge || "due").toLowerCase();
-  if (["paid", "مدفوع", "مدفوعة"].includes(text)) return "paid";
+  if (["paid", "مدفوع", "مدفوعة", "مسدد"].includes(text)) return "paid";
   if (["overdue", "متأخر", "متأخرة"].includes(text)) return "overdue";
   if (["due", "مستحق", "مستحقة"].includes(text)) return "due";
   if (["cancelled", "canceled", "ملغي"].includes(text)) return "cancelled";
   return text || "due";
+}
+
+function isPaidPayment(payment: PaymentRow, row?: PaymentFormRow) {
+  const paidAmount = numberValue(payment.paid_amount);
+  const status = row?.status || statusValue(payment.status, payment.badge);
+  return paidAmount > 0 || (!!onlyDate(row?.paid_date || payment.paid_date) && status === "paid");
 }
 
 function statusLabel(value: string) {
@@ -88,7 +103,7 @@ function statusLabel(value: string) {
 }
 
 function money(value: unknown) {
-  const n = Number(String(value ?? 0).replace(/,/g, ""));
+  const n = numberValue(value);
   return Number.isFinite(n) ? n.toLocaleString("ar-SA") : "0";
 }
 
@@ -99,8 +114,33 @@ function paymentTitle(payment: PaymentRow, index: number) {
 function normalizePayment(payment: PaymentRow, index: number): PaymentRow {
   return {
     ...payment,
+    id: Number(payment.id),
     entity: payment.entity || "payment",
     title: payment.title || `الدفعة ${index + 1}`,
+  };
+}
+
+function addMonths(dateText: string, months: number) {
+  const base = /^\d{4}-\d{2}-\d{2}$/.test(dateText) ? new Date(`${dateText}T00:00:00`) : new Date();
+  const originalDay = base.getDate();
+  const d = new Date(base);
+  d.setMonth(d.getMonth() + months);
+  if (d.getDate() < originalDay) d.setDate(0);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function tempPayment(id: number, index: number, amount: string, dueDate: string): PaymentRow {
+  return {
+    id,
+    title: `الدفعة ${index + 1}`,
+    amount,
+    due_date: dueDate,
+    status: "due",
+    notes: "",
+    entity: "payment",
   };
 }
 
@@ -112,13 +152,14 @@ export default function ContractEditScreen() {
   const [saving, setSaving] = useState(false);
   const [contract, setContract] = useState<ContractRecord | null>(null);
   const [payments, setPayments] = useState<PaymentRow[]>([]);
+  const [paymentsCount, setPaymentsCount] = useState("0");
   const [form, setForm] = useState({
     rent_amount: "",
     total_contract_value: "",
     regular_payment_amount: "",
     last_payment_amount: "",
   });
-  const [paymentForms, setPaymentForms] = useState<Record<string, { amount: string; due_date: string; paid_date: string; status: string; notes: string }>>({});
+  const [paymentForms, setPaymentForms] = useState<Record<string, PaymentFormRow>>({});
 
   async function load() {
     try {
@@ -140,6 +181,7 @@ export default function ContractEditScreen() {
 
       setContract(current);
       setPayments(loadedPayments);
+      setPaymentsCount(String(loadedPayments.length));
       setForm({
         rent_amount: String(current?.rent_amount ?? ""),
         total_contract_value: String(current?.total_contract_value ?? current?.rent_amount ?? ""),
@@ -147,7 +189,7 @@ export default function ContractEditScreen() {
         last_payment_amount: String(current?.last_payment_amount ?? ""),
       });
 
-      const nextPaymentForms: Record<string, { amount: string; due_date: string; paid_date: string; status: string; notes: string }> = {};
+      const nextPaymentForms: Record<string, PaymentFormRow> = {};
       loadedPayments.forEach((payment) => {
         nextPaymentForms[String(payment.id)] = {
           amount: String(payment.amount ?? ""),
@@ -173,11 +215,20 @@ export default function ContractEditScreen() {
     return Object.values(paymentForms).reduce((sum, row) => sum + Number(row.amount || 0), 0);
   }, [paymentForms]);
 
+  const paidCount = useMemo(() => payments.filter((payment) => isPaidPayment(payment, paymentForms[String(payment.id)])).length, [payments, paymentForms]);
+
   function setContractField(field: keyof typeof form, value: string) {
     setForm((prev) => ({ ...prev, [field]: numericOnly(value) }));
   }
 
   function setPaymentField(paymentId: number, field: "amount" | "due_date" | "paid_date" | "status" | "notes", value: string) {
+    const payment = payments.find((item) => item.id === paymentId);
+    const currentRow = paymentForms[String(paymentId)];
+    const paid = payment ? isPaidPayment(payment, currentRow) : false;
+    if (paid && field !== "notes") {
+      Alert.alert("تنبيه", "هذه الدفعة مدفوعة، لا يمكن تغيير قيمتها أو حالتها من تعديل العقد.");
+      return;
+    }
     setPaymentForms((prev) => ({
       ...prev,
       [String(paymentId)]: {
@@ -185,6 +236,45 @@ export default function ContractEditScreen() {
         [field]: field === "amount" ? numericOnly(value) : value,
       },
     }));
+  }
+
+  function rebuildSchedule(nextCountRaw: string) {
+    const nextText = numericOnly(nextCountRaw).replace(/\..*$/, "");
+    const nextCount = Math.max(0, Number(nextText || 0));
+    if (!Number.isFinite(nextCount)) return;
+    if (nextCount < paidCount) {
+      Alert.alert("تنبيه", `لا يمكن جعل عدد الدفعات أقل من الدفعات المدفوعة (${paidCount}).`);
+      setPaymentsCount(String(paidCount));
+      return;
+    }
+
+    const currentRows = payments;
+    const currentForms = paymentForms;
+    const regularAmount = form.regular_payment_amount || (nextCount > 0 ? String(Math.round((numberValue(form.total_contract_value || form.rent_amount) / nextCount) * 100) / 100) : "0");
+    const baseDate = onlyDate(contract?.start_date) || currentForms[String(currentRows[0]?.id)]?.due_date || "";
+    const nextPayments: PaymentRow[] = [];
+    const nextForms: Record<string, PaymentFormRow> = {};
+
+    for (let index = 0; index < nextCount; index++) {
+      const existing = currentRows[index];
+      const rowId = existing?.id ?? -1 * (Date.now() + index + 1);
+      const dueDate = existing ? currentForms[String(existing.id)]?.due_date || onlyDate(existing.due_date) : addMonths(baseDate, index);
+      const amount = existing ? currentForms[String(existing.id)]?.amount || String(existing.amount ?? regularAmount) : regularAmount;
+      const row: PaymentRow = existing || tempPayment(rowId, index, amount, dueDate);
+      nextPayments.push({ ...row, title: `الدفعة ${index + 1}`, amount, due_date: dueDate });
+      nextForms[String(rowId)] = existing
+        ? { ...(currentForms[String(existing.id)] || { amount, due_date: dueDate, paid_date: "", status: "due", notes: "" }) }
+        : { amount, due_date: dueDate, paid_date: "", status: "due", notes: "" };
+    }
+
+    setPaymentsCount(String(nextCount));
+    setPayments(nextPayments);
+    setPaymentForms(nextForms);
+  }
+
+  function changeCountBy(delta: number) {
+    const current = Math.max(0, Number(paymentsCount || 0) || 0);
+    rebuildSchedule(String(current + delta));
   }
 
   async function save() {
@@ -199,21 +289,23 @@ export default function ContractEditScreen() {
         },
       });
 
-      for (const payment of payments) {
-        const row = paymentForms[String(payment.id)];
-        if (!row) continue;
-        await apiPost(`/edit-delete-center/payments/${payment.id}/update`, {
-          _schedule_edit: true,
-          fields: {
-            _schedule_edit: true,
-            amount: row.amount,
-            due_date: row.due_date,
-            paid_date: row.paid_date,
-            status: row.status,
-            notes: row.notes,
-          },
-        });
-      }
+      const scheduleRows = payments.map((payment, index) => {
+        const row = paymentForms[String(payment.id)] || { amount: "", due_date: "", paid_date: "", status: "due", notes: "" };
+        return {
+          id: payment.id > 0 ? payment.id : null,
+          sequence: index + 1,
+          amount: row.amount,
+          due_date: row.due_date,
+          paid_date: row.paid_date,
+          status: row.status,
+          notes: row.notes,
+        };
+      });
+
+      await apiPostAny(
+        [`/contracts/${id}/payment-schedule-sync`, `/my/contracts/${id}/payment-schedule-sync`],
+        { payments_count: Number(paymentsCount || payments.length), payments: scheduleRows },
+      );
 
       router.replace(returnTo as never);
     } catch (e) {
@@ -265,20 +357,42 @@ export default function ContractEditScreen() {
               </View>
 
               <View style={styles.card}>
+                <Text style={styles.sectionTitle}>عدد الدفعات</Text>
+                <View style={styles.countRow}>
+                  <TouchableOpacity style={styles.countButton} onPress={() => changeCountBy(-1)} activeOpacity={0.85}>
+                    <Ionicons name="remove" size={20} color="#fff" />
+                  </TouchableOpacity>
+                  <TextInput
+                    value={paymentsCount}
+                    onChangeText={setPaymentsCount}
+                    onEndEditing={() => rebuildSchedule(paymentsCount)}
+                    keyboardType="number-pad"
+                    textAlign="center"
+                    style={styles.countInput}
+                  />
+                  <TouchableOpacity style={styles.countButton} onPress={() => changeCountBy(1)} activeOpacity={0.85}>
+                    <Ionicons name="add" size={20} color="#fff" />
+                  </TouchableOpacity>
+                </View>
+                <Text style={styles.helperText}>عند تغيير العدد يتم تجهيز بطاقات الدفعات مباشرة. الدفعات المدفوعة لا يتم تعديلها أو حذفها.</Text>
+              </View>
+
+              <View style={styles.card}>
                 <Text style={styles.sectionTitle}>جدول الدفعات</Text>
                 {payments.length === 0 ? <Text style={styles.emptyText}>لا توجد دفعات مرتبطة بهذا العقد.</Text> : null}
                 {payments.map((payment, index) => {
                   const row = paymentForms[String(payment.id)] || { amount: "", due_date: "", paid_date: "", status: "due", notes: "" };
+                  const paid = isPaidPayment(payment, row);
                   return (
-                    <View key={payment.id} style={styles.paymentCard}>
+                    <View key={payment.id} style={[styles.paymentCard, paid ? styles.paymentCardPaid : null]}>
                       <View style={styles.paymentHeader}>
                         <Text style={styles.paymentTitle}>{paymentTitle(payment, index)}</Text>
-                        <Text style={styles.paymentBadge}>{statusLabel(row.status)}</Text>
+                        <Text style={[styles.paymentBadge, paid ? styles.paymentBadgePaid : null]}>{paid ? "مدفوع محفوظ" : statusLabel(row.status)}</Text>
                       </View>
 
-                      <MoneyField label="المبلغ" value={row.amount} onChange={(value) => setPaymentField(payment.id, "amount", value)} compact />
-                      <TextField label="تاريخ الاستحقاق" value={row.due_date} onChange={(value) => setPaymentField(payment.id, "due_date", value)} placeholder="YYYY-MM-DD" />
-                      <TextField label="تاريخ السداد" value={row.paid_date} onChange={(value) => setPaymentField(payment.id, "paid_date", value)} placeholder="YYYY-MM-DD" />
+                      <MoneyField label="المبلغ" value={row.amount} onChange={(value) => setPaymentField(payment.id, "amount", value)} compact editable={!paid} />
+                      <TextField label="تاريخ الاستحقاق" value={row.due_date} onChange={(value) => setPaymentField(payment.id, "due_date", value)} placeholder="YYYY-MM-DD" editable={!paid} />
+                      <TextField label="تاريخ السداد" value={row.paid_date} onChange={(value) => setPaymentField(payment.id, "paid_date", value)} placeholder="YYYY-MM-DD" editable={!paid} />
 
                       <View style={styles.choiceRow}>
                         {[
@@ -287,9 +401,9 @@ export default function ContractEditScreen() {
                           ["paid", "مدفوع"],
                           ["cancelled", "ملغي"],
                         ].map(([value, label]) => {
-                          const active = row.status === value;
+                          const active = row.status === value || (paid && value === "paid");
                           return (
-                            <TouchableOpacity key={value} style={[styles.choice, active ? styles.choiceActive : null]} onPress={() => setPaymentField(payment.id, "status", value)}>
+                            <TouchableOpacity key={value} disabled={paid} style={[styles.choice, active ? styles.choiceActive : null, paid ? styles.choiceDisabled : null]} onPress={() => setPaymentField(payment.id, "status", value)}>
                               <Text style={[styles.choiceText, active ? styles.choiceTextActive : null]}>{label}</Text>
                             </TouchableOpacity>
                           );
@@ -314,25 +428,26 @@ export default function ContractEditScreen() {
   );
 }
 
-function MoneyField({ label, value, onChange, compact = false }: { label: string; value: string; onChange: (value: string) => void; compact?: boolean }) {
-  return <TextField label={label} value={value} onChange={onChange} placeholder="0.00" keyboardType="decimal-pad" suffix="ريال" compact={compact} />;
+function MoneyField({ label, value, onChange, compact = false, editable = true }: { label: string; value: string; onChange: (value: string) => void; compact?: boolean; editable?: boolean }) {
+  return <TextField label={label} value={value} onChange={onChange} placeholder="0.00" keyboardType="decimal-pad" suffix="ريال" compact={compact} editable={editable} />;
 }
 
-function TextField({ label, value, onChange, placeholder, keyboardType = "default", suffix, compact = false, multiline = false }: { label: string; value: string; onChange: (value: string) => void; placeholder?: string; keyboardType?: any; suffix?: string; compact?: boolean; multiline?: boolean }) {
+function TextField({ label, value, onChange, placeholder, keyboardType = "default", suffix, compact = false, multiline = false, editable = true }: { label: string; value: string; onChange: (value: string) => void; placeholder?: string; keyboardType?: any; suffix?: string; compact?: boolean; multiline?: boolean; editable?: boolean }) {
   return (
     <View style={[styles.fieldBox, compact ? styles.fieldCompact : null]}>
       <Text style={styles.fieldLabel}>{label}</Text>
-      <View style={styles.inputWrap}>
+      <View style={[styles.inputWrap, !editable ? styles.inputWrapDisabled : null]}>
         {suffix ? <Text style={styles.suffix}>{suffix}</Text> : null}
         <TextInput
           value={value}
           onChangeText={onChange}
           placeholder={placeholder || label}
           placeholderTextColor="#94A3B8"
-          style={[styles.input, multiline ? styles.multilineInput : null]}
+          style={[styles.input, multiline ? styles.multilineInput : null, !editable ? styles.inputDisabled : null]}
           textAlign="right"
           keyboardType={keyboardType}
           multiline={multiline}
+          editable={editable}
         />
       </View>
     </View>
@@ -356,20 +471,29 @@ const styles = StyleSheet.create({
   fieldCompact: { marginBottom: 8 },
   fieldLabel: { color: "#111827", fontSize: 13, fontWeight: "900", textAlign: "right", marginBottom: 7 },
   inputWrap: { minHeight: 46, borderRadius: 15, backgroundColor: "#F8FAFC", borderWidth: 1, borderColor: "#E5E7EB", flexDirection: "row", alignItems: "center", paddingHorizontal: 10 },
+  inputWrapDisabled: { backgroundColor: "#EEF2F7", borderColor: "#CBD5E1" },
   input: { flex: 1, color: "#111827", fontWeight: "900", minHeight: 44 },
+  inputDisabled: { color: "#64748B" },
   multilineInput: { minHeight: 78, textAlignVertical: "top", paddingTop: 11 },
   suffix: { color: "#64748B", fontWeight: "900", marginRight: 8 },
   summaryRow: { flexDirection: "row-reverse", gap: 10, marginBottom: 12 },
   summaryCard: { flex: 1, backgroundColor: "#ECFDF5", borderRadius: 18, padding: 12, alignItems: "center", borderWidth: 1, borderColor: "#A7F3D0" },
   summaryValue: { color: "#065F46", fontSize: 18, fontWeight: "900" },
   summaryLabel: { color: "#0F766E", fontSize: 12, fontWeight: "900", marginTop: 3 },
+  countRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  countButton: { width: 48, height: 48, borderRadius: 16, backgroundColor: "#0F766E", alignItems: "center", justifyContent: "center" },
+  countInput: { flex: 1, minHeight: 50, borderRadius: 16, backgroundColor: "#F8FAFC", borderWidth: 1, borderColor: "#E5E7EB", color: "#111827", fontSize: 20, fontWeight: "900" },
+  helperText: { color: "#64748B", fontWeight: "800", fontSize: 12, textAlign: "right", marginTop: 8, lineHeight: 19 },
   paymentCard: { backgroundColor: "#F7F6F4", borderRadius: 18, padding: 11, marginBottom: 10, borderWidth: 1, borderColor: "#E5E7EB" },
+  paymentCardPaid: { backgroundColor: "#ECFDF5", borderColor: "#A7F3D0" },
   paymentHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 },
   paymentTitle: { color: "#111827", fontSize: 15, fontWeight: "900", textAlign: "right", flex: 1 },
   paymentBadge: { overflow: "hidden", backgroundColor: "#DCFCE7", color: "#166534", borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5, fontSize: 11, fontWeight: "900" },
+  paymentBadgePaid: { backgroundColor: "#0F766E", color: "#fff" },
   choiceRow: { flexDirection: "row-reverse", flexWrap: "wrap", gap: 8, marginBottom: 9 },
   choice: { borderRadius: 999, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: "#fff", borderWidth: 1, borderColor: "#E5E7EB" },
   choiceActive: { backgroundColor: "#0F766E", borderColor: "#0F766E" },
+  choiceDisabled: { opacity: 0.65 },
   choiceText: { color: "#475569", fontWeight: "900", fontSize: 12 },
   choiceTextActive: { color: "#fff" },
   emptyText: { color: "#64748B", fontWeight: "800", textAlign: "center", padding: 14 },
