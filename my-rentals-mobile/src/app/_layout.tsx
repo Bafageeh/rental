@@ -85,6 +85,7 @@ function AppTabs() {
       <Tabs.Screen name="owner-payouts" options={{ ...hidden, title: "تسويات الملاك" }} />
       <Tabs.Screen name="owner-settlements" options={{ ...hidden, title: "التسويات" }} />
       <Tabs.Screen name="owner-statement" options={{ ...hidden, title: "كشف المالك" }} />
+      <Tabs.Screen name="owner-account-statement" options={{ ...hidden, title: "حساب المالك" }} />
       <Tabs.Screen name="payment-receipts" options={{ ...hidden, title: "الإيصالات" }} />
       <Tabs.Screen name="monthly-financial" options={{ ...hidden, title: "التقرير الشهري" }} />
       <Tabs.Screen name="rent-roll" options={{ ...hidden, title: "كشف الإيجار" }} />
