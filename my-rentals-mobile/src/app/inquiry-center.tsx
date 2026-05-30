@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, router } from 'expo-router';
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   RefreshControl,
@@ -38,6 +38,8 @@ type WebhookEvent = {
   processed_at?: string | null;
   created_at?: string | null;
 };
+
+const PAGE_SIZE = 10;
 
 function unwrapEvents(response: any): WebhookEvent[] {
   if (Array.isArray(response?.data?.data)) return response.data.data;
@@ -95,6 +97,7 @@ export default function InquiryCenterScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [warning, setWarning] = useState<string | null>(null);
   const [query, setQuery] = useState('');
+  const [page, setPage] = useState(1);
 
   const loadEvents = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -145,9 +148,59 @@ export default function InquiryCenterScreen() {
     });
   }, [events, query]);
 
+  const totalPages = Math.max(1, Math.ceil(filteredEvents.length / PAGE_SIZE));
+  const safePage = Math.min(Math.max(page, 1), totalPages);
+  const pageStart = (safePage - 1) * PAGE_SIZE;
+  const pageEnd = Math.min(pageStart + PAGE_SIZE, filteredEvents.length);
+  const pagedEvents = filteredEvents.slice(pageStart, pageEnd);
+
+  useEffect(() => {
+    setPage(1);
+  }, [query]);
+
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
+
   function onRefresh() {
     setRefreshing(true);
     void loadEvents(true);
+  }
+
+  function goToPage(nextPage: number) {
+    setPage(Math.min(Math.max(nextPage, 1), totalPages));
+  }
+
+  function PaginationControls() {
+    if (filteredEvents.length <= PAGE_SIZE) return null;
+    return (
+      <View style={styles.paginationCard}>
+        <TouchableOpacity
+          style={[styles.pageButton, safePage >= totalPages ? styles.pageButtonDisabled : null]}
+          disabled={safePage >= totalPages}
+          onPress={() => goToPage(safePage + 1)}
+          activeOpacity={0.85}
+        >
+          <Ionicons name="chevron-back" size={19} color={safePage >= totalPages ? colors.textTertiary : colors.textInverse} />
+          <Text style={[styles.pageButtonText, safePage >= totalPages ? styles.pageButtonTextDisabled : null]}>التالي</Text>
+        </TouchableOpacity>
+
+        <View style={styles.pageInfoBox}>
+          <Text style={styles.pageInfoTitle}>صفحة {safePage.toLocaleString('ar-SA')} من {totalPages.toLocaleString('ar-SA')}</Text>
+          <Text style={styles.pageInfoSub}>عرض {(pageStart + 1).toLocaleString('ar-SA')} - {pageEnd.toLocaleString('ar-SA')} من {filteredEvents.length.toLocaleString('ar-SA')}</Text>
+        </View>
+
+        <TouchableOpacity
+          style={[styles.pageButton, safePage <= 1 ? styles.pageButtonDisabled : null]}
+          disabled={safePage <= 1}
+          onPress={() => goToPage(safePage - 1)}
+          activeOpacity={0.85}
+        >
+          <Text style={[styles.pageButtonText, safePage <= 1 ? styles.pageButtonTextDisabled : null]}>السابق</Text>
+          <Ionicons name="chevron-forward" size={19} color={safePage <= 1 ? colors.textTertiary : colors.textInverse} />
+        </TouchableOpacity>
+      </View>
+    );
   }
 
   if (authLoading || loading) {
@@ -256,52 +309,56 @@ export default function InquiryCenterScreen() {
             message="لم تصل رسائل أو لا توجد نتيجة مطابقة للبحث الحالي."
           />
         ) : (
-          <View style={styles.list}>
-            {filteredEvents.map((event) => {
-              const incomingText = getIncomingText(event);
-              const replyText = getReplyText(event);
-              const isIncoming = event.direction === 'incoming' || event.event_type === 'message';
+          <View style={styles.listWrap}>
+            <PaginationControls />
+            <View style={styles.list}>
+              {pagedEvents.map((event) => {
+                const incomingText = getIncomingText(event);
+                const replyText = getReplyText(event);
+                const isIncoming = event.direction === 'incoming' || event.event_type === 'message';
 
-              return (
-                <View key={`${event.id}-${event.external_id || ''}`} style={styles.card}>
-                  <View style={styles.cardHeader}>
-                    <View style={[styles.statusPill, statusTone(event.status)]}>
-                      <Text style={styles.statusText}>{event.status || eventTypeLabel(event)}</Text>
+                return (
+                  <View key={`${event.id}-${event.external_id || ''}`} style={styles.card}>
+                    <View style={styles.cardHeader}>
+                      <View style={[styles.statusPill, statusTone(event.status)]}>
+                        <Text style={styles.statusText}>{event.status || eventTypeLabel(event)}</Text>
+                      </View>
+                      <View style={styles.titleWrap}>
+                        <Text style={styles.cardTitle}>{event.tenant?.name || 'رقم غير مرتبط بمستأجر'}</Text>
+                        <Text style={styles.cardSubtitle}>{event.source || event.destination || '-'}</Text>
+                      </View>
+                      <View style={styles.iconCircle}>
+                        <Ionicons name={isIncoming ? 'arrow-down-outline' : 'checkmark-done-outline'} size={18} color={colors.primaryDark} />
+                      </View>
                     </View>
-                    <View style={styles.titleWrap}>
-                      <Text style={styles.cardTitle}>{event.tenant?.name || 'رقم غير مرتبط بمستأجر'}</Text>
-                      <Text style={styles.cardSubtitle}>{event.source || event.destination || '-'}</Text>
+
+                    <View style={styles.metaRow}>
+                      <Text style={styles.metaText}>{eventTypeLabel(event)}</Text>
+                      <Text style={styles.metaText}>{formatDate(event.created_at || event.processed_at)}</Text>
                     </View>
-                    <View style={styles.iconCircle}>
-                      <Ionicons name={isIncoming ? 'arrow-down-outline' : 'checkmark-done-outline'} size={18} color={colors.primaryDark} />
-                    </View>
+
+                    {incomingText ? (
+                      <View style={styles.messageBox}>
+                        <Text style={styles.boxLabel}>رسالة المستأجر</Text>
+                        <Text style={styles.messageText}>{incomingText}</Text>
+                      </View>
+                    ) : null}
+
+                    {replyText ? (
+                      <View style={[styles.messageBox, styles.replyBox]}>
+                        <Text style={styles.boxLabel}>الرد الآلي</Text>
+                        <Text style={styles.messageText}>{replyText}</Text>
+                      </View>
+                    ) : null}
+
+                    {!incomingText && !replyText ? (
+                      <Text style={styles.mutedText}>لا توجد رسالة نصية محفوظة لهذا الحدث.</Text>
+                    ) : null}
                   </View>
-
-                  <View style={styles.metaRow}>
-                    <Text style={styles.metaText}>{eventTypeLabel(event)}</Text>
-                    <Text style={styles.metaText}>{formatDate(event.created_at || event.processed_at)}</Text>
-                  </View>
-
-                  {incomingText ? (
-                    <View style={styles.messageBox}>
-                      <Text style={styles.boxLabel}>رسالة المستأجر</Text>
-                      <Text style={styles.messageText}>{incomingText}</Text>
-                    </View>
-                  ) : null}
-
-                  {replyText ? (
-                    <View style={[styles.messageBox, styles.replyBox]}>
-                      <Text style={styles.boxLabel}>الرد الآلي</Text>
-                      <Text style={styles.messageText}>{replyText}</Text>
-                    </View>
-                  ) : null}
-
-                  {!incomingText && !replyText ? (
-                    <Text style={styles.mutedText}>لا توجد رسالة نصية محفوظة لهذا الحدث.</Text>
-                  ) : null}
-                </View>
-              );
-            })}
+                );
+              })}
+            </View>
+            <PaginationControls />
           </View>
         )}
 
@@ -362,7 +419,37 @@ const styles = StyleSheet.create({
   },
   statValue: { ...typography.h3, color: colors.primaryDark, fontWeight: '900' },
   statLabel: { ...typography.small, color: colors.textSecondary, textAlign: 'center', marginTop: 2 },
+  listWrap: { gap: spacing.md },
   list: { gap: spacing.md },
+  paginationCard: {
+    backgroundColor: colors.surface,
+    borderRadius: radii.xl,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+    padding: spacing.sm,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+    ...shadows.sm,
+  },
+  pageInfoBox: { flex: 1, alignItems: 'center' },
+  pageInfoTitle: { ...typography.caption, color: colors.text, fontWeight: '900', textAlign: 'center' },
+  pageInfoSub: { ...typography.small, color: colors.textSecondary, marginTop: 2, textAlign: 'center' },
+  pageButton: {
+    minWidth: 82,
+    minHeight: 38,
+    borderRadius: radii.full,
+    backgroundColor: colors.primary,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    paddingHorizontal: spacing.sm,
+  },
+  pageButtonDisabled: { backgroundColor: colors.surfaceSubtle, borderWidth: 1, borderColor: colors.borderLight },
+  pageButtonText: { ...typography.small, color: colors.textInverse, fontWeight: '900' },
+  pageButtonTextDisabled: { color: colors.textTertiary },
   card: {
     backgroundColor: colors.surface,
     borderRadius: radii.xl,
