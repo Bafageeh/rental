@@ -59,6 +59,33 @@ if (!function_exists('mrsched_sync_statuses')) {
     }
 }
 
+if (!function_exists('mrsched_delete_extra_unpaid')) {
+    function mrsched_delete_extra_unpaid(int $contractId, array $keptIds): int
+    {
+        $query = DB::table('payments')->where('contract_id', $contractId);
+        if (!empty($keptIds)) {
+            $query->whereNotIn('id', array_values(array_unique(array_map('intval', $keptIds))));
+        }
+
+        if (Schema::hasColumn('payments', 'paid_amount')) {
+            $query->where(function ($q) {
+                $q->whereNull('paid_amount')->orWhere('paid_amount', '<=', 0);
+            });
+        }
+        if (Schema::hasColumn('payments', 'paid_date')) {
+            $query->whereNull('paid_date');
+        }
+        if (Schema::hasColumn('payments', 'status')) {
+            $query->where(function ($q) {
+                $q->whereNull('status')
+                    ->orWhereNotIn('status', ['paid', 'مدفوع', 'مدفوعة', 'مسدد']);
+            });
+        }
+
+        return $query->delete();
+    }
+}
+
 if (!function_exists('mrsched_sync_schedule')) {
     function mrsched_sync_schedule(Request $request, Contract $contract)
     {
@@ -79,7 +106,8 @@ if (!function_exists('mrsched_sync_schedule')) {
             ->keyBy('id');
 
         $keptIds = [];
-        DB::transaction(function () use ($rows, $contract, $existing, &$keptIds) {
+        $deletedExtra = 0;
+        DB::transaction(function () use ($rows, $contract, $existing, &$keptIds, &$deletedExtra) {
             $sequence = 1;
             foreach ($rows as $row) {
                 if (!is_array($row)) continue;
@@ -93,9 +121,12 @@ if (!function_exists('mrsched_sync_schedule')) {
                 if ($payment) {
                     $keptIds[] = (int) $payment->id;
                     if (mrsched_paid($payment)) {
-                        if (Schema::hasColumn('payments', 'sequence')) {
-                            DB::table('payments')->where('id', $payment->id)->update(['sequence' => $sequence, 'updated_at' => now()]);
-                        }
+                        $updates = [];
+                        if (Schema::hasColumn('payments', 'sequence')) $updates['sequence'] = $sequence;
+                        if (Schema::hasColumn('payments', 'status')) $updates['status'] = 'paid';
+                        if (Schema::hasColumn('payments', 'remaining_amount')) $updates['remaining_amount'] = 0;
+                        if (Schema::hasColumn('payments', 'updated_at')) $updates['updated_at'] = now();
+                        if (!empty($updates)) DB::table('payments')->where('id', $payment->id)->update($updates);
                         $sequence++;
                         continue;
                     }
@@ -122,13 +153,7 @@ if (!function_exists('mrsched_sync_schedule')) {
                 $sequence++;
             }
 
-            $deleteQuery = Payment::query()->where('contract_id', $contract->id);
-            if (!empty($keptIds)) $deleteQuery->whereNotIn('id', $keptIds);
-            $deleteQuery->get()->each(function ($payment) {
-                if (!mrsched_paid($payment)) {
-                    $payment->delete();
-                }
-            });
+            $deletedExtra = mrsched_delete_extra_unpaid((int) $contract->id, $keptIds);
         });
 
         mrsched_sync_statuses((int) $contract->id);
@@ -143,6 +168,10 @@ if (!function_exists('mrsched_sync_schedule')) {
 
         return response()->json([
             'message' => 'تم تجهيز جدول الدفعات حسب العدد الجديد مع الحفاظ على الدفعات المدفوعة.',
+            'requested_count' => $count,
+            'kept_ids' => $keptIds,
+            'deleted_extra_unpaid' => $deletedExtra,
+            'actual_count' => $fresh?->payments?->count() ?? null,
             'contract' => $fresh,
         ]);
     }
