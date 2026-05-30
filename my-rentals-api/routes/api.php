@@ -200,6 +200,7 @@ Route::middleware(['auth.api', 'api.scope'])->group(function () {
         __DIR__ . '/api/119_payment_pay_endpoint.php',
         __DIR__ . '/api/120_contract_payment_schedule_count.php',
         __DIR__ . '/api/121_owner_account_statement.php',
+        __DIR__ . '/api/122_amal_owner_transfers_import.php',
     ] as $routeModule) {
         if (is_file($routeModule)) {
             require $routeModule;
