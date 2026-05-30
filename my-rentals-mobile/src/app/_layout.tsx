@@ -130,6 +130,8 @@ function AppTabs() {
       <Tabs.Screen name="scheduled-messages" options={{ ...hidden, title: "الرسائل المجدولة" }} />
       <Tabs.Screen name="communication-center" options={{ ...hidden, title: "التواصل" }} />
       <Tabs.Screen name="owner-properties" options={{ ...hidden, title: "عقارات المالك" }} />
+      <Tabs.Screen name="owner-overdue-units" options={{ ...hidden, title: "الوحدات المتأخرة" }} />
+      <Tabs.Screen name="unit-overdue-payments" options={{ ...hidden, title: "دفعات الوحدة المتأخرة" }} />
       <Tabs.Screen name="edit-record" options={{ ...hidden, title: "تعديل" }} />
       <Tabs.Screen name="owner/[id]" options={{ ...hidden, title: "تفاصيل الأملاك" }} />
       <Tabs.Screen name="property/[id]" options={{ ...hidden, title: "تفاصيل العقار" }} />
