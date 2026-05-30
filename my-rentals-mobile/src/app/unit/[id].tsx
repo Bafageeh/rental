@@ -35,7 +35,8 @@ type ContractItem = {
   property_name?: string | null;
   unit_number?: string | null;
   tenant?: { name?: string | null } | null;
-  unit?: { unit_number?: string | null; property?: { name?: string | null } | null } | null;
+  unit?: { unit_number?: string | null; property?: { name?: string | null; owner?: { name?: string | null } | null } | null } | null;
+  owner_name?: string | null;
   payments?: PaymentItem[];
 };
 
@@ -50,6 +51,10 @@ const statusLabels: Record<string, string> = { active: "نشط", ended: "منت�
 function valueOrDash(value: unknown) {
   return value === null || value === undefined || value === "" ? "-" : String(value);
 }
+function hasValue(value: unknown) {
+  const text = String(value ?? "").trim();
+  return text !== "" && text !== "-" && text !== "غير محدد";
+}
 function asNumber(value: unknown) {
   const n = Number(String(value ?? 0).replace(/,/g, ""));
   return Number.isFinite(n) ? n : 0;
@@ -63,6 +68,13 @@ function dateOnly(value?: string | null) {
 }
 function fieldValue(fields: FieldItem[] | undefined, key: string) {
   return fields?.find((field) => field.key === key)?.value ?? "";
+}
+function fieldValueAny(fields: FieldItem[] | undefined, keys: string[]) {
+  for (const key of keys) {
+    const value = fieldValue(fields, key);
+    if (hasValue(value)) return String(value).trim();
+  }
+  return "";
 }
 function normalizeId(value: unknown) {
   const text = String(value ?? "").trim();
@@ -231,6 +243,8 @@ export default function UnitDetailsRoute() {
   const unitStatus = valueOrDash(fieldValue(data?.fields, "status"));
   const unitRent = money(fieldValue(data?.fields, "rent_amount"));
   const unitFloor = valueOrDash(fieldValue(data?.fields, "floor"));
+  const headerPropertyName = fieldValueAny(data?.fields, ["property_name", "property", "property_id", "parent_property_name"]) || unitContracts.find((contract) => hasValue(contract?.unit?.property?.name || contract?.property_name))?.unit?.property?.name || unitContracts.find((contract) => hasValue(contract?.property_name))?.property_name || "";
+  const headerOwnerName = fieldValueAny(data?.fields, ["owner_name", "owner", "owner_id", "property_owner_name"]) || unitContracts.find((contract) => hasValue(contract?.unit?.property?.owner?.name))?.unit?.property?.owner?.name || unitContracts.find((contract) => hasValue(contract?.owner_name))?.owner_name || "";
   const sourceReturnTo = safeDecode(params.return_to);
   const propertyReturnFromParam = routeFromReturnTo(sourceReturnTo);
   const unitBackTarget = propertyId ? `/property/${propertyId}` : (propertyReturnFromParam || "/properties");
@@ -325,6 +339,10 @@ export default function UnitDetailsRoute() {
         <View style={styles.headerCard}>
           <Text style={styles.entityLabel}>وحدة</Text>
           <Text numberOfLines={2} style={styles.title}>{title}</Text>
+          <View style={styles.unitContextBox}>
+            <Text numberOfLines={1} style={styles.unitContextLine}>المالك: {valueOrDash(headerOwnerName)}</Text>
+            <Text numberOfLines={1} style={styles.unitContextLine}>العقار: {valueOrDash(headerPropertyName)}</Text>
+          </View>
           {activeTenantName ? <Text numberOfLines={1} style={styles.activeTenantLine}>المستأجر النشط: {activeTenantName}</Text> : null}
           <View style={styles.headerStatsRow}><Text style={styles.statPill}>العقود: {contractsCount}</Text><Text style={styles.statPill}>رقم السجل: {valueOrDash(id)}</Text></View>
         </View>
@@ -356,6 +374,8 @@ const styles = StyleSheet.create({
   headerCard: { backgroundColor: "#111827", borderRadius: 24, padding: 16, marginBottom: 10 },
   entityLabel: { alignSelf: "flex-end", color: "#c7d2fe", fontSize: 13, fontWeight: "900", marginBottom: 6 },
   title: { color: "#fff", fontSize: 24, lineHeight: 32, fontWeight: "900", textAlign: "right" },
+  unitContextBox: { alignItems: "flex-end", marginTop: 8, gap: 4 },
+  unitContextLine: { color: "#A7F3D0", fontSize: 13, fontWeight: "900", textAlign: "right" },
   activeTenantLine: { color: "#A7F3D0", fontSize: 14, fontWeight: "900", textAlign: "right", marginTop: 6 },
   headerStatsRow: { flexDirection: "row-reverse", gap: 8, marginTop: 12, flexWrap: "wrap" },
   statPill: { overflow: "hidden", backgroundColor: "rgba(255,255,255,0.12)", color: "#fff", borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6, fontWeight: "800", fontSize: 12 },
