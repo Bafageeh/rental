@@ -1,6 +1,6 @@
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
-import { router, useNavigation } from "expo-router";
-import { useEffect, useMemo, useState } from "react";
+import { router, useFocusEffect, useNavigation } from "expo-router";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, BackHandler, RefreshControl, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { apiGet } from "../lib/api";
 import ContractPaymentCard from "./ContractPaymentCard";
@@ -229,14 +229,21 @@ export default function ContractDetailsScreen({ id }: { id: string | number }) {
   const [error, setError] = useState("");
   const [expandedId, setExpandedId] = useState<number | null>(null);
 
-  async function load(refresh = false) {
+  const load = useCallback(async (refresh = false) => {
+    const nonce = Date.now();
     try {
       if (refresh) setRefreshing(true);
-      else setLoading(true);
+      else {
+        setLoading(true);
+        setData(null);
+        setContract(null);
+        setApiPayments([]);
+        setExpandedId(null);
+      }
       setError("");
       const [relatedResult, contractResult] = await Promise.all([
-        apiGet(`/relation-manager/related/contract/${id}`),
-        apiGet(`/contracts/${id}`).catch(() => null),
+        apiGet(`/relation-manager/related/contract/${id}?_=${nonce}`),
+        apiGet(`/contracts/${id}?_=${nonce}`).catch(() => null),
       ]);
       const relatedPayload = relatedResult as ContractPayload;
       setData(relatedPayload);
@@ -251,11 +258,13 @@ export default function ContractDetailsScreen({ id }: { id: string | number }) {
       setLoading(false);
       setRefreshing(false);
     }
-  }
-
-  useEffect(() => {
-    load(false);
   }, [id]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void load(false);
+    }, [load]),
+  );
 
   const forcedUnitRoute = contract?.unit?.id ? `/unit/${contract.unit.id}` : "";
 
@@ -439,11 +448,11 @@ export default function ContractDetailsScreen({ id }: { id: string | number }) {
             </View>
           </View>
 
-          {loading ? <View style={styles.state}><ActivityIndicator /><Text style={styles.stateText}>جاري التحميل...</Text></View> : null}
+          {loading ? <View style={styles.state}><ActivityIndicator /><Text style={styles.stateText}>جاري تحميل أحدث بيانات العقد...</Text></View> : null}
           {error ? <Text style={styles.error}>{error}</Text> : null}
           {!loading && !error && payments.length === 0 ? <Text style={styles.empty}>لا توجد دفعات مرتبطة بهذا العقد.</Text> : null}
 
-          {payments.map((payment, index) => (
+          {!loading ? payments.map((payment, index) => (
             <ContractPaymentCard
               key={payment.id}
               item={payment}
@@ -452,7 +461,7 @@ export default function ContractDetailsScreen({ id }: { id: string | number }) {
               onToggle={() => setExpandedId((current) => current === payment.id ? null : payment.id)}
               onChanged={() => load(true)}
             />
-          ))}
+          )) : null}
         </View>
       </ScrollView>
     </SafeAreaView>
