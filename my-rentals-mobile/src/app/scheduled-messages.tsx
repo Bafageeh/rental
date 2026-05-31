@@ -66,6 +66,38 @@ function isValidTime(value: string) {
   return /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
 }
 
+function isOverdueRentReport(item: ScheduledMessage) {
+  const text = `${item.key || ''} ${item.id || ''} ${item.title || ''} ${item.description || ''} ${item.command || ''}`.toLowerCase();
+  return text.includes('overdue') || text.includes('متأخر') || text.includes('المتأخرين') || text.includes('دفع الايجار') || text.includes('دفع الإيجار');
+}
+
+function OverdueReportPreview({ item }: { item: ScheduledMessage }) {
+  return (
+    <View style={styles.overduePreview}>
+      <View style={styles.previewHeaderRow}>
+        <Text style={styles.previewTitle}>تقرير متأخرات الإيجار</Text>
+        <View style={styles.previewLogo}><Ionicons name="home-outline" size={17} color="#0F766E" /></View>
+      </View>
+      <Text style={styles.previewDate}>يرسل تلقائيًا حسب الوقت المحدد</Text>
+      <View style={styles.previewTable}>
+        {[
+          ['الوحدة', 'المستأجر', 'المبلغ'],
+          ['شقة ٢', 'اسم المستأجر', '٢٬٣٠٠'],
+          ['شقة ٩', 'اسم المستأجر', '١٬٦٠٠'],
+          ['الإجمالي', 'عدد الحالات', '٣٬٩٠٠'],
+        ].map((row, index) => (
+          <View key={index} style={[styles.previewTableRow, index === 0 ? styles.previewTableHead : null]}>
+            <Text style={[styles.previewCell, index === 0 ? styles.previewHeadText : null]}>{row[0]}</Text>
+            <Text style={[styles.previewCell, index === 0 ? styles.previewHeadText : null]}>{row[1]}</Text>
+            <Text style={[styles.previewCell, styles.previewAmountCell, index === 0 ? styles.previewHeadText : null]}>{row[2]}</Text>
+          </View>
+        ))}
+      </View>
+      <Text style={styles.previewFooter}>مختصر جاهز للواتساب بدل القائمة الطويلة</Text>
+    </View>
+  );
+}
+
 export default function ScheduledMessagesScreen() {
   const { loggedIn, isAdmin, loading: authLoading } = useAuth();
   const [items, setItems] = useState<ScheduledMessage[]>([]);
@@ -202,23 +234,26 @@ export default function ScheduledMessagesScreen() {
               const key = item.key || item.id;
               const currentTime = timeValues[key] ?? item.schedule?.time ?? '18:25';
               const isSaving = savingKey === key;
+              const compactOverdue = isOverdueRentReport(item);
 
               return (
-                <View key={key} style={styles.card}>
+                <View key={key} style={[styles.card, compactOverdue ? styles.compactCard : null]}>
                   <View style={styles.cardHeader}>
-                    <View style={styles.iconCircle}>
-                      <Ionicons name={item.channel === 'whatsapp' ? 'logo-whatsapp' : 'calendar-outline'} size={22} color={colors.primaryDark} />
+                    <View style={[styles.iconCircle, compactOverdue ? styles.overdueIconCircle : null]}>
+                      <Ionicons name={compactOverdue ? 'image-outline' : item.channel === 'whatsapp' ? 'logo-whatsapp' : 'calendar-outline'} size={22} color={compactOverdue ? '#DC2626' : colors.primaryDark} />
                     </View>
                     <View style={styles.titleWrap}>
-                      <Text style={styles.cardTitle}>{item.title}</Text>
-                      <Text style={styles.cardSubtitle}>{item.description || '-'}</Text>
+                      <Text style={styles.cardTitle}>{compactOverdue ? 'قائمة المتأخرين عن دفع الإيجار' : item.title}</Text>
+                      <Text style={styles.cardSubtitle}>{compactOverdue ? 'إرسال مختصر بصري يشبه الصورة بدل سرد طويل داخل الرسالة' : item.description || '-'}</Text>
                     </View>
                     <View style={[styles.badge, statusStyle(item.status)]}>
                       <Text style={styles.badgeText}>{item.status_label || item.status || '-'}</Text>
                     </View>
                   </View>
 
-                  <View style={styles.editBox}>
+                  {compactOverdue ? <OverdueReportPreview item={item} /> : null}
+
+                  <View style={[styles.editBox, compactOverdue ? styles.compactEditBox : null]}>
                     <Text style={styles.editTitle}>تعديل وقت الإرسال</Text>
                     <View style={styles.timeRow}>
                       <TouchableOpacity
@@ -227,7 +262,7 @@ export default function ScheduledMessagesScreen() {
                         onPress={() => saveTime(item)}
                         activeOpacity={0.88}
                       >
-                        {isSaving ? <ActivityIndicator color={colors.textInverse} size="small" /> : <Text style={styles.saveButtonText}>حفظ الوقت</Text>}
+                        {isSaving ? <ActivityIndicator color={colors.textInverse} size="small" /> : <Text style={styles.saveButtonText}>حفظ</Text>}
                       </TouchableOpacity>
                       <TextInput
                         value={currentTime}
@@ -239,10 +274,10 @@ export default function ScheduledMessagesScreen() {
                         textAlign="center"
                       />
                     </View>
-                    <Text style={styles.editHint}>اكتب الوقت بصيغة 24 ساعة. مثال: 18:25 تعني 6:25 مساءً.</Text>
+                    <Text style={styles.editHint}>صيغة 24 ساعة مثل 18:25.</Text>
                   </View>
 
-                  <View style={styles.detailsGrid}>
+                  <View style={[styles.detailsGrid, compactOverdue ? styles.compactDetailsGrid : null]}>
                     <View style={styles.detailBox}>
                       <Text style={styles.detailLabel}>القناة</Text>
                       <Text style={styles.detailValue}>{item.channel_label || item.channel || '-'}</Text>
@@ -255,10 +290,12 @@ export default function ScheduledMessagesScreen() {
                       <Text style={styles.detailLabel}>الجدولة الحالية</Text>
                       <Text style={styles.detailValue}>{item.schedule?.human || '-'}</Text>
                     </View>
-                    <View style={styles.detailBoxWide}>
-                      <Text style={styles.detailLabel}>آخر تنفيذ</Text>
-                      <Text style={styles.detailValue}>{item.last_sent_at || item.last_sent_date || 'لم يتم التنفيذ بعد'}</Text>
-                    </View>
+                    {!compactOverdue ? (
+                      <View style={styles.detailBoxWide}>
+                        <Text style={styles.detailLabel}>آخر تنفيذ</Text>
+                        <Text style={styles.detailValue}>{item.last_sent_at || item.last_sent_date || 'لم يتم التنفيذ بعد'}</Text>
+                      </View>
+                    ) : null}
                   </View>
                 </View>
               );
@@ -299,6 +336,7 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     ...shadows.sm,
   },
+  compactCard: { borderColor: '#FECACA', backgroundColor: '#FFFBFB' },
   cardHeader: { flexDirection: 'row-reverse', alignItems: 'center', gap: spacing.sm },
   iconCircle: {
     width: 46,
@@ -308,6 +346,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  overdueIconCircle: { backgroundColor: '#FEE2E2' },
   titleWrap: { flex: 1 },
   cardTitle: { ...typography.bodyBold, color: colors.text, textAlign: 'right' },
   cardSubtitle: { ...typography.caption, color: colors.textSecondary, textAlign: 'right', marginTop: 4, lineHeight: 20 },
@@ -316,12 +355,32 @@ const styles = StyleSheet.create({
   pausedBadge: { backgroundColor: colors.warningBg },
   neutralBadge: { backgroundColor: colors.surfaceSubtle },
   badgeText: { ...typography.small, color: colors.text, fontWeight: '900' },
+  overduePreview: {
+    marginTop: spacing.md,
+    backgroundColor: '#fff',
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    padding: 10,
+  },
+  previewHeaderRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
+  previewLogo: { width: 32, height: 32, borderRadius: 12, backgroundColor: '#ECFDF5', alignItems: 'center', justifyContent: 'center' },
+  previewTitle: { color: '#111827', fontWeight: '900', fontSize: 15, textAlign: 'right' },
+  previewDate: { color: '#64748B', fontWeight: '800', fontSize: 11, textAlign: 'right', marginBottom: 8 },
+  previewTable: { borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 10, overflow: 'hidden' },
+  previewTableRow: { flexDirection: 'row-reverse', minHeight: 28, borderBottomWidth: 1, borderBottomColor: '#E5E7EB' },
+  previewTableHead: { backgroundColor: '#DBEAFE' },
+  previewCell: { flex: 1, color: '#111827', fontWeight: '800', fontSize: 11, textAlign: 'center', paddingVertical: 6, borderLeftWidth: 1, borderLeftColor: '#E5E7EB' },
+  previewAmountCell: { color: '#DC2626', fontWeight: '900' },
+  previewHeadText: { color: '#1E3A8A', fontWeight: '900' },
+  previewFooter: { color: '#0F766E', fontWeight: '900', fontSize: 11, textAlign: 'center', marginTop: 8 },
   editBox: {
     marginTop: spacing.md,
     backgroundColor: colors.primaryLight,
     borderRadius: radii.lg,
     padding: spacing.md,
   },
+  compactEditBox: { padding: spacing.sm, marginTop: spacing.sm },
   editTitle: { ...typography.bodyBold, color: colors.primaryDark, textAlign: 'right', marginBottom: spacing.sm },
   timeRow: { flexDirection: 'row-reverse', gap: spacing.sm, alignItems: 'center' },
   timeInput: {
@@ -337,7 +396,7 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
   },
   saveButton: {
-    minWidth: 110,
+    minWidth: 92,
     minHeight: 48,
     borderRadius: radii.md,
     backgroundColor: colors.primary,
@@ -349,6 +408,7 @@ const styles = StyleSheet.create({
   saveButtonText: { ...typography.bodyBold, color: colors.textInverse },
   editHint: { ...typography.small, color: colors.textSecondary, textAlign: 'right', marginTop: spacing.sm, lineHeight: 18 },
   detailsGrid: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.md },
+  compactDetailsGrid: { marginTop: spacing.sm },
   detailBox: {
     flexBasis: '48%',
     flexGrow: 1,
