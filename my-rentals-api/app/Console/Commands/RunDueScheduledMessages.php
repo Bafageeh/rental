@@ -26,10 +26,20 @@ class RunDueScheduledMessages extends Command
                 continue;
             }
 
-            if ($message->command === 'rent:send-overdue-whatsapp-report') {
-                $exitCode = Artisan::call('rent:send-overdue-whatsapp-table-report', [
-                    '--to' => $message->recipient,
-                ]);
+            if (in_array($message->command, [
+                'rent:send-overdue-whatsapp-report',
+                'rent:send-overdue-whatsapp-table-report',
+                'rent:send-overdue-whatsapp-table-report-pdf',
+            ], true)) {
+                $arguments = ['--to' => $message->recipient];
+
+                // الأمر الجديد في شاشة الرسائل المجدولة يجب أن يرسل PDF.
+                // أما الأوامر القديمة فتبقى مدعومة وتستخدم نفس أمر التقرير الجديد.
+                if ($message->command === 'rent:send-overdue-whatsapp-table-report') {
+                    $arguments['--text'] = true;
+                }
+
+                $exitCode = Artisan::call('rent:send-overdue-whatsapp-table-report', $arguments);
 
                 if ($exitCode === 0) {
                     $now = now($message->timezone ?: 'Asia/Riyadh');
@@ -38,7 +48,7 @@ class RunDueScheduledMessages extends Command
                         'last_sent_at' => now(),
                     ])->save();
 
-                    $this->info('تم تنفيذ الرسالة المجدولة بصيغة الجدول المختصر: ' . $message->title);
+                    $this->info('تم تنفيذ الرسالة المجدولة: ' . $message->title);
                 } else {
                     $this->error('فشل تنفيذ الرسالة المجدولة: ' . $message->title);
                 }
