@@ -27,7 +27,7 @@ class RunDueScheduledMessages extends Command
             }
 
             if ($message->command === 'rent:send-overdue-whatsapp-report') {
-                $exitCode = Artisan::call($message->command, [
+                $exitCode = Artisan::call('rent:send-overdue-whatsapp-table-report', [
                     '--to' => $message->recipient,
                 ]);
 
@@ -38,7 +38,7 @@ class RunDueScheduledMessages extends Command
                         'last_sent_at' => now(),
                     ])->save();
 
-                    $this->info('تم تنفيذ الرسالة المجدولة: ' . $message->title);
+                    $this->info('تم تنفيذ الرسالة المجدولة بصيغة الجدول المختصر: ' . $message->title);
                 } else {
                     $this->error('فشل تنفيذ الرسالة المجدولة: ' . $message->title);
                 }
