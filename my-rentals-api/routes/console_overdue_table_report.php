@@ -49,7 +49,9 @@ if (!function_exists('mrow_send_text')) {
     {
         $cfg = mrow_cfg();
         $to = mrow_phone($to);
-        if ($cfg['token'] === '' || $cfg['phone_number_id'] === '' || $to === '') return ['ok' => false, 'reason' => 'missing_config'];
+        if ($cfg['token'] === '' || $cfg['phone_number_id'] === '' || $to === '') {
+            return ['ok' => false, 'reason' => 'missing_config'];
+        }
         try {
             $response = Http::withToken($cfg['token'])->post("https://graph.facebook.com/{$cfg['version']}/{$cfg['phone_number_id']}/messages", [
                 'messaging_product' => 'whatsapp',
@@ -68,7 +70,9 @@ if (!function_exists('mrow_upload_pdf')) {
     function mrow_upload_pdf(string $filePath): array
     {
         $cfg = mrow_cfg();
-        if ($cfg['token'] === '' || $cfg['phone_number_id'] === '' || !is_file($filePath)) return ['ok' => false, 'reason' => 'missing_config_or_file'];
+        if ($cfg['token'] === '' || $cfg['phone_number_id'] === '' || !is_file($filePath)) {
+            return ['ok' => false, 'reason' => 'missing_config_or_file'];
+        }
         try {
             $response = Http::withToken($cfg['token'])
                 ->attach('file', fopen($filePath, 'r'), basename($filePath), ['Content-Type' => 'application/pdf'])
@@ -89,7 +93,9 @@ if (!function_exists('mrow_send_pdf_doc')) {
     {
         $cfg = mrow_cfg();
         $to = mrow_phone($to);
-        if ($cfg['token'] === '' || $cfg['phone_number_id'] === '' || $to === '' || $mediaId === '') return ['ok' => false, 'reason' => 'missing_config_or_media'];
+        if ($cfg['token'] === '' || $cfg['phone_number_id'] === '' || $to === '' || $mediaId === '') {
+            return ['ok' => false, 'reason' => 'missing_config_or_media'];
+        }
         try {
             $response = Http::withToken($cfg['token'])->post("https://graph.facebook.com/{$cfg['version']}/{$cfg['phone_number_id']}/messages", [
                 'messaging_product' => 'whatsapp',
@@ -141,8 +147,11 @@ if (!function_exists('mrow_build_message')) {
         $count = $rows->count();
         $total = $rows->sum('amount');
         $lines = ['📋 *تقرير متأخرات الإيجار*', 'التاريخ: ' . now('Asia/Riyadh')->format('Y-m-d'), 'عدد الحالات: ' . $count, 'الإجمالي: ' . mrow_money($total), '', '```', 'الوحدة | المستأجر | المبلغ | الاستحقاق', '------ | -------- | ------ | --------'];
-        foreach ($rows->take(25) as $row) $lines[] = trim(($row['property'] !== '-' ? $row['property'] . ' / ' : '') . 'وحدة ' . $row['unit']) . ' | ' . mb_substr((string) $row['tenant'], 0, 18) . ' | ' . number_format((float) $row['amount'], 0) . ' | ' . $row['due_date'];
+        foreach ($rows->take(25) as $row) {
+            $lines[] = trim(($row['property'] !== '-' ? $row['property'] . ' / ' : '') . 'وحدة ' . $row['unit']) . ' | ' . mb_substr((string) $row['tenant'], 0, 18) . ' | ' . number_format((float) $row['amount'], 0) . ' | ' . $row['due_date'];
+        }
         $lines[] = '```';
+        $lines[] = 'تنبيه: تم إرسال هذا النص كبديل لأن PDF لم يكتمل.';
         return implode("\n", $lines);
     }
 }
@@ -175,35 +184,43 @@ if (!function_exists('mrow_generate_pdf')) {
             $mpdf->Output($path, \Mpdf\Output\Destination::FILE);
             return $path;
         }
-        throw new RuntimeException('مكتبة PDF غير مثبتة. نفذ: composer require mpdf/mpdf');
+        throw new RuntimeException('mpdf is not installed');
     }
 }
 
 Artisan::command('rent:send-overdue-whatsapp-table-report {--to=} {--test} {--text}', function () {
     $to = (string) ($this->option('to') ?: env('DAILY_RENT_OVERDUE_WHATSAPP_TO', '0500007650'));
     $rows = mrow_overdue_rows();
+    $message = mrow_build_message($rows);
 
     if ($this->option('text')) {
-        $message = mrow_build_message($rows);
         $this->line($message);
         if ($this->option('test')) return self::SUCCESS;
         $result = mrow_send_text($to, $message);
+        if (!($result['ok'] ?? false)) Log::warning('WhatsApp text fallback failed', $result);
         return ($result['ok'] ?? false) ? self::SUCCESS : self::FAILURE;
     }
 
-    $pdfPath = mrow_generate_pdf($rows);
-    $this->line('PDF: ' . $pdfPath);
-    if ($this->option('test')) return self::SUCCESS;
-    $upload = mrow_upload_pdf($pdfPath);
-    if (!($upload['ok'] ?? false)) {
-        Log::warning('PDF upload failed', $upload);
-        return self::FAILURE;
+    try {
+        $pdfPath = mrow_generate_pdf($rows);
+        $this->line('PDF: ' . $pdfPath);
+        if ($this->option('test')) return self::SUCCESS;
+        $upload = mrow_upload_pdf($pdfPath);
+        if (!($upload['ok'] ?? false)) throw new RuntimeException('PDF upload failed: ' . ($upload['body'] ?? $upload['reason'] ?? 'unknown'));
+        $send = mrow_send_pdf_doc($to, (string) $upload['media_id'], basename($pdfPath));
+        if (!($send['ok'] ?? false)) throw new RuntimeException('PDF send failed: ' . ($send['body'] ?? $send['reason'] ?? 'unknown'));
+        $this->info('PDF report sent.');
+        return self::SUCCESS;
+    } catch (Throwable $e) {
+        Log::warning('PDF report failed, trying WhatsApp text fallback', ['error' => $e->getMessage()]);
+        $this->warn('PDF failed, sending text fallback: ' . $e->getMessage());
+        if ($this->option('test')) return self::FAILURE;
+        $result = mrow_send_text($to, $message);
+        if (!($result['ok'] ?? false)) {
+            Log::warning('WhatsApp text fallback failed', $result);
+            return self::FAILURE;
+        }
+        $this->info('Text fallback sent.');
+        return self::SUCCESS;
     }
-    $send = mrow_send_pdf_doc($to, (string) $upload['media_id'], basename($pdfPath));
-    if (!($send['ok'] ?? false)) {
-        Log::warning('PDF send failed', $send);
-        return self::FAILURE;
-    }
-    $this->info('تم إرسال تقرير المتأخرات كملف PDF عبر واتساب.');
-    return self::SUCCESS;
-})->purpose('Send compact WhatsApp overdue rent report as PDF by default.');
+})->purpose('Send compact WhatsApp overdue rent report as PDF with text fallback.');
