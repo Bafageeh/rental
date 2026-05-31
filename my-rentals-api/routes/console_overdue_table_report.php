@@ -110,6 +110,20 @@ if (!function_exists('mrow_send_pdf_doc')) {
     }
 }
 
+if (!function_exists('mrow_payment_amount')) {
+    function mrow_payment_amount($contract, $duePayments): float
+    {
+        $fromContract = mrow_num($contract->regular_payment_amount ?? 0);
+        if ($fromContract > 0) return $fromContract;
+
+        $fromDue = $duePayments->map(fn ($p) => mrow_num($p->amount ?? 0))->filter(fn ($n) => $n > 0)->first();
+        if ($fromDue > 0) return $fromDue;
+
+        $fromAll = ($contract->payments ?? collect())->map(fn ($p) => mrow_num($p->amount ?? 0))->filter(fn ($n) => $n > 0)->first();
+        return $fromAll > 0 ? $fromAll : 0.0;
+    }
+}
+
 if (!function_exists('mrow_overdue_rows')) {
     function mrow_overdue_rows()
     {
@@ -120,7 +134,8 @@ if (!function_exists('mrow_overdue_rows')) {
             ->get()
             ->map(function ($contract) use ($today) {
                 $payments = $contract->payments ?? collect();
-                $dueTotal = $payments->filter(fn ($p) => substr((string) ($p->due_date ?? ''), 0, 10) <= $today)->sum(fn ($p) => mrow_num($p->amount ?? 0));
+                $duePayments = $payments->filter(fn ($p) => substr((string) ($p->due_date ?? ''), 0, 10) <= $today);
+                $dueTotal = $duePayments->sum(fn ($p) => mrow_num($p->amount ?? 0));
                 $paidTotal = $payments->sum(function ($p) {
                     $paid = mrow_num($p->paid_amount ?? 0);
                     if ($paid > 0) return $paid;
@@ -129,12 +144,18 @@ if (!function_exists('mrow_overdue_rows')) {
                 });
                 $lateAmount = max(0, $dueTotal - $paidTotal);
                 if ($lateAmount <= 0) return null;
-                $oldest = $payments->filter(fn ($p) => substr((string) ($p->due_date ?? ''), 0, 10) <= $today)->sortBy('due_date')->first();
+
+                $paymentAmount = mrow_payment_amount($contract, $duePayments);
+                $latePaymentsCount = $paymentAmount > 0 ? (int) ceil($lateAmount / $paymentAmount) : (int) max(1, $duePayments->count());
+                $oldest = $duePayments->sortBy('due_date')->first();
+
                 return [
                     'tenant' => $contract->tenant?->name ?: '-',
                     'property' => $contract->unit?->property?->name ?: '-',
                     'unit' => $contract->unit?->unit_number ?: '-',
                     'amount' => $lateAmount,
+                    'payment_amount' => $paymentAmount,
+                    'late_payments_count' => $latePaymentsCount,
                     'due_date' => substr((string) ($oldest?->due_date ?? ''), 0, 10) ?: '-',
                 ];
             })->filter()->sortByDesc('amount')->values();
@@ -146,9 +167,25 @@ if (!function_exists('mrow_build_message')) {
     {
         $count = $rows->count();
         $total = $rows->sum('amount');
-        $lines = ['📋 *تقرير متأخرات الإيجار*', 'التاريخ: ' . now('Asia/Riyadh')->format('Y-m-d'), 'عدد الحالات: ' . $count, 'الإجمالي: ' . mrow_money($total), '', '```', 'الوحدة | المستأجر | المبلغ | الاستحقاق', '------ | -------- | ------ | --------'];
+        $totalLatePayments = $rows->sum('late_payments_count');
+        $lines = [
+            '📋 *تقرير متأخرات الإيجار*',
+            'التاريخ: ' . now('Asia/Riyadh')->format('Y-m-d'),
+            'عدد الحالات: ' . $count,
+            'عدد الدفعات المتأخرة: ' . $totalLatePayments,
+            'الإجمالي: ' . mrow_money($total),
+            '',
+            '```',
+            'الوحدة | المستأجر | عدد | قيمة الدفعة | المتأخر | الاستحقاق',
+            '------ | -------- | --- | ---------- | ------- | --------',
+        ];
         foreach ($rows->take(25) as $row) {
-            $lines[] = trim(($row['property'] !== '-' ? $row['property'] . ' / ' : '') . 'وحدة ' . $row['unit']) . ' | ' . mb_substr((string) $row['tenant'], 0, 18) . ' | ' . number_format((float) $row['amount'], 0) . ' | ' . $row['due_date'];
+            $lines[] = trim(($row['property'] !== '-' ? $row['property'] . ' / ' : '') . 'وحدة ' . $row['unit'])
+                . ' | ' . mb_substr((string) $row['tenant'], 0, 14)
+                . ' | ' . (int) ($row['late_payments_count'] ?? 0)
+                . ' | ' . number_format((float) ($row['payment_amount'] ?? 0), 0)
+                . ' | ' . number_format((float) $row['amount'], 0)
+                . ' | ' . $row['due_date'];
         }
         $lines[] = '```';
         $lines[] = 'تنبيه: تم إرسال هذا النص كبديل لأن PDF لم يكتمل.';
@@ -162,10 +199,19 @@ if (!function_exists('mrow_pdf_html')) {
         $today = now('Asia/Riyadh')->format('Y-m-d');
         $body = '';
         foreach ($rows as $index => $row) {
-            $body .= '<tr><td>' . ($index + 1) . '</td><td>' . e($row['property']) . '</td><td>' . e($row['unit']) . '</td><td>' . e($row['tenant']) . '</td><td class="amount">' . number_format((float) $row['amount'], 0) . '</td><td>' . e($row['due_date']) . '</td></tr>';
+            $body .= '<tr>'
+                . '<td>' . ($index + 1) . '</td>'
+                . '<td>' . e($row['property']) . '</td>'
+                . '<td>' . e($row['unit']) . '</td>'
+                . '<td>' . e($row['tenant']) . '</td>'
+                . '<td class="count">' . (int) ($row['late_payments_count'] ?? 0) . '</td>'
+                . '<td class="amount">' . number_format((float) ($row['payment_amount'] ?? 0), 0) . '</td>'
+                . '<td class="amount">' . number_format((float) $row['amount'], 0) . '</td>'
+                . '<td>' . e($row['due_date']) . '</td>'
+                . '</tr>';
         }
-        if ($body === '') $body = '<tr><td colspan="6" class="empty">لا توجد مبالغ متأخرة حتى الآن</td></tr>';
-        return '<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><style>body{font-family:dejavusans,DejaVu Sans,Tahoma,Arial,sans-serif;direction:rtl;text-align:right;color:#111827;margin:0;padding:22px}.header{background:#111827;color:#fff;border-radius:18px;padding:18px;margin-bottom:14px}.title{font-size:24px;font-weight:bold}.sub{color:#d1d5db;font-size:13px;margin-top:6px}.summary{display:table;width:100%;margin-bottom:14px}.box{display:table-cell;background:#f8fafc;border:1px solid #e5e7eb;border-radius:14px;padding:12px;text-align:center}.box b{display:block;color:#dc2626;font-size:20px;margin-bottom:5px}table{width:100%;border-collapse:collapse;font-size:12px}th{background:#dbeafe;color:#1e3a8a;padding:9px;border:1px solid #bfdbfe}td{padding:8px;border:1px solid #e5e7eb}tr:nth-child(even) td{background:#f8fafc}.amount{color:#dc2626;font-weight:bold}.empty{text-align:center;padding:28px;color:#0f766e;font-weight:bold}.footer{margin-top:14px;color:#64748b;font-size:11px;text-align:center}</style></head><body><div class="header"><div class="title">تقرير متأخرات الإيجار</div><div class="sub">تقرير مختصر مرسل عبر واتساب بتاريخ ' . $today . '</div></div><div class="summary"><div class="box"><b>' . $rows->count() . '</b>عدد الحالات</div><div class="box"><b>' . mrow_money($rows->sum('amount')) . '</b>إجمالي المتأخرات</div></div><table><thead><tr><th>#</th><th>العقار</th><th>الوحدة</th><th>المستأجر</th><th>المبلغ</th><th>الاستحقاق</th></tr></thead><tbody>' . $body . '</tbody></table><div class="footer">تم إنشاء التقرير تلقائيًا من نظام إيجار</div></body></html>';
+        if ($body === '') $body = '<tr><td colspan="8" class="empty">لا توجد مبالغ متأخرة حتى الآن</td></tr>';
+        return '<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><style>body{font-family:dejavusans,DejaVu Sans,Tahoma,Arial,sans-serif;direction:rtl;text-align:right;color:#111827;margin:0;padding:22px}.header{background:#111827;color:#fff;border-radius:18px;padding:18px;margin-bottom:14px}.title{font-size:24px;font-weight:bold}.sub{color:#d1d5db;font-size:13px;margin-top:6px}.summary{display:table;width:100%;margin-bottom:14px}.box{display:table-cell;background:#f8fafc;border:1px solid #e5e7eb;border-radius:14px;padding:12px;text-align:center}.box b{display:block;color:#dc2626;font-size:20px;margin-bottom:5px}table{width:100%;border-collapse:collapse;font-size:11px}th{background:#dbeafe;color:#1e3a8a;padding:8px;border:1px solid #bfdbfe}td{padding:7px;border:1px solid #e5e7eb}tr:nth-child(even) td{background:#f8fafc}.amount{color:#dc2626;font-weight:bold}.count{font-weight:bold;color:#7c2d12}.empty{text-align:center;padding:28px;color:#0f766e;font-weight:bold}.footer{margin-top:14px;color:#64748b;font-size:11px;text-align:center}</style></head><body><div class="header"><div class="title">تقرير متأخرات الإيجار</div><div class="sub">تقرير مختصر مرسل عبر واتساب بتاريخ ' . $today . '</div></div><div class="summary"><div class="box"><b>' . $rows->count() . '</b>عدد الحالات</div><div class="box"><b>' . (int) $rows->sum('late_payments_count') . '</b>عدد الدفعات المتأخرة</div><div class="box"><b>' . mrow_money($rows->sum('amount')) . '</b>إجمالي المتأخرات</div></div><table><thead><tr><th>#</th><th>العقار</th><th>الوحدة</th><th>المستأجر</th><th>عدد الدفعات</th><th>قيمة الدفعة</th><th>إجمالي المتأخر</th><th>الاستحقاق</th></tr></thead><tbody>' . $body . '</tbody></table><div class="footer">تم إنشاء التقرير تلقائيًا من نظام إيجار</div></body></html>';
     }
 }
 
