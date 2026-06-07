@@ -388,19 +388,20 @@ class PasswordOtpController extends Controller
                 'name' => $template,
                 'language' => ['code' => $language],
                 'components' => [
-                    ['type' => 'body', 'parameters' => [['type' => 'text', 'text' => $otp]]],
-                    ['type' => 'button', 'sub_type' => 'COPY_CODE', 'index' => '0', 'parameters' => [['type' => 'coupon_code', 'coupon_code' => $otp]]],
-                ],
-            ],
-        ], [
-            'messaging_product' => 'whatsapp',
-            'to' => $to,
-            'type' => 'template',
-            'template' => [
-                'name' => $template,
-                'language' => ['code' => $language],
-                'components' => [
-                    ['type' => 'body', 'parameters' => [['type' => 'text', 'text' => $otp]]],
+                    [
+                        'type' => 'body',
+                        'parameters' => [
+                            ['type' => 'text', 'text' => $otp],
+                        ],
+                    ],
+                    [
+                        'type' => 'button',
+                        'sub_type' => 'url',
+                        'index' => '0',
+                        'parameters' => [
+                            ['type' => 'text', 'text' => $otp],
+                        ],
+                    ],
                 ],
             ],
         ]];
@@ -413,7 +414,7 @@ class PasswordOtpController extends Controller
                     'ok' => $response->successful(),
                     'status' => $response->status(),
                     'to' => $to,
-                    'attempt' => $index === 0 ? 'copy_code_button' : 'body_only',
+                    'attempt' => 'otp_url_button',
                     'provider_message_id' => Arr::get($body, 'messages.0.id'),
                     'error' => Arr::get($body, 'error.message'),
                     'error_code' => Arr::get($body, 'error.code'),
