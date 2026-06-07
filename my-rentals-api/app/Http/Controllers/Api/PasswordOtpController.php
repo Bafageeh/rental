@@ -24,70 +24,83 @@ class PasswordOtpController extends Controller
 
     public function requestOtp(Request $request): JsonResponse
     {
-        $this->ensureOtpSchema();
+        try {
+            $this->ensureOtpSchema();
 
-        $data = $request->validate([
-            'identifier' => ['required', 'string', 'max:255'],
-            'purpose' => ['nullable', 'string', 'max:50'],
-        ]);
+            $data = $request->validate([
+                'identifier' => ['required', 'string', 'max:255'],
+                'purpose' => ['nullable', 'string', 'max:50'],
+            ]);
 
-        $identifier = trim((string) $data['identifier']);
-        $user = $this->findOrCreateUserForIdentifier($identifier);
+            $identifier = trim((string) $data['identifier']);
+            $user = $this->findOrCreateUserForIdentifier($identifier);
 
-        if (!$user) {
-            return $this->error('لم أجد حسابًا مرتبطًا برقم الهوية أو رقم الجوال المدخل.', 404);
-        }
+            if (!$user) {
+                return $this->error('لم أجد حسابًا مرتبطًا برقم الهوية أو رقم الجوال المدخل.', 404);
+            }
 
-        if (Schema::hasColumn('users', 'status') && (($user->status ?? 'active') !== 'active')) {
-            return $this->error('الحساب معطل، تواصل مع الإدارة.', 403);
-        }
+            if (Schema::hasColumn('users', 'status') && (($user->status ?? 'active') !== 'active')) {
+                return $this->error('الحساب معطل، تواصل مع الإدارة.', 403);
+            }
 
-        $phone = $this->userPhone($user);
-        if ($phone === '') {
-            return $this->error('لا يوجد رقم جوال مرتبط بهذا الحساب لإرسال رمز التحقق.', 422);
-        }
+            $phone = $this->userPhone($user);
+            if ($phone === '') {
+                return $this->error('لا يوجد رقم جوال مرتبط بهذا الحساب لإرسال رمز التحقق.', 422);
+            }
 
-        $last = DB::table('password_reset_otps')
-            ->where('user_id', $user->id)
-            ->whereNull('used_at')
-            ->latest('id')
-            ->first();
+            $last = DB::table('password_reset_otps')
+                ->where('user_id', $user->id)
+                ->whereNull('used_at')
+                ->latest('id')
+                ->first();
 
-        if ($last && !empty($last->created_at) && now()->diffInSeconds($last->created_at, false) > -60) {
-            return $this->error('تم إرسال رمز تحقق قبل قليل. الرجاء الانتظار دقيقة قبل إعادة الإرسال.', 429);
-        }
+            if ($last && !empty($last->created_at) && now()->diffInSeconds($last->created_at, false) > -60) {
+                return $this->error('تم إرسال رمز تحقق قبل قليل. الرجاء الانتظار دقيقة قبل إعادة الإرسال.', 429);
+            }
 
-        $otp = (string) random_int(100000, 999999);
-        $expiresMinutes = max(1, (int) env('WHATSAPP_OTP_EXPIRY_MINUTES', 5));
+            $otp = (string) random_int(100000, 999999);
+            $expiresMinutes = max(1, (int) env('WHATSAPP_OTP_EXPIRY_MINUTES', 5));
 
-        DB::table('password_reset_otps')->insert([
-            'user_id' => $user->id,
-            'identifier' => $identifier,
-            'phone' => $this->normalizePhone($phone),
-            'otp_hash' => Hash::make($otp),
-            'reset_token' => null,
-            'attempts' => 0,
-            'expires_at' => now()->addMinutes($expiresMinutes),
-            'used_at' => null,
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
+            DB::table('password_reset_otps')->insert([
+                'user_id' => $user->id,
+                'identifier' => $identifier,
+                'phone' => $this->normalizePhone($phone),
+                'otp_hash' => Hash::make($otp),
+                'reset_token' => null,
+                'attempts' => 0,
+                'expires_at' => now()->addMinutes($expiresMinutes),
+                'used_at' => null,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
 
-        $sendResult = $this->sendWhatsAppOtp($phone, $otp);
+            $sendResult = $this->sendWhatsAppOtp($phone, $otp);
 
-        if (!($sendResult['ok'] ?? false)) {
+            if (!($sendResult['ok'] ?? false)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'تعذر إرسال رمز التحقق عبر واتساب. تأكد من إعدادات الواتساب.',
+                    'send_result' => $sendResult,
+                ], 502);
+            }
+
+            return $this->success([
+                'identifier' => $identifier,
+                'phone_masked' => $this->maskPhone($phone),
+                'expires_in_minutes' => $expiresMinutes,
+            ], 'تم إرسال رمز التحقق عبر واتساب');
+        } catch (\Throwable $e) {
+            Log::error('Password OTP request failed', [
+                'message' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+            ]);
+
             return response()->json([
                 'success' => false,
-                'message' => 'تعذر إرسال رمز التحقق عبر واتساب. تأكد من إعدادات الواتساب.',
-                'send_result' => $sendResult,
-            ], 502);
+                'message' => 'تعذر إرسال رمز التحقق. ' . $e->getMessage(),
+            ], 500);
         }
-
-        return $this->success([
-            'identifier' => $identifier,
-            'phone_masked' => $this->maskPhone($phone),
-            'expires_in_minutes' => $expiresMinutes,
-        ], 'تم إرسال رمز التحقق عبر واتساب');
     }
 
     public function verifyOtp(Request $request): JsonResponse
@@ -137,9 +150,7 @@ class PasswordOtpController extends Controller
             'updated_at' => now(),
         ]);
 
-        return $this->success([
-            'reset_token' => $resetToken,
-        ], 'تم التحقق من الرمز. يمكنك الآن تعيين كلمة سر جديدة.');
+        return $this->success(['reset_token' => $resetToken], 'تم التحقق من الرمز. يمكنك الآن تعيين كلمة سر جديدة.');
     }
 
     public function resetPassword(Request $request): JsonResponse
@@ -167,10 +178,7 @@ class PasswordOtpController extends Controller
             return $this->error('الحساب غير موجود.', 404);
         }
 
-        $updates = [
-            'password' => Hash::make((string) $data['password']),
-        ];
-
+        $updates = ['password' => Hash::make((string) $data['password'])];
         if (Schema::hasColumn('users', 'password_set_at')) {
             $updates['password_set_at'] = now();
         }
@@ -200,7 +208,7 @@ class PasswordOtpController extends Controller
         }
 
         $contracts = Contract::with([
-                'tenant:id,name,phone,national_id',
+                'tenant:id,name,phone,national_id,nationality',
                 'unit.property.owner',
                 'payments' => fn ($q) => $q->orderBy('due_date')->orderBy('id'),
             ])
@@ -259,21 +267,19 @@ class PasswordOtpController extends Controller
             });
         }
 
-        if (Schema::hasTable('users')) {
-            Schema::table('users', function (Blueprint $table) {
-                if (!Schema::hasColumn('users', 'tenant_id')) {
-                    $table->unsignedBigInteger('tenant_id')->nullable()->after('owner_id')->index();
-                }
-                if (!Schema::hasColumn('users', 'phone')) {
-                    $table->string('phone')->nullable()->after('email')->index();
-                }
-                if (!Schema::hasColumn('users', 'national_id')) {
-                    $table->string('national_id')->nullable()->after('phone')->index();
-                }
-                if (!Schema::hasColumn('users', 'password_set_at')) {
-                    $table->timestamp('password_set_at')->nullable()->after('password');
-                }
-            });
+        if (!Schema::hasTable('users')) {
+            return;
+        }
+
+        foreach ([
+            'tenant_id' => fn (Blueprint $table) => $table->unsignedBigInteger('tenant_id')->nullable()->index(),
+            'phone' => fn (Blueprint $table) => $table->string('phone')->nullable()->index(),
+            'national_id' => fn (Blueprint $table) => $table->string('national_id')->nullable()->index(),
+            'password_set_at' => fn (Blueprint $table) => $table->timestamp('password_set_at')->nullable(),
+        ] as $column => $callback) {
+            if (!Schema::hasColumn('users', $column)) {
+                Schema::table('users', $callback);
+            }
         }
     }
 
@@ -287,15 +293,19 @@ class PasswordOtpController extends Controller
         $query = User::query();
         $query->where(function ($q) use ($normalizedIdentifier, $identifier, $digits, $phone) {
             if (Schema::hasColumn('users', 'username')) {
-                $q->orWhereRaw('LOWER(username) = ?', [$normalizedIdentifier]);
-                $q->orWhere('username', $digits);
-                $q->orWhere('username', $phone);
+                $q->orWhereRaw('LOWER(username) = ?', [$normalizedIdentifier])
+                    ->orWhere('username', $digits)
+                    ->orWhere('username', $phone)
+                    ->orWhere('username', $this->localPhone($phone));
             }
             if (Schema::hasColumn('users', 'email')) {
                 $q->orWhereRaw('LOWER(email) = ?', [$normalizedIdentifier]);
             }
             if (Schema::hasColumn('users', 'phone')) {
-                $q->orWhere('phone', $identifier)->orWhere('phone', $digits)->orWhere('phone', $phone);
+                $q->orWhere('phone', $identifier)
+                    ->orWhere('phone', $digits)
+                    ->orWhere('phone', $phone)
+                    ->orWhere('phone', $this->localPhone($phone));
             }
             if (Schema::hasColumn('users', 'national_id')) {
                 $q->orWhere('national_id', $identifier)->orWhere('national_id', $digits);
@@ -312,23 +322,27 @@ class PasswordOtpController extends Controller
             return null;
         }
 
-        $username = $tenant->national_id ?: $this->normalizePhone($tenant->phone) ?: $tenant->phone;
+        $tenantPhone = $this->tenantValue($tenant, ['phone', 'mobile', 'mobile_number']);
+        $tenantNationalId = $this->tenantValue($tenant, ['national_id', 'identity_number', 'id_number', 'iqama_number']);
+        $tenantEmail = $this->tenantValue($tenant, ['email']);
+        $username = $tenantNationalId ?: $this->normalizePhone($tenantPhone) ?: $tenantPhone;
+
         if (!$username) {
             return null;
         }
 
         $payload = [
-            'name' => $tenant->name ?: 'مستأجر',
+            'name' => $this->tenantValue($tenant, ['name', 'tenant_name']) ?: 'مستأجر',
             'username' => $username,
-            'email' => $tenant->email ?: null,
+            'email' => $tenantEmail ?: null,
             'password' => Hash::make(Str::random(32)),
             'role' => 'tenant',
             'status' => 'active',
         ];
 
         if (Schema::hasColumn('users', 'tenant_id')) $payload['tenant_id'] = $tenant->id;
-        if (Schema::hasColumn('users', 'phone')) $payload['phone'] = $tenant->phone;
-        if (Schema::hasColumn('users', 'national_id')) $payload['national_id'] = $tenant->national_id;
+        if (Schema::hasColumn('users', 'phone')) $payload['phone'] = $tenantPhone;
+        if (Schema::hasColumn('users', 'national_id')) $payload['national_id'] = $tenantNationalId;
         if (Schema::hasColumn('users', 'password_set_at')) $payload['password_set_at'] = null;
 
         return User::create($payload);
@@ -336,17 +350,32 @@ class PasswordOtpController extends Controller
 
     private function findTenantByIdentifier(string $identifier): ?Tenant
     {
+        if (!Schema::hasTable('tenants')) {
+            return null;
+        }
+
+        $columns = Schema::getColumnListing('tenants');
         $digits = preg_replace('/\D+/', '', $identifier) ?: $identifier;
         $phone = $this->normalizePhone($identifier);
+        $localPhone = $this->localPhone($phone);
+        $identityColumns = array_values(array_intersect($columns, ['national_id', 'identity_number', 'id_number', 'iqama_number']));
+        $phoneColumns = array_values(array_intersect($columns, ['phone', 'mobile', 'mobile_number', 'tenant_phone']));
+
+        if (!$identityColumns && !$phoneColumns) {
+            return null;
+        }
 
         return Tenant::query()
-            ->where(function ($q) use ($identifier, $digits, $phone) {
-                $q->where('national_id', $identifier)
-                    ->orWhere('national_id', $digits)
-                    ->orWhere('phone', $identifier)
-                    ->orWhere('phone', $digits)
-                    ->orWhere('phone', $phone)
-                    ->orWhere('phone', '0' . ltrim(preg_replace('/^966/', '', $phone), '0'));
+            ->where(function ($q) use ($identifier, $digits, $phone, $localPhone, $identityColumns, $phoneColumns) {
+                foreach ($identityColumns as $column) {
+                    $q->orWhere($column, $identifier)->orWhere($column, $digits);
+                }
+                foreach ($phoneColumns as $column) {
+                    $q->orWhere($column, $identifier)
+                        ->orWhere($column, $digits)
+                        ->orWhere($column, $phone)
+                        ->orWhere($column, $localPhone);
+                }
             })
             ->orderByDesc('id')
             ->first();
@@ -360,7 +389,8 @@ class PasswordOtpController extends Controller
 
         if (Schema::hasColumn('users', 'tenant_id') && !empty($user->tenant_id)) {
             $tenant = Tenant::find($user->tenant_id);
-            if ($tenant?->phone) return (string) $tenant->phone;
+            $tenantPhone = $tenant ? $this->tenantValue($tenant, ['phone', 'mobile', 'mobile_number', 'tenant_phone']) : '';
+            if ($tenantPhone) return $tenantPhone;
         }
 
         if (!empty($user->owner?->phone)) return (string) $user->owner->phone;
@@ -381,35 +411,35 @@ class PasswordOtpController extends Controller
             return ['ok' => false, 'reason' => 'missing_config', 'has_token' => $token !== '', 'has_phone_number_id' => $phoneNumberId !== '', 'to' => $to];
         }
 
-        $payloadWithButton = [
-            'messaging_product' => 'whatsapp',
-            'to' => $to,
-            'type' => 'template',
-            'template' => [
-                'name' => $template,
-                'language' => ['code' => $language],
-                'components' => [
-                    [
-                        'type' => 'body',
-                        'parameters' => [[ 'type' => 'text', 'text' => $otp ]],
+        $payloads = [
+            [
+                'messaging_product' => 'whatsapp',
+                'to' => $to,
+                'type' => 'template',
+                'template' => [
+                    'name' => $template,
+                    'language' => ['code' => $language],
+                    'components' => [
+                        ['type' => 'body', 'parameters' => [['type' => 'text', 'text' => $otp]]],
+                        ['type' => 'button', 'sub_type' => 'COPY_CODE', 'index' => '0', 'parameters' => [['type' => 'coupon_code', 'coupon_code' => $otp]]],
                     ],
-                    [
-                        'type' => 'button',
-                        'sub_type' => 'url',
-                        'index' => '0',
-                        'parameters' => [[ 'type' => 'text', 'text' => $otp ]],
+                ],
+            ],
+            [
+                'messaging_product' => 'whatsapp',
+                'to' => $to,
+                'type' => 'template',
+                'template' => [
+                    'name' => $template,
+                    'language' => ['code' => $language],
+                    'components' => [
+                        ['type' => 'body', 'parameters' => [['type' => 'text', 'text' => $otp]]],
                     ],
                 ],
             ],
         ];
 
-        $payloadBodyOnly = $payloadWithButton;
-        $payloadBodyOnly['template']['components'] = [[
-            'type' => 'body',
-            'parameters' => [[ 'type' => 'text', 'text' => $otp ]],
-        ]];
-
-        foreach ([$payloadWithButton, $payloadBodyOnly] as $index => $payload) {
+        foreach ($payloads as $index => $payload) {
             try {
                 $response = Http::withToken($token)->post("https://graph.facebook.com/{$version}/{$phoneNumberId}/messages", $payload);
                 $body = $response->json();
@@ -417,7 +447,7 @@ class PasswordOtpController extends Controller
                     'ok' => $response->successful(),
                     'status' => $response->status(),
                     'to' => $to,
-                    'attempt' => $index === 0 ? 'with_button' : 'body_only',
+                    'attempt' => $index === 0 ? 'copy_code_button' : 'body_only',
                     'provider_message_id' => Arr::get($body, 'messages.0.id'),
                     'error' => Arr::get($body, 'error.message'),
                     'error_code' => Arr::get($body, 'error.code'),
@@ -449,11 +479,31 @@ class PasswordOtpController extends Controller
         return $phone;
     }
 
+    private function localPhone(?string $phone): string
+    {
+        $phone = preg_replace('/\D+/', '', (string) $phone);
+        if ($phone === '') return '';
+        if (Str::startsWith($phone, '966')) return '0' . substr($phone, 3);
+        if (Str::startsWith($phone, '5') && strlen($phone) === 9) return '0' . $phone;
+        return $phone;
+    }
+
     private function maskPhone(string $phone): string
     {
         $normalized = $this->normalizePhone($phone);
         if (strlen($normalized) <= 4) return $normalized;
         return substr($normalized, 0, 4) . '****' . substr($normalized, -3);
+    }
+
+    private function tenantValue(Tenant $tenant, array $keys): string
+    {
+        foreach ($keys as $key) {
+            $value = $tenant->getAttribute($key);
+            if ($value !== null && trim((string) $value) !== '') {
+                return trim((string) $value);
+            }
+        }
+        return '';
     }
 
     private function num($value): float
