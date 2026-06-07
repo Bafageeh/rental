@@ -37,10 +37,11 @@ if (!function_exists('mr_chat_file_kind')) {
     {
         $mime = strtolower((string) $mimeType);
         $ext = strtolower(pathinfo((string) $name, PATHINFO_EXTENSION));
-        if (str_starts_with($mime, 'image/') || in_array($ext, ['jpg', 'jpeg', 'png', 'webp', 'gif'], true)) return 'image';
+        if (str_starts_with($mime, 'image/') || in_array($ext, ['jpg', 'jpeg', 'png', 'webp', 'gif', 'heic', 'heif'], true)) return 'image';
         if ($mime === 'application/pdf' || $ext === 'pdf') return 'pdf';
         if (str_contains($mime, 'word') || in_array($ext, ['doc', 'docx'], true)) return 'document';
         if (str_contains($mime, 'excel') || str_contains($mime, 'spreadsheet') || in_array($ext, ['xls', 'xlsx'], true)) return 'spreadsheet';
+        if (str_contains($mime, 'powerpoint') || str_contains($mime, 'presentation') || in_array($ext, ['ppt', 'pptx'], true)) return 'presentation';
         return 'file';
     }
 }
@@ -135,7 +136,7 @@ Route::prefix('chat')->group(function () {
         mr_chat_ensure_attachments_schema();
 
         $data = $request->validate([
-            'file' => ['required', 'file', 'max:15360', 'mimes:jpg,jpeg,png,webp,gif,pdf,doc,docx,xls,xlsx,txt,csv'],
+            'file' => ['required', 'file', 'max:15360', 'mimes:jpg,jpeg,png,webp,gif,heic,heif,pdf,doc,docx,xls,xlsx,ppt,pptx,txt,csv,zip'],
             'body' => ['nullable', 'string', 'max:2000'],
         ]);
 
