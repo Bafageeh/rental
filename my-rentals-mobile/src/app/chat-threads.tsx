@@ -18,6 +18,10 @@ type ChatThread = {
   last_message?: string | null;
   last_message_at?: string | null;
   unread_count?: number;
+  status?: string | null;
+  status_label?: string | null;
+  request_type_label?: string | null;
+  priority_label?: string | null;
 };
 
 function value(v: unknown) {
@@ -66,7 +70,7 @@ export default function ChatThreadsScreen() {
   const visibleThreads = useMemo(() => {
     const text = term.trim().toLowerCase();
     if (!text) return threads;
-    return threads.filter((item) => [item.tenant_name, item.tenant_phone, item.contract_number, item.property_name, item.unit_number, item.owner_name, item.last_message]
+    return threads.filter((item) => [item.tenant_name, item.tenant_phone, item.contract_number, item.property_name, item.unit_number, item.owner_name, item.last_message, item.status_label, item.request_type_label, item.priority_label]
       .some((part) => String(part ?? '').toLowerCase().includes(text)));
   }, [term, threads]);
 
@@ -128,6 +132,11 @@ export default function ChatThreadsScreen() {
                     <Text numberOfLines={1} style={styles.threadMeta}>العقد: {value(item.contract_number)} | الوحدة: {value(item.unit_number)}</Text>
                   </View>
                 </View>
+                <View style={styles.badgeRow}>
+                  <View style={[styles.statusBadge, item.status === 'closed' ? styles.statusClosed : item.status === 'in_progress' ? styles.statusProgress : styles.statusOpen]}><Text style={styles.statusBadgeText}>{item.status_label || 'مفتوحة'}</Text></View>
+                  <View style={styles.typeBadge}><Text style={styles.typeBadgeText}>{item.request_type_label || 'استفسار عام'}</Text></View>
+                  <View style={styles.typeBadge}><Text style={styles.typeBadgeText}>{item.priority_label || 'عادي'}</Text></View>
+                </View>
                 <Text numberOfLines={2} style={[styles.lastMessage, unread ? styles.lastMessageUnread : null]}>{item.last_message || 'لا توجد رسائل بعد'}</Text>
                 <View style={styles.footerRow}>
                   <Text numberOfLines={1} style={styles.footerText}>{value(item.property_name)}</Text>
@@ -175,6 +184,14 @@ const styles = StyleSheet.create({
   threadMain: { flex: 1, alignItems: 'flex-end' },
   threadTitle: { color: colors.text, fontWeight: '900', fontSize: 17, textAlign: 'right' },
   threadMeta: { color: colors.textSecondary, fontWeight: '700', marginTop: 3, textAlign: 'right' },
+  badgeRow: { flexDirection: 'row-reverse', gap: spacing.xs, marginTop: spacing.sm, flexWrap: 'wrap' },
+  statusBadge: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 },
+  statusOpen: { backgroundColor: '#DCFCE7' },
+  statusProgress: { backgroundColor: '#FEF3C7' },
+  statusClosed: { backgroundColor: '#FEE2E2' },
+  statusBadgeText: { color: colors.text, fontWeight: '900', fontSize: 11 },
+  typeBadge: { borderRadius: 999, backgroundColor: colors.background, borderWidth: 1, borderColor: colors.borderLight, paddingHorizontal: 10, paddingVertical: 5 },
+  typeBadgeText: { color: colors.textSecondary, fontWeight: '900', fontSize: 11 },
   lastMessage: { color: colors.textSecondary, textAlign: 'right', lineHeight: 22, marginTop: spacing.md },
   lastMessageUnread: { color: colors.text, fontWeight: '900' },
   footerRow: { marginTop: spacing.md, paddingTop: spacing.sm, borderTopWidth: 1, borderTopColor: colors.borderLight, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm },
