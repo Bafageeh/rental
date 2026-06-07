@@ -10,8 +10,8 @@ type ChatMessage = { id: number; body: string; is_mine?: boolean; created_at?: s
 type ThreadInfo = { id: number; tenant_name?: string | null; property_name?: string | null; unit_number?: string | null; contract_number?: string | null };
 
 export default function ChatThreadScreen() {
-  const params = useLocalSearchParams<{ id: string }>();
-  const threadId = String(params.id || '');
+  const params = useLocalSearchParams<{ id?: string; threadId?: string }>();
+  const threadId = String(params.id || params.threadId || '');
   const listRef = useRef<FlatList<ChatMessage>>(null);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
