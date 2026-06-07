@@ -10,6 +10,12 @@ on:
         type: choice
         options:
           - preview
+  push:
+    branches:
+      - main
+    paths:
+      - "my-rentals-mobile/**"
+      - ".github/workflows/build-rental-apk.yml"
 
 permissions:
   contents: read
