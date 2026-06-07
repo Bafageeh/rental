@@ -32,11 +32,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
-          cache-dependency-path: my-rentals-mobile/package-lock.json
-
-      - name: Install dependencies
-        run: npm install --legacy-peer-deps
 
       - name: Setup Expo and EAS
         uses: expo/expo-github-action@v8
@@ -50,6 +45,8 @@ jobs:
           EAS_NO_VCS: 1
           NPM_CONFIG_LEGACY_PEER_DEPS: true
         run: |
+          echo "Using .npmrc:"
+          cat .npmrc || true
           eas build --platform android --profile preview --non-interactive --wait --json > eas-build-result.json
           cat eas-build-result.json
 
