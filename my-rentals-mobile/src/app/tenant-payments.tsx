@@ -11,6 +11,50 @@ function money(v: unknown) {
   return `${Number.isFinite(n) ? n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0.00'} ريال`;
 }
 
+function paymentUi(item: any) {
+  const paid = Number(item?.paid_amount ?? 0);
+  const rem = Number(item?.remaining_amount ?? 0);
+  const rawStatus = String(item?.status ?? '').toLowerCase();
+
+  const isPaid = paid > 0 && rem <= 0.009;
+  const isPartial = paid > 0 && rem > 0.009;
+  const isOverdue = rawStatus.includes('overdue') || rawStatus.includes('متأخر');
+
+  if (isPaid) {
+    return {
+      label: 'مدفوعة',
+      card: styles.cardPaid,
+      badge: styles.badgePaid,
+      badgeText: styles.badgeTextPaid,
+    };
+  }
+
+  if (isPartial) {
+    return {
+      label: 'جزئي',
+      card: styles.cardPartial,
+      badge: styles.badgePartial,
+      badgeText: styles.badgeTextPartial,
+    };
+  }
+
+  if (isOverdue) {
+    return {
+      label: 'متأخرة',
+      card: styles.cardOverdue,
+      badge: styles.badgeOverdue,
+      badgeText: styles.badgeTextOverdue,
+    };
+  }
+
+  return {
+    label: 'قادمة',
+    card: styles.cardUpcoming,
+    badge: styles.badgeUpcoming,
+    badgeText: styles.badgeTextUpcoming,
+  };
+}
+
 export default function TenantPaymentsScreen() {
   const [loading, setLoading] = useState(true);
   const [name, setName] = useState('');
@@ -50,14 +94,15 @@ export default function TenantPaymentsScreen() {
           contentContainerStyle={styles.list}
           ListEmptyComponent={<Text style={styles.empty}>لا توجد دفعات حالياً</Text>}
           renderItem={({ item, index }) => {
-            const paid = Number(item.paid_amount ?? 0);
-            const rem = Number(item.remaining_amount ?? 0);
-            const isPaid = paid > 0 && rem <= 0.009;
-            const isPartial = paid > 0 && rem > 0.009;
-            const status = isPaid ? 'مدفوعة' : isPartial ? 'جزئي' : String(item.status).includes('overdue') ? 'متأخرة' : 'قادمة';
+            const ui = paymentUi(item);
             return (
-              <View style={styles.card}>
-                <View style={styles.row}><Text style={styles.h}>الدفعة {index + 1}</Text><Text style={styles.badge}>{status}</Text></View>
+              <View style={[styles.card, ui.card]}>
+                <View style={styles.row}>
+                  <Text style={styles.h}>الدفعة {index + 1}</Text>
+                  <View style={[styles.badge, ui.badge]}>
+                    <Text style={[styles.badgeText, ui.badgeText]}>{ui.label}</Text>
+                  </View>
+                </View>
                 <Text style={styles.line}>استحقاق: {item.due_date || '-'}</Text>
                 <Text style={styles.line}>سداد: {item.paid_date || 'غير مدفوعة'}</Text>
                 <Text style={styles.money}>المطلوب: {money(item.amount)}</Text>
@@ -82,9 +127,22 @@ const styles = StyleSheet.create({
   list: { padding: spacing.xl },
   empty: { color: colors.textSecondary, textAlign: 'center', padding: spacing.xl, backgroundColor: colors.surface, borderRadius: radii.lg },
   card: { backgroundColor: colors.surface, borderRadius: radii.xl, padding: spacing.lg, marginBottom: spacing.md, borderWidth: 1, borderColor: colors.borderLight },
+  cardPaid: { backgroundColor: '#ECFDF5', borderColor: '#86EFAC' },
+  cardOverdue: { backgroundColor: '#FEF2F2', borderColor: '#FCA5A5' },
+  cardPartial: { backgroundColor: '#FFFBEB', borderColor: '#FDE68A' },
+  cardUpcoming: { backgroundColor: '#FAF7EF', borderColor: '#EFE4CB' },
   row: { flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center' },
   h: { ...typography.h3, color: colors.text },
-  badge: { color: colors.primary, fontWeight: '900' },
+  badge: { borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6 },
+  badgeText: { fontWeight: '900' },
+  badgePaid: { backgroundColor: '#DCFCE7' },
+  badgeTextPaid: { color: '#166534' },
+  badgeOverdue: { backgroundColor: '#FEE2E2' },
+  badgeTextOverdue: { color: '#B91C1C' },
+  badgePartial: { backgroundColor: '#FEF3C7' },
+  badgeTextPartial: { color: '#92400E' },
+  badgeUpcoming: { backgroundColor: '#F3EAD7' },
+  badgeTextUpcoming: { color: '#8A5A13' },
   line: { color: colors.textSecondary, textAlign: 'right', marginTop: 6, lineHeight: 22 },
   money: { color: colors.text, textAlign: 'right', marginTop: 6, fontWeight: '900' },
 });
