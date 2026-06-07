@@ -85,6 +85,15 @@ export default function MoreScreen() {
           />
         </View>
 
+        <View style={styles.card}>
+          <ActionTile
+            icon="chatbubbles-outline"
+            title="المراسلات"
+            subtitle="شات داخلي بين الإدارة والمستأجرين."
+            onPress={() => requireLogin('/chat-threads', 'المراسلات')}
+          />
+        </View>
+
         {isAdmin ? (
           <>
             <View style={styles.card}>
