@@ -20,6 +20,8 @@ type ChatThread = {
   unread_count?: number;
 };
 
+type FilterKey = 'all' | 'unread';
+
 function value(v: unknown) {
   const text = String(v ?? '').trim();
   return text || '-';
@@ -40,6 +42,7 @@ export default function ChatThreadsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [threads, setThreads] = useState<ChatThread[]>([]);
   const [term, setTerm] = useState('');
+  const [filter, setFilter] = useState<FilterKey>('all');
 
   const load = useCallback(async (refresh = false, silent = false) => {
     try {
@@ -63,14 +66,18 @@ export default function ChatThreadsScreen() {
     return () => clearInterval(timer);
   }, [load]);
 
+  const unreadTotal = useMemo(() => threads.reduce((sum, item) => sum + Number(item.unread_count || 0), 0), [threads]);
+
   const visibleThreads = useMemo(() => {
     const text = term.trim().toLowerCase();
-    if (!text) return threads;
-    return threads.filter((item) => [item.tenant_name, item.tenant_phone, item.contract_number, item.property_name, item.unit_number, item.owner_name, item.last_message]
-      .some((part) => String(part ?? '').toLowerCase().includes(text)));
-  }, [term, threads]);
-
-  const unreadTotal = useMemo(() => threads.reduce((sum, item) => sum + Number(item.unread_count || 0), 0), [threads]);
+    return threads.filter((item) => {
+      const unread = Number(item.unread_count || 0) > 0;
+      if (filter === 'unread' && !unread) return false;
+      if (!text) return true;
+      return [item.tenant_name, item.tenant_phone, item.contract_number, item.property_name, item.unit_number, item.owner_name, item.last_message]
+        .some((part) => String(part ?? '').toLowerCase().includes(text));
+    });
+  }, [filter, term, threads]);
 
   async function startTenantThread() {
     try {
@@ -98,8 +105,8 @@ export default function ChatThreadsScreen() {
       </View>
 
       <View style={styles.summaryRow}>
-        <View style={styles.summaryCard}><Text style={styles.summaryValue}>{threads.length}</Text><Text style={styles.summaryLabel}>محادثة</Text></View>
-        <View style={[styles.summaryCard, unreadTotal > 0 ? styles.summaryDanger : null]}><Text style={[styles.summaryValue, unreadTotal > 0 ? styles.summaryValueDanger : null]}>{unreadTotal}</Text><Text style={styles.summaryLabel}>غير مقروء</Text></View>
+        <TouchableOpacity activeOpacity={0.85} onPress={() => setFilter('all')} style={[styles.summaryCard, filter === 'all' ? styles.summaryActive : null]}><Text style={styles.summaryValue}>{threads.length}</Text><Text style={styles.summaryLabel}>كل المحادثات</Text></TouchableOpacity>
+        <TouchableOpacity activeOpacity={0.85} onPress={() => setFilter('unread')} style={[styles.summaryCard, unreadTotal > 0 ? styles.summaryDanger : null, filter === 'unread' ? styles.summaryActive : null]}><Text style={[styles.summaryValue, unreadTotal > 0 ? styles.summaryValueDanger : null]}>{unreadTotal}</Text><Text style={styles.summaryLabel}>غير مقروء</Text></TouchableOpacity>
       </View>
 
       <View style={styles.searchBox}>
@@ -119,9 +126,9 @@ export default function ChatThreadsScreen() {
           ListEmptyComponent={(
             <View style={styles.emptyCard}>
               <Ionicons name="chatbox-ellipses-outline" size={38} color="#94A3B8" />
-              <Text style={styles.emptyTitle}>{term ? 'لا توجد نتائج' : 'لا توجد محادثات حالياً'}</Text>
-              <Text style={styles.emptyText}>{term ? 'جرّب كلمة بحث أخرى.' : isTenant ? 'ابدأ محادثة مرتبطة بعقدك النشط مع إدارة العقار.' : 'ستظهر هنا المحادثات عندما يبدأ المستأجرون بالتواصل.'}</Text>
-              {isTenant && !term ? <TouchableOpacity style={styles.startBtn} onPress={startTenantThread}><Text style={styles.startBtnText}>بدء محادثة</Text></TouchableOpacity> : null}
+              <Text style={styles.emptyTitle}>{term || filter === 'unread' ? 'لا توجد نتائج' : 'لا توجد محادثات حالياً'}</Text>
+              <Text style={styles.emptyText}>{term || filter === 'unread' ? 'غيّر البحث أو ارجع إلى كل المحادثات.' : isTenant ? 'ابدأ محادثة مرتبطة بعقدك النشط مع إدارة العقار.' : 'ستظهر هنا المحادثات عندما يبدأ المستأجرون بالتواصل.'}</Text>
+              {isTenant && !term && filter === 'all' ? <TouchableOpacity style={styles.startBtn} onPress={startTenantThread}><Text style={styles.startBtnText}>بدء محادثة</Text></TouchableOpacity> : null}
             </View>
           )}
           renderItem={({ item }) => {
@@ -166,6 +173,7 @@ const styles = StyleSheet.create({
   subtitle: { color: colors.textSecondary, textAlign: 'right', marginTop: 4, lineHeight: 21 },
   summaryRow: { flexDirection: 'row-reverse', gap: spacing.sm, paddingHorizontal: spacing.xl, marginBottom: spacing.sm },
   summaryCard: { flex: 1, minHeight: 54, borderRadius: radii.lg, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.borderLight, alignItems: 'center', justifyContent: 'center' },
+  summaryActive: { borderColor: colors.primary, borderWidth: 2 },
   summaryDanger: { backgroundColor: '#FEF2F2', borderColor: '#FCA5A5' },
   summaryValue: { color: colors.text, fontWeight: '900', fontSize: 17 },
   summaryValueDanger: { color: '#B91C1C' },
