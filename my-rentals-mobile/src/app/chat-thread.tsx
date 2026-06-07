@@ -1,13 +1,36 @@
 import { Ionicons } from '@expo/vector-icons';
+import * as DocumentPicker from 'expo-document-picker';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, KeyboardAvoidingView, Platform, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, Image, KeyboardAvoidingView, Linking, Platform, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { apiGet, apiPost } from '../lib/api';
+import { apiGet, apiPost, apiPostFormData } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 import { colors, radii, spacing, typography } from '../constants/theme';
 
-type ChatMessage = { id: number; body: string; is_mine?: boolean; is_system?: boolean; created_at?: string; read_at?: string | null };
+type ChatAttachment = {
+  id: number;
+  original_name?: string | null;
+  file_name?: string | null;
+  mime_type?: string | null;
+  file_size?: number | null;
+  file_kind?: string | null;
+  url?: string | null;
+  download_url?: string | null;
+};
+
+type ChatMessage = {
+  id: number;
+  body: string;
+  sender_role?: string;
+  is_mine?: boolean;
+  is_system?: boolean;
+  created_at?: string;
+  read_at?: string | null;
+  attachments?: ChatAttachment[];
+  has_attachments?: boolean;
+};
+
 type ThreadInfo = {
   id: number;
   tenant_name?: string | null;
@@ -57,6 +80,21 @@ function display(v: unknown) {
   return text || '-';
 }
 
+function fileSize(value?: number | null) {
+  const size = Number(value || 0);
+  if (!Number.isFinite(size) || size <= 0) return '';
+  if (size < 1024 * 1024) return `${Math.ceil(size / 1024)} KB`;
+  return `${(size / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function attachmentName(attachment: ChatAttachment) {
+  return String(attachment.original_name || attachment.file_name || 'مرفق');
+}
+
+function attachmentUrl(attachment: ChatAttachment) {
+  return String(attachment.url || attachment.download_url || '').trim();
+}
+
 export default function ChatThreadScreen() {
   const { isTenant } = useAuth();
   const params = useLocalSearchParams<{ id?: string; threadId?: string }>();
@@ -65,7 +103,9 @@ export default function ChatThreadScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [sending, setSending] = useState(false);
+  const [sendingAttachment, setSendingAttachment] = useState(false);
   const [updatingMeta, setUpdatingMeta] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const [thread, setThread] = useState<ThreadInfo | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [body, setBody] = useState('');
@@ -74,7 +114,7 @@ export default function ChatThreadScreen() {
     if (!threadId) return;
     try {
       if (!silent) setLoading(true);
-      const response = await apiGet(`/chat/threads/${threadId}/messages`);
+      const response = await apiGet(`/chat/threads/${threadId}/messages-v2`);
       const data = response?.data ?? response;
       setThread(data?.thread ?? null);
       setMessages(Array.isArray(data?.messages) ? data.messages : []);
@@ -139,6 +179,76 @@ export default function ChatThreadScreen() {
     }
   }
 
+  async function pickAndSendAttachment() {
+    if (sendingAttachment || closedForTenant) return;
+
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        multiple: false,
+        copyToCacheDirectory: true,
+        type: ['image/*', 'application/pdf', 'text/plain', 'text/csv', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],
+      });
+
+      if (result.canceled || !result.assets?.[0]) return;
+
+      const asset = result.assets[0];
+      const formData = new FormData();
+      formData.append('file', {
+        uri: asset.uri,
+        name: asset.name || 'attachment',
+        type: asset.mimeType || 'application/octet-stream',
+      } as any);
+
+      const caption = body.trim();
+      if (caption) formData.append('body', caption);
+
+      setSendingAttachment(true);
+      setBody('');
+      const response = await apiPostFormData(`/chat/threads/${threadId}/attachments`, formData);
+      const data = response?.data ?? response;
+      if (data?.message) setMessages((prev) => [...prev, data.message]);
+      else await load(true);
+      setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 120);
+    } catch (e) {
+      Alert.alert('تعذر إرسال المرفق', e instanceof Error ? e.message : 'حدث خطأ أثناء إرسال الصورة أو الملف');
+    } finally {
+      setSendingAttachment(false);
+    }
+  }
+
+  function openAttachment(attachment: ChatAttachment) {
+    const url = attachmentUrl(attachment);
+    if (!url) {
+      Alert.alert('المرفق غير متاح', 'لا يوجد رابط صالح لهذا المرفق.');
+      return;
+    }
+    Linking.openURL(url).catch(() => Alert.alert('تعذر فتح المرفق', 'لم يتمكن الجهاز من فتح هذا الملف.'));
+  }
+
+  function AttachmentView({ attachment, mine }: { attachment: ChatAttachment; mine: boolean }) {
+    const isImage = attachment.file_kind === 'image' || String(attachment.mime_type || '').startsWith('image/');
+    const url = attachmentUrl(attachment);
+
+    if (isImage && url) {
+      return (
+        <TouchableOpacity style={styles.imageAttachmentWrap} activeOpacity={0.9} onPress={() => openAttachment(attachment)}>
+          <Image source={{ uri: url }} style={styles.imageAttachment} resizeMode="cover" />
+          <View style={styles.attachmentCaption}><Ionicons name="image-outline" size={14} color="#fff" /><Text numberOfLines={1} style={styles.imageCaptionText}>{attachmentName(attachment)}</Text></View>
+        </TouchableOpacity>
+      );
+    }
+
+    return (
+      <TouchableOpacity style={[styles.fileAttachment, mine ? styles.fileAttachmentMine : null]} activeOpacity={0.85} onPress={() => openAttachment(attachment)}>
+        <View style={styles.fileIcon}><Ionicons name={attachment.file_kind === 'pdf' ? 'document-text-outline' : 'document-attach-outline'} size={22} color={colors.primary} /></View>
+        <View style={styles.fileTextWrap}>
+          <Text numberOfLines={1} style={[styles.fileName, mine ? styles.fileNameMine : null]}>{attachmentName(attachment)}</Text>
+          <Text style={[styles.fileMeta, mine ? styles.fileMetaMine : null]}>{fileSize(attachment.file_size) || 'اضغط للفتح'}</Text>
+        </View>
+      </TouchableOpacity>
+    );
+  }
+
   function InfoCard() {
     if (!thread) return null;
 
@@ -154,16 +264,23 @@ export default function ChatThreadScreen() {
           </View>
         </View>
 
-        <View style={styles.infoGrid}>
-          <InfoItem label="المستأجر" value={thread.tenant_name} />
-          <InfoItem label="الجوال" value={thread.tenant_phone} />
-          <InfoItem label="رقم الهوية" value={thread.tenant_national_id} />
-          <InfoItem label="الجنسية" value={thread.tenant_nationality} />
-          <InfoItem label="العقار" value={thread.property_name} />
-          <InfoItem label="الوحدة" value={thread.unit_number} />
-          <InfoItem label="رقم العقد" value={thread.contract_number} />
-          <InfoItem label="حالة العقد" value={thread.contract_status} />
-        </View>
+        <TouchableOpacity style={styles.detailsToggle} activeOpacity={0.85} onPress={() => setDetailsOpen((v) => !v)}>
+          <Ionicons name={detailsOpen ? 'chevron-up-outline' : 'chevron-down-outline'} size={17} color={colors.textSecondary} />
+          <Text style={styles.detailsToggleText}>{detailsOpen ? 'إخفاء تفاصيل المستأجر والعقد' : 'عرض تفاصيل المستأجر والعقد'}</Text>
+        </TouchableOpacity>
+
+        {detailsOpen ? (
+          <View style={styles.infoGrid}>
+            <InfoItem label="المستأجر" value={thread.tenant_name} />
+            <InfoItem label="الجوال" value={thread.tenant_phone} />
+            <InfoItem label="رقم الهوية" value={thread.tenant_national_id} />
+            <InfoItem label="الجنسية" value={thread.tenant_nationality} />
+            <InfoItem label="العقار" value={thread.property_name} />
+            <InfoItem label="الوحدة" value={thread.unit_number} />
+            <InfoItem label="رقم العقد" value={thread.contract_number} />
+            <InfoItem label="حالة العقد" value={thread.contract_status} />
+          </View>
+        ) : null}
 
         <Text style={styles.controlLabel}>نوع الطلب</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipsRow}>
@@ -240,10 +357,16 @@ export default function ChatThreadScreen() {
                 return <View style={styles.systemMessage}><Text style={styles.systemMessageText}>{item.body}</Text></View>;
               }
               const mine = !!item.is_mine;
+              const attachments = Array.isArray(item.attachments) ? item.attachments : [];
               return (
                 <View style={[styles.messageRow, mine ? styles.messageRowMine : styles.messageRowOther]}>
                   <View style={[styles.messageBubble, mine ? styles.messageBubbleMine : styles.messageBubbleOther]}>
-                    <Text style={[styles.messageText, mine ? styles.messageTextMine : styles.messageTextOther]}>{item.body}</Text>
+                    {item.body ? <Text style={[styles.messageText, mine ? styles.messageTextMine : styles.messageTextOther]}>{item.body}</Text> : null}
+                    {attachments.length > 0 ? (
+                      <View style={styles.attachmentsList}>
+                        {attachments.map((attachment) => <AttachmentView key={attachment.id} attachment={attachment} mine={mine} />)}
+                      </View>
+                    ) : null}
                     <View style={styles.messageFooter}>
                       <Text style={[styles.messageTime, mine ? styles.messageTimeMine : styles.messageTimeOther]}>{timeText(item.created_at)}</Text>
                       {mine ? <Text style={styles.readText}>{item.read_at ? 'مقروءة' : 'مرسلة'}</Text> : null}
@@ -257,10 +380,13 @@ export default function ChatThreadScreen() {
 
         {closedForTenant ? <Text style={styles.closedNotice}>هذه المحادثة مغلقة من الإدارة ولا يمكن الرد عليها.</Text> : null}
         <View style={styles.inputWrap}>
+          <TouchableOpacity style={[styles.attachBtn, (sendingAttachment || closedForTenant) && styles.sendBtnDisabled]} onPress={pickAndSendAttachment} disabled={sendingAttachment || closedForTenant} activeOpacity={0.85}>
+            {sendingAttachment ? <ActivityIndicator size="small" color={colors.primary} /> : <Ionicons name="attach-outline" size={23} color={colors.primary} />}
+          </TouchableOpacity>
           <TouchableOpacity style={[styles.sendBtn, (!body.trim() || sending || closedForTenant) && styles.sendBtnDisabled]} onPress={sendMessage} disabled={!body.trim() || sending || closedForTenant}>
             {sending ? <ActivityIndicator size="small" color="#fff" /> : <Ionicons name="send" size={20} color="#fff" />}
           </TouchableOpacity>
-          <TextInput style={styles.input} value={body} onChangeText={setBody} placeholder={closedForTenant ? 'المحادثة مغلقة' : 'اكتب رسالتك...'} placeholderTextColor={colors.textTertiary} textAlign="right" multiline maxLength={2000} editable={!closedForTenant} />
+          <TextInput style={styles.input} value={body} onChangeText={setBody} placeholder={closedForTenant ? 'المحادثة مغلقة' : 'اكتب رسالتك أو أرفق صورة/ملف...'} placeholderTextColor={colors.textTertiary} textAlign="right" multiline maxLength={2000} editable={!closedForTenant} />
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -298,6 +424,8 @@ const styles = StyleSheet.create({
   statusProgress: { backgroundColor: '#FEF3C7' },
   statusClosed: { backgroundColor: '#FEE2E2' },
   statusText: { color: colors.text, fontWeight: '900', fontSize: 12 },
+  detailsToggle: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 6, borderWidth: 1, borderColor: colors.borderLight, backgroundColor: colors.background, borderRadius: radii.md, paddingVertical: 9, marginBottom: spacing.sm },
+  detailsToggleText: { color: colors.textSecondary, fontWeight: '900', fontSize: 12 },
   infoGrid: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.sm },
   infoItem: { width: '48%', backgroundColor: colors.background, borderRadius: radii.md, borderWidth: 1, borderColor: colors.borderLight, padding: spacing.sm, alignItems: 'flex-end' },
   infoLabel: { color: colors.textTertiary, fontSize: 11, fontWeight: '800' },
@@ -318,6 +446,19 @@ const styles = StyleSheet.create({
   messageText: { fontSize: 15, lineHeight: 23, textAlign: 'right' },
   messageTextMine: { color: colors.textInverse },
   messageTextOther: { color: colors.text },
+  attachmentsList: { marginTop: spacing.sm, gap: spacing.xs },
+  imageAttachmentWrap: { width: 210, height: 150, borderRadius: radii.lg, overflow: 'hidden', backgroundColor: '#E5E7EB' },
+  imageAttachment: { width: '100%', height: '100%' },
+  attachmentCaption: { position: 'absolute', left: 0, right: 0, bottom: 0, minHeight: 30, backgroundColor: 'rgba(0,0,0,0.45)', flexDirection: 'row-reverse', alignItems: 'center', gap: 5, paddingHorizontal: 8 },
+  imageCaptionText: { color: '#fff', fontSize: 11, fontWeight: '800', flex: 1, textAlign: 'right' },
+  fileAttachment: { minWidth: 220, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.borderLight, backgroundColor: colors.background, padding: spacing.sm, flexDirection: 'row-reverse', alignItems: 'center', gap: spacing.sm },
+  fileAttachmentMine: { borderColor: 'rgba(255,255,255,0.35)', backgroundColor: 'rgba(255,255,255,0.12)' },
+  fileIcon: { width: 38, height: 38, borderRadius: 19, backgroundColor: '#ECFDF5', alignItems: 'center', justifyContent: 'center' },
+  fileTextWrap: { flex: 1, alignItems: 'flex-end' },
+  fileName: { color: colors.text, fontWeight: '900', fontSize: 13, textAlign: 'right' },
+  fileNameMine: { color: colors.textInverse },
+  fileMeta: { color: colors.textSecondary, fontSize: 11, marginTop: 2, textAlign: 'right' },
+  fileMetaMine: { color: 'rgba(255,255,255,0.75)' },
   systemMessage: { alignSelf: 'center', maxWidth: '90%', borderRadius: 999, backgroundColor: '#F1F5F9', paddingHorizontal: spacing.md, paddingVertical: 7, marginBottom: spacing.sm },
   systemMessageText: { color: colors.textSecondary, fontSize: 12, fontWeight: '800', textAlign: 'center' },
   messageFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm, marginTop: 4 },
@@ -328,6 +469,7 @@ const styles = StyleSheet.create({
   closedNotice: { color: '#B91C1C', backgroundColor: '#FEF2F2', borderTopWidth: 1, borderTopColor: '#FCA5A5', textAlign: 'center', paddingVertical: 8, fontWeight: '900' },
   inputWrap: { flexDirection: 'row', alignItems: 'flex-end', gap: spacing.sm, padding: spacing.md, backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.borderLight },
   input: { flex: 1, minHeight: 46, maxHeight: 120, borderRadius: 18, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.background, color: colors.text, paddingHorizontal: spacing.md, paddingVertical: 10, fontSize: 15 },
+  attachBtn: { width: 46, height: 46, borderRadius: 23, backgroundColor: colors.background, borderWidth: 1, borderColor: colors.borderLight, alignItems: 'center', justifyContent: 'center' },
   sendBtn: { width: 46, height: 46, borderRadius: 23, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
   sendBtnDisabled: { opacity: 0.45 },
 });
