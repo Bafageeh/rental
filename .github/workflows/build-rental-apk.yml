@@ -10,6 +10,16 @@ on:
         type: choice
         options:
           - preview
+  push:
+    branches:
+      - main
+    paths:
+      - 'my-rentals-mobile/**'
+      - 'my-rentals-api/routes/api/124_chat_threads.php'
+      - 'my-rentals-api/routes/api/125_chat_new_threads.php'
+      - 'my-rentals-api/routes/api/126_chat_attachments.php'
+      - 'my-rentals-api/routes/api.php'
+      - '.github/workflows/build-rental-apk.yml'
 
 permissions:
   contents: read
