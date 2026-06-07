@@ -135,9 +135,16 @@ Route::get('/file-download/unit-media/{media}', function (\App\Models\UnitMedia 
     return mr_public_download_file_response($media->file_path, $media->file_name ?: 'unit-media', $media->file_type ?: null);
 });
 
+foreach ([
+    __DIR__ . '/api/123_password_otp_and_tenant_payments.php',
+] as $publicRouteModule) {
+    if (is_file($publicRouteModule)) {
+        require $publicRouteModule;
+    }
+}
+
 Route::middleware(['auth.api'])->group(function () {
     foreach ([
-        __DIR__ . '/api/123_password_otp_and_tenant_payments.php',
         __DIR__ . '/api/124_chat_threads.php',
     ] as $publicAuthenticatedRouteModule) {
         if (is_file($publicAuthenticatedRouteModule)) {
