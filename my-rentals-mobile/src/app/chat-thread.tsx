@@ -9,8 +9,6 @@ import { colors, radii, spacing, typography } from '../constants/theme';
 type ChatMessage = { id: number; body: string; is_mine?: boolean; created_at?: string; read_at?: string | null };
 type ThreadInfo = { id: number; tenant_name?: string | null; property_name?: string | null; unit_number?: string | null; contract_number?: string | null };
 
-const QUICK_REPLIES = ['تم الاستلام', 'سيتم المتابعة', 'نحتاج توضيح أكثر', 'شكراً لك'];
-
 function timeText(value?: string | null) {
   const raw = String(value || '').replace('T', ' ');
   return raw ? raw.slice(0, 16) : '';
@@ -56,12 +54,12 @@ export default function ChatThreadScreen() {
     await load(true);
   }
 
-  async function sendMessage(textOverride?: string) {
-    const text = (textOverride ?? body).trim();
+  async function sendMessage() {
+    const text = body.trim();
     if (!text || sending) return;
     try {
       setSending(true);
-      if (!textOverride) setBody('');
+      setBody('');
       const response = await apiPost(`/chat/threads/${threadId}/messages`, { body: text });
       const data = response?.data ?? response;
       const message = data?.message;
@@ -69,7 +67,7 @@ export default function ChatThreadScreen() {
       else await load(true);
       setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 100);
     } catch (e) {
-      if (!textOverride) setBody(text);
+      setBody(text);
       Alert.alert('تعذر إرسال الرسالة', e instanceof Error ? e.message : 'حدث خطأ أثناء إرسال الرسالة');
     } finally {
       setSending(false);
@@ -117,11 +115,8 @@ export default function ChatThreadScreen() {
           />
         )}
 
-        <View style={styles.quickRow}>
-          {QUICK_REPLIES.map((reply) => <TouchableOpacity key={reply} style={styles.quickChip} onPress={() => sendMessage(reply)} disabled={sending}><Text style={styles.quickText}>{reply}</Text></TouchableOpacity>)}
-        </View>
         <View style={styles.inputWrap}>
-          <TouchableOpacity style={[styles.sendBtn, (!body.trim() || sending) && styles.sendBtnDisabled]} onPress={() => sendMessage()} disabled={!body.trim() || sending}>
+          <TouchableOpacity style={[styles.sendBtn, (!body.trim() || sending) && styles.sendBtnDisabled]} onPress={sendMessage} disabled={!body.trim() || sending}>
             {sending ? <ActivityIndicator size="small" color="#fff" /> : <Ionicons name="send" size={20} color="#fff" />}
           </TouchableOpacity>
           <TextInput style={styles.input} value={body} onChangeText={setBody} placeholder="اكتب رسالتك..." placeholderTextColor={colors.textTertiary} textAlign="right" multiline maxLength={2000} />
@@ -157,9 +152,6 @@ const styles = StyleSheet.create({
   messageTimeMine: { color: 'rgba(255,255,255,0.75)' },
   messageTimeOther: { color: colors.textTertiary },
   readText: { color: 'rgba(255,255,255,0.75)', fontSize: 10, fontWeight: '800' },
-  quickRow: { flexDirection: 'row-reverse', gap: spacing.xs, paddingHorizontal: spacing.md, paddingTop: spacing.sm, backgroundColor: colors.surface },
-  quickChip: { borderRadius: 999, borderWidth: 1, borderColor: colors.borderLight, backgroundColor: colors.background, paddingHorizontal: spacing.sm, paddingVertical: 7 },
-  quickText: { color: colors.textSecondary, fontWeight: '800', fontSize: 12 },
   inputWrap: { flexDirection: 'row', alignItems: 'flex-end', gap: spacing.sm, padding: spacing.md, backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.borderLight },
   input: { flex: 1, minHeight: 46, maxHeight: 120, borderRadius: 18, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.background, color: colors.text, paddingHorizontal: spacing.md, paddingVertical: 10, fontSize: 15 },
   sendBtn: { width: 46, height: 46, borderRadius: 23, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
