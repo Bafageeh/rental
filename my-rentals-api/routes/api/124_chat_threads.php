@@ -24,6 +24,40 @@ if (!function_exists('mr_chat_is_manager')) {
     }
 }
 
+if (!function_exists('mr_chat_status_label')) {
+    function mr_chat_status_label(?string $status): string
+    {
+        return match ($status ?: 'open') {
+            'in_progress' => 'قيد المتابعة',
+            'closed' => 'مغلقة',
+            default => 'مفتوحة',
+        };
+    }
+}
+
+if (!function_exists('mr_chat_request_type_label')) {
+    function mr_chat_request_type_label(?string $type): string
+    {
+        return match ($type ?: 'general') {
+            'maintenance' => 'صيانة',
+            'payment' => 'دفعات',
+            'contract' => 'عقد',
+            default => 'استفسار عام',
+        };
+    }
+}
+
+if (!function_exists('mr_chat_priority_label')) {
+    function mr_chat_priority_label(?string $priority): string
+    {
+        return match ($priority ?: 'normal') {
+            'important' => 'مهم',
+            'urgent' => 'عاجل',
+            default => 'عادي',
+        };
+    }
+}
+
 if (!function_exists('mr_chat_ensure_schema')) {
     function mr_chat_ensure_schema(): void
     {
@@ -37,11 +71,28 @@ if (!function_exists('mr_chat_ensure_schema')) {
                 $table->unsignedBigInteger('owner_id')->nullable()->index();
                 $table->string('subject')->nullable();
                 $table->string('status')->default('open')->index();
+                $table->string('request_type', 40)->default('general')->index();
+                $table->string('priority', 30)->default('normal')->index();
+                $table->timestamp('status_updated_at')->nullable();
+                $table->timestamp('closed_at')->nullable()->index();
+                $table->unsignedBigInteger('closed_by_user_id')->nullable()->index();
                 $table->timestamp('last_message_at')->nullable()->index();
                 $table->unsignedInteger('tenant_unread_count')->default(0);
                 $table->unsignedInteger('manager_unread_count')->default(0);
                 $table->timestamps();
             });
+        } else {
+            foreach ([
+                'request_type' => fn (Blueprint $table) => $table->string('request_type', 40)->default('general')->index(),
+                'priority' => fn (Blueprint $table) => $table->string('priority', 30)->default('normal')->index(),
+                'status_updated_at' => fn (Blueprint $table) => $table->timestamp('status_updated_at')->nullable(),
+                'closed_at' => fn (Blueprint $table) => $table->timestamp('closed_at')->nullable()->index(),
+                'closed_by_user_id' => fn (Blueprint $table) => $table->unsignedBigInteger('closed_by_user_id')->nullable()->index(),
+            ] as $column => $callback) {
+                if (!Schema::hasColumn('chat_threads', $column)) {
+                    Schema::table('chat_threads', $callback);
+                }
+            }
         }
 
         if (!Schema::hasTable('chat_messages')) {
@@ -55,6 +106,26 @@ if (!function_exists('mr_chat_ensure_schema')) {
                 $table->timestamps();
             });
         }
+    }
+}
+
+if (!function_exists('mr_chat_system_message')) {
+    function mr_chat_system_message(int $threadId, string $body): void
+    {
+        DB::table('chat_messages')->insert([
+            'thread_id' => $threadId,
+            'sender_user_id' => null,
+            'sender_role' => 'system',
+            'body' => $body,
+            'read_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('chat_threads')->where('id', $threadId)->update([
+            'last_message_at' => now(),
+            'updated_at' => now(),
+        ]);
     }
 }
 
@@ -75,7 +146,7 @@ if (!function_exists('mr_chat_active_contract_for_tenant')) {
 }
 
 if (!function_exists('mr_chat_thread_from_contract')) {
-    function mr_chat_thread_from_contract(Contract $contract): ?object
+    function mr_chat_thread_from_contract(Contract $contract, array $meta = []): ?object
     {
         mr_chat_ensure_schema();
 
@@ -93,6 +164,8 @@ if (!function_exists('mr_chat_thread_from_contract')) {
         $property = $unit?->property;
         $ownerId = (int) ($property?->owner_id ?? $unit?->owner_id ?? 0) ?: null;
         $contractNo = $contract->government_contract_number ?: $contract->contract_number ?: $contract->id;
+        $requestType = in_array(($meta['request_type'] ?? 'general'), ['general', 'maintenance', 'payment', 'contract'], true) ? $meta['request_type'] : 'general';
+        $priority = in_array(($meta['priority'] ?? 'normal'), ['normal', 'important', 'urgent'], true) ? $meta['priority'] : 'normal';
 
         $id = DB::table('chat_threads')->insertGetId([
             'tenant_id' => $tenantId,
@@ -102,12 +175,19 @@ if (!function_exists('mr_chat_thread_from_contract')) {
             'owner_id' => $ownerId,
             'subject' => 'محادثة العقد ' . $contractNo,
             'status' => 'open',
+            'request_type' => $requestType,
+            'priority' => $priority,
+            'status_updated_at' => now(),
+            'closed_at' => null,
+            'closed_by_user_id' => null,
             'last_message_at' => now(),
             'tenant_unread_count' => 0,
             'manager_unread_count' => 0,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
+
+        mr_chat_system_message($id, 'تم فتح المحادثة.');
 
         return DB::table('chat_threads')->where('id', $id)->first();
     }
@@ -122,6 +202,9 @@ if (!function_exists('mr_chat_serialize_thread')) {
         $property = $unit?->property;
         $last = DB::table('chat_messages')->where('thread_id', $thread->id)->orderByDesc('id')->first();
         $role = mr_chat_role($user);
+        $status = $thread->status ?: 'open';
+        $requestType = $thread->request_type ?? 'general';
+        $priority = $thread->priority ?? 'normal';
 
         return [
             'id' => (int) $thread->id,
@@ -131,10 +214,19 @@ if (!function_exists('mr_chat_serialize_thread')) {
             'unit_id' => $thread->unit_id ? (int) $thread->unit_id : null,
             'owner_id' => $thread->owner_id ? (int) $thread->owner_id : null,
             'subject' => $thread->subject ?: 'محادثة',
-            'status' => $thread->status ?: 'open',
+            'status' => $status,
+            'status_label' => mr_chat_status_label($status),
+            'request_type' => $requestType,
+            'request_type_label' => mr_chat_request_type_label($requestType),
+            'priority' => $priority,
+            'priority_label' => mr_chat_priority_label($priority),
+            'is_closed' => $status === 'closed',
             'tenant_name' => $tenant?->name ?: 'مستأجر',
             'tenant_phone' => $tenant?->phone,
+            'tenant_national_id' => $tenant?->national_id,
+            'tenant_nationality' => $tenant?->nationality,
             'contract_number' => $contract?->government_contract_number ?: $contract?->contract_number,
+            'contract_status' => $contract?->status,
             'property_name' => $property?->name,
             'unit_number' => $unit?->unit_number,
             'owner_name' => $property?->owner?->name,
@@ -143,6 +235,7 @@ if (!function_exists('mr_chat_serialize_thread')) {
             'unread_count' => $role === 'tenant' ? (int) ($thread->tenant_unread_count ?? 0) : (int) ($thread->manager_unread_count ?? 0),
             'created_at' => $thread->created_at,
             'updated_at' => $thread->updated_at,
+            'closed_at' => $thread->closed_at ?? null,
         ];
     }
 }
@@ -203,6 +296,13 @@ Route::middleware(['auth.api'])->prefix('chat')->group(function () {
     Route::post('/threads', function (Request $request) {
         mr_chat_ensure_schema();
 
+        $data = $request->validate([
+            'contract_id' => ['nullable'],
+            'tenant_id' => ['nullable'],
+            'request_type' => ['nullable', 'string', 'in:general,maintenance,payment,contract'],
+            'priority' => ['nullable', 'string', 'in:normal,important,urgent'],
+        ]);
+
         $user = $request->user();
         $role = mr_chat_role($user);
         $contract = null;
@@ -211,8 +311,8 @@ Route::middleware(['auth.api'])->prefix('chat')->group(function () {
             $tenantId = (int) ($user->tenant_id ?? 0);
             $contract = mr_chat_active_contract_for_tenant($tenantId);
         } else {
-            $contractId = (int) $request->input('contract_id', 0);
-            $tenantId = (int) $request->input('tenant_id', 0);
+            $contractId = (int) ($data['contract_id'] ?? 0);
+            $tenantId = (int) ($data['tenant_id'] ?? 0);
             if ($contractId > 0) {
                 $contract = Contract::with(['tenant', 'unit.property.owner'])->find($contractId);
             } elseif ($tenantId > 0) {
@@ -224,7 +324,10 @@ Route::middleware(['auth.api'])->prefix('chat')->group(function () {
             return response()->json(['status' => 'error', 'message' => 'لا يوجد عقد نشط لإنشاء المحادثة.'], 404);
         }
 
-        $thread = mr_chat_thread_from_contract($contract);
+        $thread = mr_chat_thread_from_contract($contract, [
+            'request_type' => $data['request_type'] ?? 'general',
+            'priority' => $data['priority'] ?? 'normal',
+        ]);
         if (!$thread || !mr_chat_authorize_thread($thread, $user)) {
             return response()->json(['status' => 'error', 'message' => 'غير مصرح بفتح هذه المحادثة.'], 403);
         }
@@ -263,6 +366,7 @@ Route::middleware(['auth.api'])->prefix('chat')->group(function () {
                     'sender_user_id' => $message->sender_user_id ? (int) $message->sender_user_id : null,
                     'sender_role' => $message->sender_role,
                     'body' => $message->body,
+                    'is_system' => $message->sender_role === 'system',
                     'is_mine' => $message->sender_role === $role && (int) $message->sender_user_id === (int) $user->id,
                     'read_at' => $message->read_at,
                     'created_at' => $message->created_at,
@@ -275,6 +379,69 @@ Route::middleware(['auth.api'])->prefix('chat')->group(function () {
             'data' => [
                 'thread' => mr_chat_serialize_thread(DB::table('chat_threads')->where('id', $thread)->first(), $user),
                 'messages' => $messages,
+            ],
+        ]);
+    });
+
+    Route::post('/threads/{thread}/meta', function (Request $request, int $thread) {
+        mr_chat_ensure_schema();
+
+        $data = $request->validate([
+            'status' => ['nullable', 'string', 'in:open,in_progress,closed'],
+            'request_type' => ['nullable', 'string', 'in:general,maintenance,payment,contract'],
+            'priority' => ['nullable', 'string', 'in:normal,important,urgent'],
+        ]);
+
+        $user = $request->user();
+        $threadRow = DB::table('chat_threads')->where('id', $thread)->first();
+        if (!$threadRow) return response()->json(['status' => 'error', 'message' => 'المحادثة غير موجودة.'], 404);
+        if (!mr_chat_authorize_thread($threadRow, $user)) return response()->json(['status' => 'error', 'message' => 'غير مصرح.'], 403);
+
+        $role = mr_chat_role($user);
+        $isManager = mr_chat_is_manager($user);
+        $updates = ['updated_at' => now()];
+        $systemMessages = [];
+
+        if (array_key_exists('request_type', $data) && $data['request_type'] !== ($threadRow->request_type ?? 'general')) {
+            if (($threadRow->status ?? 'open') === 'closed' && !$isManager) {
+                return response()->json(['status' => 'error', 'message' => 'المحادثة مغلقة ولا يمكن تعديل نوع الطلب.'], 422);
+            }
+            $updates['request_type'] = $data['request_type'];
+            $systemMessages[] = 'تم تغيير نوع الطلب إلى: ' . mr_chat_request_type_label($data['request_type']);
+        }
+
+        if (array_key_exists('priority', $data) && $data['priority'] !== ($threadRow->priority ?? 'normal')) {
+            if (!$isManager) return response()->json(['status' => 'error', 'message' => 'تغيير الأولوية مخصص للإدارة فقط.'], 403);
+            $updates['priority'] = $data['priority'];
+            $systemMessages[] = 'تم تغيير الأولوية إلى: ' . mr_chat_priority_label($data['priority']);
+        }
+
+        if (array_key_exists('status', $data) && $data['status'] !== ($threadRow->status ?? 'open')) {
+            if (!$isManager) return response()->json(['status' => 'error', 'message' => 'تغيير حالة المحادثة مخصص للإدارة فقط.'], 403);
+            $updates['status'] = $data['status'];
+            $updates['status_updated_at'] = now();
+            if ($data['status'] === 'closed') {
+                $updates['closed_at'] = now();
+                $updates['closed_by_user_id'] = $user->id;
+            } else {
+                $updates['closed_at'] = null;
+                $updates['closed_by_user_id'] = null;
+            }
+            $systemMessages[] = 'تم تغيير حالة المحادثة إلى: ' . mr_chat_status_label($data['status']);
+        }
+
+        if (count($updates) > 1) {
+            DB::table('chat_threads')->where('id', $thread)->update($updates);
+            foreach ($systemMessages as $message) {
+                mr_chat_system_message($thread, $message);
+            }
+        }
+
+        return response()->json([
+            'status' => 'ok',
+            'message' => 'تم تحديث بيانات المحادثة',
+            'data' => [
+                'thread' => mr_chat_serialize_thread(DB::table('chat_threads')->where('id', $thread)->first(), $user),
             ],
         ]);
     });
@@ -292,6 +459,10 @@ Route::middleware(['auth.api'])->prefix('chat')->group(function () {
         if (!mr_chat_authorize_thread($threadRow, $user)) return response()->json(['status' => 'error', 'message' => 'غير مصرح.'], 403);
 
         $role = mr_chat_role($user) === 'tenant' ? 'tenant' : 'manager';
+        if ($role === 'tenant' && ($threadRow->status ?? 'open') === 'closed') {
+            return response()->json(['status' => 'error', 'message' => 'المحادثة مغلقة. لا يمكن الرد إلا بعد إعادة فتحها من الإدارة.'], 422);
+        }
+
         $body = trim((string) $data['body']);
 
         $messageId = DB::table('chat_messages')->insertGetId([
@@ -323,6 +494,7 @@ Route::middleware(['auth.api'])->prefix('chat')->group(function () {
                     'sender_role' => $message->sender_role,
                     'body' => $message->body,
                     'is_mine' => true,
+                    'is_system' => false,
                     'created_at' => $message->created_at,
                 ],
             ],
