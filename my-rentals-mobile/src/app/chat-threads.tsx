@@ -28,6 +28,7 @@ type ChatThread = {
 
 type StatusFilter = 'all' | 'open' | 'in_progress' | 'closed';
 type RequestTypeFilter = 'all' | 'general' | 'maintenance' | 'payment' | 'contract';
+type PriorityFilter = 'all' | 'normal' | 'important' | 'urgent';
 
 const STATUS_FILTERS: Array<{ key: StatusFilter; label: string }> = [
   { key: 'all', label: 'الكل' },
@@ -42,6 +43,13 @@ const REQUEST_TYPE_FILTERS: Array<{ key: RequestTypeFilter; label: string }> = [
   { key: 'maintenance', label: 'صيانة' },
   { key: 'payment', label: 'دفعات' },
   { key: 'contract', label: 'عقد' },
+];
+
+const PRIORITY_FILTERS: Array<{ key: PriorityFilter; label: string }> = [
+  { key: 'all', label: 'كل الأولويات' },
+  { key: 'normal', label: 'عادي' },
+  { key: 'important', label: 'مهم' },
+  { key: 'urgent', label: 'عاجل' },
 ];
 
 function value(v: unknown) {
@@ -66,6 +74,7 @@ export default function ChatThreadsScreen() {
   const [term, setTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [requestTypeFilter, setRequestTypeFilter] = useState<RequestTypeFilter>('all');
+  const [priorityFilter, setPriorityFilter] = useState<PriorityFilter>('all');
 
   const load = useCallback(async (refresh = false, silent = false) => {
     try {
@@ -94,11 +103,12 @@ export default function ChatThreadsScreen() {
     return threads.filter((item) => {
       if (statusFilter !== 'all' && String(item.status || 'open') !== statusFilter) return false;
       if (requestTypeFilter !== 'all' && String(item.request_type || 'general') !== requestTypeFilter) return false;
+      if (priorityFilter !== 'all' && String(item.priority || 'normal') !== priorityFilter) return false;
       if (!text) return true;
       return [item.tenant_name, item.tenant_phone, item.contract_number, item.property_name, item.unit_number, item.owner_name, item.last_message, item.status_label, item.request_type_label, item.priority_label]
         .some((part) => String(part ?? '').toLowerCase().includes(text));
     });
-  }, [requestTypeFilter, statusFilter, term, threads]);
+  }, [priorityFilter, requestTypeFilter, statusFilter, term, threads]);
 
   async function startTenantThread() {
     try {
@@ -115,7 +125,7 @@ export default function ChatThreadsScreen() {
     }
   }
 
-  const hasActiveFilter = Boolean(term || statusFilter !== 'all' || requestTypeFilter !== 'all');
+  const hasActiveFilter = Boolean(term || statusFilter !== 'all' || requestTypeFilter !== 'all' || priorityFilter !== 'all');
 
   return (
     <SafeAreaView style={styles.safe} edges={['bottom']}>
@@ -155,8 +165,19 @@ export default function ChatThreadsScreen() {
         })}
       </ScrollView>
 
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRowSecondary}>
+        {PRIORITY_FILTERS.map((item) => {
+          const selected = priorityFilter === item.key;
+          return (
+            <TouchableOpacity key={item.key} style={[styles.filterChip, selected ? styles.filterChipActive : null, item.key === 'urgent' ? styles.filterChipUrgent : null]} onPress={() => setPriorityFilter(item.key)} activeOpacity={0.85}>
+              <Text style={[styles.filterText, selected ? styles.filterTextActive : null]}>{item.label}</Text>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+
       {hasActiveFilter ? (
-        <TouchableOpacity style={styles.clearFilters} activeOpacity={0.85} onPress={() => { setTerm(''); setStatusFilter('all'); setRequestTypeFilter('all'); }}>
+        <TouchableOpacity style={styles.clearFilters} activeOpacity={0.85} onPress={() => { setTerm(''); setStatusFilter('all'); setRequestTypeFilter('all'); setPriorityFilter('all'); }}>
           <Ionicons name="close-circle-outline" size={17} color={colors.textSecondary} />
           <Text style={styles.clearFiltersText}>مسح البحث والفلاتر</Text>
         </TouchableOpacity>
@@ -192,7 +213,7 @@ export default function ChatThreadsScreen() {
                 <View style={styles.badgeRow}>
                   <View style={[styles.statusBadge, item.status === 'closed' ? styles.statusClosed : item.status === 'in_progress' ? styles.statusProgress : styles.statusOpen]}><Text style={styles.statusBadgeText}>{item.status_label || 'مفتوحة'}</Text></View>
                   <View style={styles.typeBadge}><Text style={styles.typeBadgeText}>{item.request_type_label || 'استفسار عام'}</Text></View>
-                  <View style={styles.typeBadge}><Text style={styles.typeBadgeText}>{item.priority_label || 'عادي'}</Text></View>
+                  <View style={[styles.typeBadge, item.priority === 'urgent' ? styles.priorityUrgent : null]}><Text style={styles.typeBadgeText}>{item.priority_label || 'عادي'}</Text></View>
                 </View>
                 <Text numberOfLines={2} style={[styles.lastMessage, unread ? styles.lastMessageUnread : null]}>{item.last_message || 'لا توجد رسائل بعد'}</Text>
                 <View style={styles.footerRow}>
@@ -227,6 +248,7 @@ const styles = StyleSheet.create({
   filterRow: { flexDirection: 'row-reverse', gap: spacing.xs, paddingHorizontal: spacing.xl, paddingBottom: spacing.xs },
   filterRowSecondary: { flexDirection: 'row-reverse', gap: spacing.xs, paddingHorizontal: spacing.xl, paddingBottom: spacing.sm },
   filterChip: { borderRadius: 999, borderWidth: 1, borderColor: colors.borderLight, backgroundColor: colors.surface, paddingHorizontal: spacing.md, paddingVertical: 8 },
+  filterChipUrgent: { borderColor: '#FCA5A5' },
   filterChipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
   filterText: { color: colors.textSecondary, fontWeight: '900', fontSize: 12 },
   filterTextActive: { color: colors.textInverse },
@@ -257,6 +279,7 @@ const styles = StyleSheet.create({
   statusBadgeText: { color: colors.text, fontWeight: '900', fontSize: 11 },
   typeBadge: { borderRadius: 999, backgroundColor: colors.background, borderWidth: 1, borderColor: colors.borderLight, paddingHorizontal: 10, paddingVertical: 5 },
   typeBadgeText: { color: colors.textSecondary, fontWeight: '900', fontSize: 11 },
+  priorityUrgent: { backgroundColor: '#FEE2E2', borderColor: '#FCA5A5' },
   lastMessage: { color: colors.textSecondary, textAlign: 'right', lineHeight: 22, marginTop: spacing.md },
   lastMessageUnread: { color: colors.text, fontWeight: '900' },
   footerRow: { marginTop: spacing.md, paddingTop: spacing.sm, borderTopWidth: 1, borderTopColor: colors.borderLight, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm },
