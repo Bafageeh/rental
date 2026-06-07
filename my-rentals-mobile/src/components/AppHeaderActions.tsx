@@ -1,11 +1,13 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router, usePathname } from "expo-router";
+import { useCallback, useEffect, useState } from "react";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { colors } from "../constants/theme";
 import { useAuth } from "../context/AuthContext";
+import { apiGet } from "../lib/api";
 import { smartBack } from "../lib/navigationHistory";
 
-const mainRoutes = ["/", "/properties", "/payments", "/statistics", "/more", "/login"];
+const mainRoutes = ["/", "/properties", "/payments", "/statistics", "/more", "/login", "/tenant-payments", "/chat-threads"];
 
 const screenCodes: Record<string, string> = {
   "/": "S-001",
@@ -41,6 +43,9 @@ const screenCodes: Record<string, string> = {
   "/upload-property-deed": "S-032",
   "/edit-delete-center": "S-033",
   "/record-details": "S-034",
+  "/tenant-payments": "S-035",
+  "/chat-threads": "S-036",
+  "/chat-thread": "S-037",
 };
 
 function normalizePathname(pathname: string) {
@@ -88,7 +93,32 @@ export function HeaderBackAction() {
 
 export function HeaderQuickActions() {
   const { loggedIn } = useAuth();
+  const pathname = usePathname();
   const screenCode = useScreenCode();
+  const [chatUnreadCount, setChatUnreadCount] = useState(0);
+
+  const loadChatUnreadCount = useCallback(async () => {
+    if (!loggedIn) {
+      setChatUnreadCount(0);
+      return;
+    }
+
+    try {
+      const response = await apiGet("/chat/threads");
+      const data = response?.data ?? response;
+      const threads = Array.isArray(data?.threads) ? data.threads : [];
+      const total = threads.reduce((sum: number, item: any) => sum + Number(item?.unread_count || 0), 0);
+      setChatUnreadCount(Number.isFinite(total) ? total : 0);
+    } catch {
+      setChatUnreadCount(0);
+    }
+  }, [loggedIn]);
+
+  useEffect(() => {
+    void loadChatUnreadCount();
+    const timer = setInterval(() => { void loadChatUnreadCount(); }, 12000);
+    return () => clearInterval(timer);
+  }, [loadChatUnreadCount, pathname]);
 
   if (!loggedIn) return null;
 
@@ -99,13 +129,18 @@ export function HeaderQuickActions() {
       </View>
       <TouchableOpacity
         style={styles.headerActionButton}
-        onPress={() => router.push("/alerts" as any)}
+        onPress={() => router.push("/chat-threads" as any)}
         activeOpacity={0.75}
         accessibilityRole="button"
-        accessibilityLabel="التنبيهات"
+        accessibilityLabel="المراسلات"
         hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
       >
         <Ionicons name="notifications-outline" size={22} color={colors.text} />
+        {chatUnreadCount > 0 ? (
+          <View style={styles.notificationBadge} pointerEvents="none">
+            <Text style={styles.notificationBadgeText}>{chatUnreadCount > 99 ? "99+" : chatUnreadCount}</Text>
+          </View>
+        ) : null}
       </TouchableOpacity>
     </View>
   );
@@ -127,6 +162,26 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.borderLight,
     paddingHorizontal: 8,
+  },
+  notificationBadge: {
+    position: "absolute",
+    top: -5,
+    right: -5,
+    minWidth: 17,
+    height: 17,
+    borderRadius: 9,
+    paddingHorizontal: 4,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#DC2626",
+    borderWidth: 1,
+    borderColor: "#fff",
+  },
+  notificationBadgeText: {
+    color: "#fff",
+    fontSize: 9,
+    fontWeight: "900",
+    lineHeight: 12,
   },
   screenCodeBadge: {
     height: 28,
