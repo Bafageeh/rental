@@ -21,27 +21,29 @@ function AppTabs() {
   const routeParams = useGlobalSearchParams();
   const routeParamsKey = JSON.stringify(routeParams);
   const isLoginRoute = pathname === "/login";
+  const isPasswordOtpRoute = pathname === "/password-otp";
   const isTenantPaymentsRoute = pathname === "/tenant-payments";
+  const isPublicAuthRoute = isLoginRoute || isPasswordOtpRoute;
 
   useEffect(() => {
     if (loading) return;
-    if ((!loggedIn || locked) && !isLoginRoute) {
+    if ((!loggedIn || locked) && !isPublicAuthRoute) {
       router.replace("/login" as any);
       return;
     }
-    if (loggedIn && !locked && isLoginRoute) {
+    if (loggedIn && !locked && isPublicAuthRoute) {
       router.replace(isTenant ? "/tenant-payments" as any : "/" as any);
       return;
     }
     if (loggedIn && !locked && isTenant && !isTenantPaymentsRoute) {
       router.replace("/tenant-payments" as any);
     }
-  }, [isLoginRoute, isTenantPaymentsRoute, isTenant, loading, loggedIn, locked]);
+  }, [isPublicAuthRoute, isTenantPaymentsRoute, isTenant, loading, loggedIn, locked]);
 
   useEffect(() => {
-    if (loading || !loggedIn || locked || isLoginRoute) return;
+    if (loading || !loggedIn || locked || isPublicAuthRoute) return;
     trackNavigationRoute(pathname, routeParams as Record<string, unknown>);
-  }, [isLoginRoute, loading, loggedIn, locked, pathname, routeParamsKey]);
+  }, [isPublicAuthRoute, loading, loggedIn, locked, pathname, routeParamsKey]);
 
   return (
     <Tabs
@@ -122,6 +124,7 @@ function AppTabs() {
       <Tabs.Screen name="unit-inspections" options={{ ...hidden, title: "فحص الوحدات" }} />
       <Tabs.Screen name="unit-marketing" options={{ ...hidden, title: "تسويق الوحدات" }} />
       <Tabs.Screen name="utility-bills" options={{ ...hidden, title: "الفواتير" }} />
+      <Tabs.Screen name="password-otp" options={{ ...hidden, title: "استعادة كلمة السر", headerLeft: () => null, headerRight: () => null }} />
       <Tabs.Screen name="login" options={{ ...hidden, title: "تسجيل الدخول", headerLeft: () => null, headerRight: () => null }} />
       <Tabs.Screen name="profile" options={{ ...hidden, title: "بروفايل" }} />
       <Tabs.Screen name="profile-security" options={{ ...hidden, title: "تغيير الرقم السري" }} />
