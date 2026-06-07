@@ -33,6 +33,11 @@ jobs:
         with:
           node-version: 22
 
+      - name: Install mobile dependencies
+        env:
+          NPM_CONFIG_LEGACY_PEER_DEPS: true
+        run: npm install --legacy-peer-deps --no-audit --no-fund
+
       - name: Setup Expo and EAS
         uses: expo/expo-github-action@v8
         with:
@@ -45,8 +50,6 @@ jobs:
           EAS_NO_VCS: 1
           NPM_CONFIG_LEGACY_PEER_DEPS: true
         run: |
-          echo "Using .npmrc:"
-          cat .npmrc || true
           eas build --platform android --profile preview --non-interactive --wait --json > eas-build-result.json
           cat eas-build-result.json
 
