@@ -23,6 +23,8 @@ function AppTabs() {
   const isLoginRoute = pathname === "/login";
   const isPasswordOtpRoute = pathname === "/password-otp";
   const isTenantPaymentsRoute = pathname === "/tenant-payments";
+  const isChatRoute = pathname === "/chat-threads" || pathname === "/chat-thread";
+  const isTenantAllowedRoute = isTenantPaymentsRoute || isChatRoute;
   const isPublicAuthRoute = isLoginRoute || isPasswordOtpRoute;
 
   useEffect(() => {
@@ -35,10 +37,10 @@ function AppTabs() {
       router.replace(isTenant ? "/tenant-payments" as any : "/" as any);
       return;
     }
-    if (loggedIn && !locked && isTenant && !isTenantPaymentsRoute) {
+    if (loggedIn && !locked && isTenant && !isTenantAllowedRoute) {
       router.replace("/tenant-payments" as any);
     }
-  }, [isPublicAuthRoute, isTenantPaymentsRoute, isTenant, loading, loggedIn, locked]);
+  }, [isPublicAuthRoute, isTenantAllowedRoute, isTenant, loading, loggedIn, locked]);
 
   useEffect(() => {
     if (loading || !loggedIn || locked || isPublicAuthRoute) return;
@@ -85,6 +87,8 @@ function AppTabs() {
       <Tabs.Screen name="more" options={{ title: "مزيد", tabBarIcon: ({ color, size }) => <TabIcon name="grid" color={color} size={size} />, tabBarAccessibilityLabel: "مزيد" }} />
 
       <Tabs.Screen name="tenant-payments" options={{ ...hidden, title: "دفعاتي", headerRight: () => null }} />
+      <Tabs.Screen name="chat-threads" options={{ ...hidden, title: "المراسلات" }} />
+      <Tabs.Screen name="chat-thread" options={{ ...hidden, title: "المحادثة", headerShown: false }} />
       <Tabs.Screen name="payments" options={{ ...hidden, title: "الدفعات" }} />
       <Tabs.Screen name="statistics" options={{ ...hidden, title: "التقارير" }} />
       <Tabs.Screen name="settings" options={{ ...hidden, title: "الإعدادات" }} />
