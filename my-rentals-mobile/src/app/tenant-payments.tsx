@@ -20,39 +20,10 @@ function paymentUi(item: any) {
   const isPartial = paid > 0 && rem > 0.009;
   const isOverdue = rawStatus.includes('overdue') || rawStatus.includes('متأخر');
 
-  if (isPaid) {
-    return {
-      label: 'مدفوعة',
-      card: styles.cardPaid,
-      badge: styles.badgePaid,
-      badgeText: styles.badgeTextPaid,
-    };
-  }
-
-  if (isPartial) {
-    return {
-      label: 'جزئي',
-      card: styles.cardPartial,
-      badge: styles.badgePartial,
-      badgeText: styles.badgeTextPartial,
-    };
-  }
-
-  if (isOverdue) {
-    return {
-      label: 'متأخرة',
-      card: styles.cardOverdue,
-      badge: styles.badgeOverdue,
-      badgeText: styles.badgeTextOverdue,
-    };
-  }
-
-  return {
-    label: 'قادمة',
-    card: styles.cardUpcoming,
-    badge: styles.badgeUpcoming,
-    badgeText: styles.badgeTextUpcoming,
-  };
+  if (isPaid) return { label: 'مدفوعة', card: styles.cardPaid, badge: styles.badgePaid, badgeText: styles.badgeTextPaid };
+  if (isPartial) return { label: 'جزئي', card: styles.cardPartial, badge: styles.badgePartial, badgeText: styles.badgeTextPartial };
+  if (isOverdue) return { label: 'متأخرة', card: styles.cardOverdue, badge: styles.badgeOverdue, badgeText: styles.badgeTextOverdue };
+  return { label: 'قادمة', card: styles.cardUpcoming, badge: styles.badgeUpcoming, badgeText: styles.badgeTextUpcoming };
 }
 
 export default function TenantPaymentsScreen() {
@@ -85,10 +56,7 @@ export default function TenantPaymentsScreen() {
           <Text style={styles.title}>دفعاتي</Text>
           <Text style={styles.sub}>{name}</Text>
         </View>
-        <View style={styles.actions}>
-          <TouchableOpacity style={styles.chat} onPress={() => router.push('/chat-threads' as any)}><Text style={styles.chatText}>المراسلات</Text></TouchableOpacity>
-          <TouchableOpacity style={styles.out} onPress={logout}><Text style={styles.outText}>خروج</Text></TouchableOpacity>
-        </View>
+        <TouchableOpacity style={styles.out} onPress={logout}><Text style={styles.outText}>خروج</Text></TouchableOpacity>
       </View>
       {loading ? <ActivityIndicator color={colors.primary} /> : (
         <FlatList
@@ -102,9 +70,7 @@ export default function TenantPaymentsScreen() {
               <View style={[styles.card, ui.card]}>
                 <View style={styles.row}>
                   <Text style={styles.h}>الدفعة {index + 1}</Text>
-                  <View style={[styles.badge, ui.badge]}>
-                    <Text style={[styles.badgeText, ui.badgeText]}>{ui.label}</Text>
-                  </View>
+                  <View style={[styles.badge, ui.badge]}><Text style={[styles.badgeText, ui.badgeText]}>{ui.label}</Text></View>
                 </View>
                 <Text style={styles.line}>استحقاق: {item.due_date || '-'}</Text>
                 <Text style={styles.line}>سداد: {item.paid_date || 'غير مدفوعة'}</Text>
@@ -123,14 +89,11 @@ export default function TenantPaymentsScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   header: { padding: spacing.xl, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' },
-  actions: { flexDirection: 'row-reverse', gap: spacing.sm, alignItems: 'center' },
   title: { ...typography.h2, color: colors.text, textAlign: 'right' },
   sub: { color: colors.textSecondary, textAlign: 'right', marginTop: 4 },
   out: { backgroundColor: colors.surface, borderRadius: radii.md, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderWidth: 1, borderColor: colors.border },
   outText: { color: colors.textSecondary, fontWeight: '800' },
-  chat: { backgroundColor: colors.primary, borderRadius: radii.md, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderWidth: 1, borderColor: colors.primary },
-  chatText: { color: colors.textInverse, fontWeight: '900' },
-  list: { padding: spacing.xl },
+  list: { padding: spacing.xl, paddingBottom: spacing['4xl'] },
   empty: { color: colors.textSecondary, textAlign: 'center', padding: spacing.xl, backgroundColor: colors.surface, borderRadius: radii.lg },
   card: { backgroundColor: colors.surface, borderRadius: radii.xl, padding: spacing.lg, marginBottom: spacing.md, borderWidth: 1, borderColor: colors.borderLight },
   cardPaid: { backgroundColor: '#ECFDF5', borderColor: '#86EFAC' },
