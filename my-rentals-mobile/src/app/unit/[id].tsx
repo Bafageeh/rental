@@ -16,7 +16,7 @@ import {
 } from "react-native";
 import { apiGet, apiPost } from "../../lib/api";
 
-type UnitTabKey = "stats" | "details" | "contracts";
+type UnitTabKey = "stats" | "details" | "tenant" | "contracts";
 type FieldItem = { key: string; label: string; value: string | number | null };
 type RelatedItem = { id: number; entity: string; title: string; subtitle?: string; badge?: string | null; route?: string | null };
 type RelatedSection = { key: string; title: string; count: number; items: RelatedItem[] };
@@ -32,9 +32,11 @@ type ContractItem = {
   rent_amount?: number | string | null;
   status?: string | null;
   tenant_name?: string | null;
+  tenant_phone?: string | null;
+  tenant_national_id?: string | null;
   property_name?: string | null;
   unit_number?: string | null;
-  tenant?: { name?: string | null } | null;
+  tenant?: { id?: number | string | null; name?: string | null; phone?: string | null; mobile?: string | null; national_id?: string | null; identity_number?: string | null; email?: string | null; notes?: string | null } | null;
   unit?: { unit_number?: string | null; property?: { name?: string | null; owner?: { name?: string | null } | null } | null } | null;
   owner_name?: string | null;
   payments?: PaymentItem[];
@@ -43,6 +45,7 @@ type ContractItem = {
 const unitTabs: Array<{ key: UnitTabKey; label: string; icon: keyof typeof Ionicons.glyphMap }> = [
   { key: "stats", label: "إحصائيات", icon: "stats-chart-outline" },
   { key: "details", label: "التفاصيل", icon: "list-outline" },
+  { key: "tenant", label: "المستأجر", icon: "person-outline" },
   { key: "contracts", label: "العقود", icon: "documents-outline" },
 ];
 
@@ -87,6 +90,10 @@ function statusText(status?: string | null) {
 function firstLetter(value?: string | null) {
   const text = String(value || "؟").trim();
   return text ? text[0] : "؟";
+}
+function isActiveContract(contract?: ContractItem | null) {
+  const status = String(contract?.status || "").trim().toLowerCase();
+  return status === "active" || status === "نشط";
 }
 function normalizeContractsResponse(result: any): ContractItem[] {
   return Array.isArray(result) ? result : Array.isArray(result?.data) ? result.data : Array.isArray(result?.items) ? result.items : [];
@@ -301,10 +308,30 @@ export default function UnitDetailsRoute() {
   const otherSections = useMemo(() => (data?.sections || []).filter((section) => !isContractSection(section)), [data?.sections]);
   const relatedCount = useMemo(() => (data?.sections || []).reduce((sum, section) => sum + (section.count || section.items.length || 0), 0), [data?.sections]);
   const contractsCount = unitContracts.length || contractFallbackItems.length;
-  const activeTenantName = useMemo(() => {
-    const activeContract = unitContracts.find((contract) => contract.status === "active" || contract.status === "نشط") || null;
-    return activeContract?.tenant?.name || activeContract?.tenant_name || "";
-  }, [unitContracts]);
+  const activeContract = useMemo(() => unitContracts.find((contract) => isActiveContract(contract)) || null, [unitContracts]);
+  const activeTenantName = activeContract?.tenant?.name || activeContract?.tenant_name || "";
+  const visibleUnitTabs = useMemo(() => unitTabs.filter((tab) => tab.key !== "tenant" || !!activeContract), [activeContract]);
+
+  useEffect(() => {
+    if (activeTab === "tenant" && !activeContract) setActiveTab("details");
+  }, [activeTab, activeContract]);
+
+  const tenantFields = useMemo(() => {
+    if (!activeContract) return [] as Array<{ label: string; value: unknown }>;
+    const tenant = activeContract.tenant || {};
+    return [
+      { label: "اسم المستأجر", value: tenant.name || activeContract.tenant_name },
+      { label: "رقم الهوية", value: tenant.national_id || tenant.identity_number || activeContract.tenant_national_id },
+      { label: "رقم الجوال", value: tenant.phone || tenant.mobile || activeContract.tenant_phone },
+      { label: "البريد الإلكتروني", value: tenant.email },
+      { label: "رقم العقد", value: activeContract.government_contract_number || activeContract.contract_number || activeContract.id },
+      { label: "حالة العقد", value: statusText(activeContract.status) },
+      { label: "بداية العقد", value: dateOnly(activeContract.start_date) },
+      { label: "نهاية العقد", value: dateOnly(activeContract.end_date) },
+      { label: "قيمة الإيجار", value: money(activeContract.rent_amount) },
+      { label: "ملاحظات المستأجر", value: tenant.notes },
+    ];
+  }, [activeContract]);
   const paymentStats = useMemo(() => {
     const payments = unitContracts.flatMap((contract) => contract.payments || []);
     return { total: payments.length, overdue: payments.filter((payment) => payment.status === "overdue").length };
@@ -358,7 +385,7 @@ export default function UnitDetailsRoute() {
           {activeTenantName ? <Text numberOfLines={1} style={styles.activeTenantLine}>المستأجر النشط: {activeTenantName}</Text> : null}
           <View style={styles.headerStatsRow}><Text style={styles.statPill}>العقود: {contractsCount}</Text><Text style={styles.statPill}>رقم السجل: {valueOrDash(id)}</Text></View>
         </View>
-        <View style={styles.tabsWrap}>{unitTabs.map((tab) => {
+        <View style={styles.tabsWrap}>{visibleUnitTabs.map((tab) => {
           const isActive = activeTab === tab.key;
           return <TouchableOpacity key={tab.key} style={[styles.tabButton, isActive ? styles.tabButtonActive : null]} activeOpacity={0.88} onPress={() => setActiveTab(tab.key)}><Ionicons name={tab.icon} size={17} color={isActive ? "#0F172A" : "#6B7280"} /><Text style={[styles.tabText, isActive ? styles.tabTextActive : null]}>{tab.label}</Text></TouchableOpacity>;
         })}</View>
@@ -420,6 +447,14 @@ const styles = StyleSheet.create({
   fieldRow: { flexDirection: "row", justifyContent: "space-between", gap: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: "#F1F5F9" },
   fieldValue: { flex: 1, color: "#111827", fontWeight: "900", textAlign: "left" },
   fieldLabel: { minWidth: 110, color: "#6B7280", fontWeight: "900", textAlign: "right" },
+  tenantHero: { flexDirection: "row-reverse", alignItems: "center", gap: 12, backgroundColor: "#ECFDF5", borderWidth: 1, borderColor: "#D1FAE5", borderRadius: 18, padding: 12, marginBottom: 8 },
+  tenantAvatar: { width: 50, height: 50, borderRadius: 25, backgroundColor: "#0F766E", alignItems: "center", justifyContent: "center" },
+  tenantAvatarText: { color: "#fff", fontSize: 22, fontWeight: "900" },
+  tenantHeroText: { flex: 1, alignItems: "flex-end" },
+  tenantName: { color: "#111827", fontSize: 17, fontWeight: "900", textAlign: "right" },
+  tenantStatus: { color: "#0F766E", fontWeight: "900", marginTop: 3, textAlign: "right" },
+  tenantOpenButton: { marginTop: 12, minHeight: 46, borderRadius: 16, backgroundColor: "#ECFDF5", borderWidth: 1, borderColor: "#D1FAE5", flexDirection: "row-reverse", gap: 8, alignItems: "center", justifyContent: "center" },
+  tenantOpenButtonText: { color: "#0F766E", fontWeight: "900" },
   relatedCard: { backgroundColor: "#F8FAFC", borderRadius: 16, borderWidth: 1, borderColor: "#E5E7EB", padding: 12, marginBottom: 8 },
   relatedTopRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 10 },
   relatedTitleWrap: { flex: 1, alignItems: "flex-end" },
