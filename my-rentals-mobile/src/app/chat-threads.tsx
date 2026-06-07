@@ -20,17 +20,28 @@ type ChatThread = {
   unread_count?: number;
   status?: string | null;
   status_label?: string | null;
+  request_type?: string | null;
   request_type_label?: string | null;
+  priority?: string | null;
   priority_label?: string | null;
 };
 
 type StatusFilter = 'all' | 'open' | 'in_progress' | 'closed';
+type RequestTypeFilter = 'all' | 'general' | 'maintenance' | 'payment' | 'contract';
 
 const STATUS_FILTERS: Array<{ key: StatusFilter; label: string }> = [
   { key: 'all', label: 'الكل' },
   { key: 'open', label: 'مفتوحة' },
   { key: 'in_progress', label: 'قيد المتابعة' },
   { key: 'closed', label: 'مغلقة' },
+];
+
+const REQUEST_TYPE_FILTERS: Array<{ key: RequestTypeFilter; label: string }> = [
+  { key: 'all', label: 'كل الأنواع' },
+  { key: 'general', label: 'استفسار عام' },
+  { key: 'maintenance', label: 'صيانة' },
+  { key: 'payment', label: 'دفعات' },
+  { key: 'contract', label: 'عقد' },
 ];
 
 function value(v: unknown) {
@@ -54,6 +65,7 @@ export default function ChatThreadsScreen() {
   const [threads, setThreads] = useState<ChatThread[]>([]);
   const [term, setTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [requestTypeFilter, setRequestTypeFilter] = useState<RequestTypeFilter>('all');
 
   const load = useCallback(async (refresh = false, silent = false) => {
     try {
@@ -81,11 +93,12 @@ export default function ChatThreadsScreen() {
     const text = term.trim().toLowerCase();
     return threads.filter((item) => {
       if (statusFilter !== 'all' && String(item.status || 'open') !== statusFilter) return false;
+      if (requestTypeFilter !== 'all' && String(item.request_type || 'general') !== requestTypeFilter) return false;
       if (!text) return true;
       return [item.tenant_name, item.tenant_phone, item.contract_number, item.property_name, item.unit_number, item.owner_name, item.last_message, item.status_label, item.request_type_label, item.priority_label]
         .some((part) => String(part ?? '').toLowerCase().includes(text));
     });
-  }, [statusFilter, term, threads]);
+  }, [requestTypeFilter, statusFilter, term, threads]);
 
   async function startTenantThread() {
     try {
@@ -101,6 +114,8 @@ export default function ChatThreadsScreen() {
       setLoading(false);
     }
   }
+
+  const hasActiveFilter = Boolean(term || statusFilter !== 'all' || requestTypeFilter !== 'all');
 
   return (
     <SafeAreaView style={styles.safe} edges={['bottom']}>
@@ -129,6 +144,24 @@ export default function ChatThreadsScreen() {
         })}
       </ScrollView>
 
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRowSecondary}>
+        {REQUEST_TYPE_FILTERS.map((item) => {
+          const selected = requestTypeFilter === item.key;
+          return (
+            <TouchableOpacity key={item.key} style={[styles.filterChip, selected ? styles.filterChipActive : null]} onPress={() => setRequestTypeFilter(item.key)} activeOpacity={0.85}>
+              <Text style={[styles.filterText, selected ? styles.filterTextActive : null]}>{item.label}</Text>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+
+      {hasActiveFilter ? (
+        <TouchableOpacity style={styles.clearFilters} activeOpacity={0.85} onPress={() => { setTerm(''); setStatusFilter('all'); setRequestTypeFilter('all'); }}>
+          <Ionicons name="close-circle-outline" size={17} color={colors.textSecondary} />
+          <Text style={styles.clearFiltersText}>مسح البحث والفلاتر</Text>
+        </TouchableOpacity>
+      ) : null}
+
       {loading ? (
         <View style={styles.center}><ActivityIndicator color={colors.primary} /><Text style={styles.loadingText}>جاري تحميل المحادثات...</Text></View>
       ) : (
@@ -140,9 +173,9 @@ export default function ChatThreadsScreen() {
           ListEmptyComponent={(
             <View style={styles.emptyCard}>
               <Ionicons name="chatbox-ellipses-outline" size={38} color="#94A3B8" />
-              <Text style={styles.emptyTitle}>{term || statusFilter !== 'all' ? 'لا توجد نتائج' : 'لا توجد محادثات حالياً'}</Text>
-              <Text style={styles.emptyText}>{term || statusFilter !== 'all' ? 'غيّر البحث أو الفلتر.' : isTenant ? 'ابدأ محادثة مرتبطة بعقدك النشط مع إدارة العقار.' : 'ستظهر هنا المحادثات عندما يبدأ المستأجرون بالتواصل.'}</Text>
-              {isTenant && !term && statusFilter === 'all' ? <TouchableOpacity style={styles.startBtn} onPress={startTenantThread}><Text style={styles.startBtnText}>بدء محادثة</Text></TouchableOpacity> : null}
+              <Text style={styles.emptyTitle}>{hasActiveFilter ? 'لا توجد نتائج' : 'لا توجد محادثات حالياً'}</Text>
+              <Text style={styles.emptyText}>{hasActiveFilter ? 'غيّر البحث أو الفلاتر.' : isTenant ? 'ابدأ محادثة مرتبطة بعقدك النشط مع إدارة العقار.' : 'ستظهر هنا المحادثات عندما يبدأ المستأجرون بالتواصل.'}</Text>
+              {isTenant && !hasActiveFilter ? <TouchableOpacity style={styles.startBtn} onPress={startTenantThread}><Text style={styles.startBtnText}>بدء محادثة</Text></TouchableOpacity> : null}
             </View>
           )}
           renderItem={({ item }) => {
@@ -191,11 +224,14 @@ const styles = StyleSheet.create({
   subtitle: { color: colors.textSecondary, textAlign: 'right', marginTop: 4, lineHeight: 21 },
   searchBox: { marginHorizontal: spacing.xl, marginBottom: spacing.sm, height: 48, borderRadius: radii.lg, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.borderLight, paddingHorizontal: spacing.md, flexDirection: 'row-reverse', alignItems: 'center', gap: spacing.sm },
   searchInput: { flex: 1, color: colors.text, fontSize: 15 },
-  filterRow: { flexDirection: 'row-reverse', gap: spacing.xs, paddingHorizontal: spacing.xl, paddingBottom: spacing.md },
+  filterRow: { flexDirection: 'row-reverse', gap: spacing.xs, paddingHorizontal: spacing.xl, paddingBottom: spacing.xs },
+  filterRowSecondary: { flexDirection: 'row-reverse', gap: spacing.xs, paddingHorizontal: spacing.xl, paddingBottom: spacing.sm },
   filterChip: { borderRadius: 999, borderWidth: 1, borderColor: colors.borderLight, backgroundColor: colors.surface, paddingHorizontal: spacing.md, paddingVertical: 8 },
   filterChipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
   filterText: { color: colors.textSecondary, fontWeight: '900', fontSize: 12 },
   filterTextActive: { color: colors.textInverse },
+  clearFilters: { marginHorizontal: spacing.xl, marginBottom: spacing.sm, borderRadius: radii.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.borderLight, paddingVertical: 8, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 6 },
+  clearFiltersText: { color: colors.textSecondary, fontWeight: '900', fontSize: 12 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   loadingText: { color: colors.textSecondary, marginTop: spacing.sm },
   list: { padding: spacing.xl, paddingTop: spacing.sm, paddingBottom: spacing['4xl'] },
