@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { apiGet, apiPost } from '../lib/api';
@@ -9,10 +9,17 @@ import { colors, spacing, radii, shadows, typography } from '../constants/theme'
 
 export default function LoginScreen() {
   const { refresh } = useAuth();
+  const scrollRef = useRef<ScrollView>(null);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+
+  function scrollToInput(y = 260) {
+    setTimeout(() => {
+      scrollRef.current?.scrollTo({ y, animated: true });
+    }, 120);
+  }
 
   function goToOtp() {
     router.push({ pathname: '/password-otp' as any, params: { identifier: username.trim() } });
@@ -62,8 +69,15 @@ export default function LoginScreen() {
 
   return (
     <SafeAreaView style={styles.safe}>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
-        <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 24} style={{ flex: 1 }}>
+        <ScrollView
+          ref={scrollRef}
+          style={styles.scrollView}
+          contentContainerStyle={styles.scroll}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
+          showsVerticalScrollIndicator={false}
+        >
           <View style={styles.logoWrap}>
             <View style={styles.logoCircle}><Text style={{ fontSize: 40 }}>🏢</Text></View>
             <Text style={styles.appName}>إيجاراتي</Text>
@@ -78,6 +92,7 @@ export default function LoginScreen() {
               style={styles.input}
               value={username}
               onChangeText={setUsername}
+              onFocus={() => scrollToInput(230)}
               placeholder="رقم الهوية أو رقم الجوال أو اسم المستخدم"
               placeholderTextColor={colors.textTertiary}
               keyboardType="default"
@@ -86,6 +101,7 @@ export default function LoginScreen() {
               autoComplete="username"
               textAlign="right"
               editable={!loading}
+              returnKeyType="next"
             />
 
             <Text style={styles.label}>الرقم السري</Text>
@@ -94,12 +110,15 @@ export default function LoginScreen() {
                 style={[styles.input, styles.passwordInput]}
                 value={password}
                 onChangeText={setPassword}
+                onFocus={() => scrollToInput(300)}
                 placeholder="••••••••"
                 placeholderTextColor={colors.textTertiary}
                 secureTextEntry={!showPassword}
                 textAlign="right"
                 editable={!loading}
                 autoComplete="password"
+                returnKeyType="done"
+                onSubmitEditing={login}
               />
               <TouchableOpacity style={styles.eyeBtn} onPress={() => setShowPassword((v) => !v)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                 <Text style={{ fontSize: 18 }}>{showPassword ? 'إخفاء' : 'إظهار'}</Text>
@@ -122,8 +141,9 @@ export default function LoginScreen() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
-  scroll: { flexGrow: 1, justifyContent: 'center', padding: spacing['2xl'] },
-  logoWrap: { alignItems: 'center', marginBottom: spacing['3xl'] },
+  scrollView: { flex: 1 },
+  scroll: { flexGrow: 1, justifyContent: 'flex-start', paddingHorizontal: spacing['2xl'], paddingTop: spacing['2xl'], paddingBottom: 380 },
+  logoWrap: { alignItems: 'center', marginBottom: spacing.xl, paddingTop: spacing.lg },
   logoCircle: { width: 88, height: 88, borderRadius: 44, backgroundColor: colors.primaryLight, alignItems: 'center', justifyContent: 'center', marginBottom: spacing.md + 2, ...shadows.md, shadowColor: colors.primary, shadowOpacity: 0.15 },
   appName: { fontSize: 26, fontWeight: '800', color: colors.primary, marginBottom: 4 },
   appSub: { ...typography.caption, color: colors.textSecondary },
