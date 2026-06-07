@@ -12,8 +12,8 @@ class User extends Authenticatable
     use HasFactory, Notifiable;
 
     protected $fillable = [
-        'name', 'username', 'email', 'password',
-        'role', 'owner_id', 'status',
+        'name', 'username', 'email', 'phone', 'national_id', 'password', 'password_set_at',
+        'role', 'owner_id', 'tenant_id', 'status',
         'api_token', 'notes', 'last_login_at',
     ];
 
@@ -24,6 +24,7 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'last_login_at'     => 'datetime',
+            'password_set_at'   => 'datetime',
             'password'          => 'hashed',
         ];
     }
@@ -31,6 +32,11 @@ class User extends Authenticatable
     public function owner(): BelongsTo
     {
         return $this->belongsTo(Owner::class);
+    }
+
+    public function tenant(): BelongsTo
+    {
+        return $this->belongsTo(Tenant::class);
     }
 
     public function effectiveRole(): string
@@ -66,6 +72,11 @@ class User extends Authenticatable
         return $this->effectiveRole() === 'owner';
     }
 
+    public function isTenant(): bool
+    {
+        return $this->effectiveRole() === 'tenant';
+    }
+
     public function scopeActive($q)
     {
         return $q->where('status', 'active');
@@ -82,6 +93,7 @@ class User extends Authenticatable
             'superadmin', 'super_admin', 'system_admin', 'مدير_عام', 'المدير_العام' => 'super_admin',
             'manager', 'agent', 'property_manager', 'مدير_العقارات', 'وكيل', 'مسؤول' => 'manager',
             'owner', 'landlord', 'مالك', 'المالك' => 'owner',
+            'tenant', 'renter', 'lessee', 'مستاجر', 'مستأجر', 'المستاجر', 'المستأجر' => 'tenant',
             default => $role,
         };
     }
