@@ -31,11 +31,10 @@ if (!function_exists('mrpay_amount')) {
 if (!function_exists('mrpay_paid_amount')) {
     function mrpay_paid_amount($payment): float
     {
-        $paid = mrpay_num($payment->paid_amount ?? 0);
-        if ($paid > 0) return $paid;
-
-        if (!empty($payment->paid_date) && in_array(mrpay_status($payment->status ?? null), ['paid', 'مدفوع', 'مدفوعة', 'مسدد'], true)) {
-            return mrpay_amount($payment);
+        // المسدد الحقيقي فقط من paid_amount
+        // لا نأخذ amount كبديل حتى لا يتغير المسدد عند تعديل جدول الدفعات العام
+        if (Schema::hasColumn('payments', 'paid_amount')) {
+            return max(0.0, mrpay_num($payment->paid_amount ?? 0));
         }
 
         return 0.0;
@@ -63,50 +62,37 @@ if (!function_exists('mrpay_sync_contract')) {
         if ($payments->isEmpty()) return;
 
         $today = now()->toDateString();
-        $dueTotal = $payments
-            ->filter(fn ($p) => preg_match('/^\d{4}-\d{2}-\d{2}$/', mrpay_due_date($p)) && mrpay_due_date($p) <= $today)
-            ->sum(fn ($p) => mrpay_amount($p));
-        $paidTotal = $payments->sum(fn ($p) => mrpay_paid_amount($p));
-        $lateAmount = max(0.0, $dueTotal - $paidTotal);
-        $paymentValue = 0.0;
 
         foreach ($payments as $payment) {
-            $amount = mrpay_amount($payment);
-            if ($amount > 0) {
-                $paymentValue = $amount;
-                break;
-            }
-        }
-
-        $lateCount = ($lateAmount > 0 && $paymentValue > 0) ? (int) ceil($lateAmount / $paymentValue) : 0;
-        $remainingPaidForDisplay = $paidTotal;
-        $remainingLateForDisplay = $lateAmount;
-        $markedLate = 0;
-
-        foreach ($payments as $payment) {
-            $amount = mrpay_amount($payment);
+            $amount = mrpay_amount($payment);        // المطلوب / المجدول
+            $paid = mrpay_paid_amount($payment);     // المسدد الحقيقي
+            $remaining = max(0.0, $amount - $paid);
             $dueDate = mrpay_due_date($payment);
             $isDue = preg_match('/^\d{4}-\d{2}-\d{2}$/', $dueDate) && $dueDate <= $today;
+
             $updates = [];
 
-            if ($amount > 0 && $remainingPaidForDisplay >= $amount) {
-                if (Schema::hasColumn('payments', 'status')) $updates['status'] = 'paid';
-                if (Schema::hasColumn('payments', 'remaining_amount')) $updates['remaining_amount'] = 0;
-                $remainingPaidForDisplay -= $amount;
-            } elseif ($isDue && $markedLate < $lateCount && $remainingLateForDisplay > 0) {
-                $remaining = min($amount > 0 ? $amount : $remainingLateForDisplay, $remainingLateForDisplay);
-                if (Schema::hasColumn('payments', 'status')) $updates['status'] = 'overdue';
-                if (Schema::hasColumn('payments', 'remaining_amount')) $updates['remaining_amount'] = $remaining;
-                $remainingPaidForDisplay = 0;
-                $remainingLateForDisplay -= $remaining;
-                $markedLate++;
-            } else {
-                if (Schema::hasColumn('payments', 'status')) $updates['status'] = 'due';
-                if (Schema::hasColumn('payments', 'remaining_amount')) $updates['remaining_amount'] = $amount;
+            if (Schema::hasColumn('payments', 'remaining_amount')) {
+                $updates['remaining_amount'] = $remaining;
             }
 
-            if (Schema::hasColumn('payments', 'updated_at')) $updates['updated_at'] = now();
-            if (!empty($updates)) DB::table('payments')->where('id', $payment->id)->update($updates);
+            if (Schema::hasColumn('payments', 'status')) {
+                if ($paid > 0 && $remaining <= 0.009) {
+                    $updates['status'] = 'paid';
+                } elseif ($isDue && $remaining > 0.009) {
+                    $updates['status'] = 'overdue';
+                } else {
+                    $updates['status'] = 'due';
+                }
+            }
+
+            if (Schema::hasColumn('payments', 'updated_at')) {
+                $updates['updated_at'] = now();
+            }
+
+            if (!empty($updates)) {
+                DB::table('payments')->where('id', $payment->id)->update($updates);
+            }
         }
     }
 }
@@ -131,11 +117,18 @@ if (!function_exists('mrpay_apply_payment')) {
             return response()->json(['message' => 'لا توجد قيمة صالحة لاعتمادها كدفعة.'], 422);
         }
 
+        $scheduledAmount = mrpay_num($payment->amount ?? 0);
+        $remaining = max(0.0, $scheduledAmount - $amount);
+        $dueDate = mrpay_due_date($payment);
+        $isDue = preg_match('/^\d{4}-\d{2}-\d{2}$/', $dueDate) && $dueDate <= now()->toDateString();
+
         $updates = [];
         if (Schema::hasColumn('payments', 'paid_amount')) $updates['paid_amount'] = $amount;
         if (Schema::hasColumn('payments', 'paid_date')) $updates['paid_date'] = now()->toDateString();
-        if (Schema::hasColumn('payments', 'status')) $updates['status'] = 'paid';
-        if (Schema::hasColumn('payments', 'remaining_amount')) $updates['remaining_amount'] = 0;
+        if (Schema::hasColumn('payments', 'status')) {
+            $updates['status'] = $remaining <= 0.009 ? 'paid' : ($isDue ? 'overdue' : 'due');
+        }
+        if (Schema::hasColumn('payments', 'remaining_amount')) $updates['remaining_amount'] = $remaining;
         if (Schema::hasColumn('payments', 'notes')) {
             $note = trim((string) $request->input('notes', $request->input('fields.notes', '')));
             if ($note !== '') $updates['notes'] = $note;

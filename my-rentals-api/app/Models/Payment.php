@@ -18,6 +18,8 @@ class Payment extends Model
         'rental_period_days',
         'paid_date',
         'amount',
+        'paid_amount',
+        'remaining_amount',
         'status',
         'notes',
     ];

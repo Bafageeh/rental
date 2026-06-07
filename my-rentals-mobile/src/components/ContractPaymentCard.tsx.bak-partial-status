@@ -64,13 +64,6 @@ function todayText() {
 function statusKey(item: RelatedPayment) {
   const status = String(item.status || item.badge || "").trim().toLowerCase();
   const badge = String(item.badge || "").trim();
-
-  const required = amountNumber(item.amount);
-  const paid = amountNumber(item.actual_paid_amount ?? item.paid_amount);
-
-  // الأهم: إذا يوجد مسدد لكنه أقل من المطلوب، الحالة جزئي حتى لو status محفوظ paid
-  if (required > 0 && paid > 0 && paid < required - 0.009) return "partial";
-
   if (status.includes("partial") || badge.includes("جزئي")) return "partial";
   if (status.includes("paid") || badge.includes("مدفوعة") || badge.includes("مدفوع")) return "paid";
   if (status.includes("overdue") || badge.includes("متأخر") || badge.includes("متأخرة")) return "overdue";
@@ -84,7 +77,7 @@ function statusMeta(item: RelatedPayment) {
   if (status === "partial") return { label: "جزئي", bg: "#FEF3C7", fg: "#92400E", card: "#FFFBEB", border: "#FDE68A", accent: "#F59E0B" };
   if (status === "overdue") return { label: "متأخرة", bg: "#FDECEC", fg: "#C02F42", card: "#FFF8F8", border: "#F4C7CC", accent: "#EF4444" };
   if (status === "next") return { label: "القادمة", bg: "#EAF3FF", fg: "#2369A4", card: "#F8FBFF", border: "#CEE4FF", accent: "#3B82F6" };
-  return { label: "قادمة", bg: "#F8F0E3", fg: "#8D6B2C", card: "#FFFDF8", border: "#EFE1CC", accent: "#D7A642" };
+  return { label: "مستحقة", bg: "#F8F0E3", fg: "#8D6B2C", card: "#FFFDF8", border: "#EFE1CC", accent: "#D7A642" };
 }
 
 function ActionPill({ label, icon, tone, onPress }: { label: string; icon: string; tone: ActionTone; onPress: () => void }) {
@@ -232,7 +225,7 @@ export default function ContractPaymentCard({ item, index, expanded, onToggle, o
       }));
       setSheetVisible(false);
       await refreshFromServer();
-      Alert.alert("تم", numericAmount > 0 ? "تم اعتماد المبلغ المكتوب كدفعة مستلمة" : (cancelledPaid ? "تم تصفير مبلغ السداد وإبقاء الدفعة بدون حذف" : "تم حفظ الملاحظة بدون تسجيل مبلغ دفع"));
+      Alert.alert("تم", numericAmount > 0 ? "تم اعتماد المبلغ المكتوب كدفعة مستلمة" : (cancelledPaid ? "تم تصفير مبلغ السداد وإبقاء القسط بدون حذف" : "تم حفظ الملاحظة بدون تسجيل مبلغ دفع"));
     } catch (e) {
       Alert.alert("خطأ", e instanceof Error ? e.message : "تعذر حفظ الدفعة");
     } finally {
@@ -270,7 +263,7 @@ export default function ContractPaymentCard({ item, index, expanded, onToggle, o
             <View style={[styles.accentDot, { backgroundColor: meta.accent }]} />
             <Text style={[styles.statusChip, { backgroundColor: meta.bg, color: meta.fg }]}>{meta.label}</Text>
           </View>
-          <Text style={styles.title}>الدفعة {index + 1}</Text>
+          <Text style={styles.title}>القسط {index + 1}</Text>
         </View>
 
         <View style={styles.compactBodyRow}>
@@ -312,16 +305,16 @@ export default function ContractPaymentCard({ item, index, expanded, onToggle, o
                   <Text style={styles.closeText}>×</Text>
                 </TouchableOpacity>
                 <View style={styles.sheetTitleBlock}>
-                  <Text style={styles.sheetEyebrow}>تعديل بيانات الدفعة</Text>
+                  <Text style={styles.sheetEyebrow}>تعديل بيانات القسط</Text>
                   <Text style={styles.sheetTitle}>تعديل الدفعة</Text>
-                  <Text style={styles.sheetSubtitle}>الدفعة {index + 1} • {dueDate}</Text>
+                  <Text style={styles.sheetSubtitle}>القسط {index + 1} • {dueDate}</Text>
                 </View>
               </View>
 
               <View style={[styles.sheetSummary, { borderColor: meta.border, backgroundColor: meta.card }]}> 
                 <View style={styles.sheetSummaryTop}>
                   <Text style={[styles.sheetStatus, { backgroundColor: meta.bg, color: meta.fg }]}>{meta.label}</Text>
-                  <Text style={styles.summaryLabel}>قيمة الدفعة الأصلية</Text>
+                  <Text style={styles.summaryLabel}>قيمة القسط الأصلية</Text>
                 </View>
                 <Text style={styles.summaryAmount}>{amountText(originalAmount)}</Text>
               </View>

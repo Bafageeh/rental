@@ -60,11 +60,21 @@ if (!function_exists('mr_payment_cancel_instead_of_delete_response')) {
         }
 
         $before = $payment->toArray();
+        $baseAmount = is_numeric($payment->amount ?? null) ? (float) $payment->amount : (float) str_replace(',', '', (string) ($payment->amount ?? 0));
+
         $updates = [
             'paid_date' => null,
             'status' => mr_payment_cancel_status_value($payment),
             'notes' => trim(((string) ($payment->notes ?? '')) . ' | تم إلغاء تسجيل السداد وإبقاء القسط بدون حذف'),
         ];
+
+        if (Schema::hasColumn('payments', 'paid_amount')) {
+            $updates['paid_amount'] = 0;
+        }
+
+        if (Schema::hasColumn('payments', 'remaining_amount')) {
+            $updates['remaining_amount'] = $baseAmount;
+        }
 
         if (Schema::hasColumn('payments', 'updated_at')) {
             $updates['updated_at'] = now();
@@ -72,6 +82,11 @@ if (!function_exists('mr_payment_cancel_instead_of_delete_response')) {
 
         DB::table('payments')->where('id', $payment->id)->update($updates);
         $fresh = Payment::find($payment->id);
+
+        if (function_exists('mrpay_sync_contract')) {
+            mrpay_sync_contract((int) ($fresh?->contract_id ?? $payment->contract_id ?? 0));
+            $fresh = Payment::find($payment->id);
+        }
 
         if (function_exists('my_rentals_ed_save_activity')) {
             my_rentals_ed_save_activity($user, 'cancel_payment', 'payments', $id, $before, $fresh?->toArray() ?? []);
@@ -101,10 +116,25 @@ Route::post('/payments/{payment}/cancel-paid', function (Payment $payment) {
         ], 422);
     }
 
+    $baseAmount = is_numeric($payment->amount ?? null) ? (float) $payment->amount : (float) str_replace(',', '', (string) ($payment->amount ?? 0));
+
     $payment->paid_date = null;
     $payment->status = mr_payment_cancel_status_value($payment);
     $payment->notes = trim(((string) ($payment->notes ?? '')) . ' | تم إلغاء تسجيل السداد وإبقاء القسط بدون حذف');
+
+    if (Schema::hasColumn('payments', 'paid_amount')) {
+        $payment->paid_amount = 0;
+    }
+
+    if (Schema::hasColumn('payments', 'remaining_amount')) {
+        $payment->remaining_amount = $baseAmount;
+    }
+
     $payment->save();
+
+    if (function_exists('mrpay_sync_contract')) {
+        mrpay_sync_contract((int) ($payment->contract_id ?? 0));
+    }
 
     return response()->json([
         'status' => 'ok',

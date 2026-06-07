@@ -1,0 +1,38 @@
+nohup: ignoring input
+Starting project at /home/pmsa/apps/rental/my-rentals-mobile
+Using src/app as the root directory for Expo Router.
+React Compiler enabled
+Starting Metro Bundler
+
+warning: Bundler cache is empty, rebuilding (this may take a minute)
+ ERROR  An unknown error occurred while installing React Native DevTools. Details:
+
+[0604/085612.844582:FATAL:electron/shell/app/electron_main_delegate.cc:290] Running as root without --no-sandbox is not supported. See https://crbug.com/638180.
+
+The following packages should be updated for best compatibility with the installed expo version:
+  expo@55.0.17 - expected version: ~55.0.26
+  expo-constants@55.0.15 - expected version: ~55.0.16
+  expo-device@55.0.15 - expected version: ~55.0.17
+  expo-font@55.0.6 - expected version: ~55.0.8
+  expo-glass-effect@55.0.10 - expected version: ~55.0.11
+  expo-image@55.0.9 - expected version: ~55.0.11
+  expo-linking@55.0.14 - expected version: ~55.0.15
+  expo-router@55.0.13 - expected version: ~55.0.16
+  expo-secure-store@55.0.13 - expected version: ~55.0.14
+  expo-splash-screen@55.0.19 - expected version: ~55.0.21
+  expo-status-bar@55.0.5 - expected version: ~55.0.6
+  expo-symbols@55.0.7 - expected version: ~55.0.9
+  expo-system-ui@55.0.16 - expected version: ~55.0.18
+  expo-web-browser@55.0.14 - expected version: ~55.0.16
+Your project may not work correctly until you install the expected versions of the packages.
+Waiting on http://localhost:8090
+Logs for your project will appear below.
+Android node_modules/expo-router/entry.js ░░░░░░░░░░░░░░░░  0.0% (0/1)
+Android node_modules/expo-router/entry.js ▓▓░░░░░░░░░░░░░░ 12.9% (132/441)
+Android node_modules/expo-router/entry.js ▓▓░░░░░░░░░░░░░░ 17.3% (211/508)
+Android node_modules/expo-router/entry.js ▓▓▓░░░░░░░░░░░░░ 21.4% (236/510)
+Android node_modules/expo-router/entry.js ▓▓▓▓▓░░░░░░░░░░░ 33.2% (403/699)
+Android node_modules/expo-router/entry.js ▓▓▓▓▓▓░░░░░░░░░░ 42.5% (627/962)
+Android node_modules/expo-router/entry.js ▓▓▓▓▓▓▓▓▓▓░░░░░░ 62.9% ( 879/1108)
+Android node_modules/expo-router/entry.js ▓▓▓▓▓▓▓▓▓▓▓▓░░░░ 80.8% (1100/1224)
+Android Bundled 27564ms node_modules/expo-router/entry.js (1367 modules)

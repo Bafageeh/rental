@@ -211,7 +211,9 @@ export default function ExpensesScreen() {
         contentContainerStyle={styles.container}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refreshScreen} tintColor="#0F9B6F" />}
       >
-        
+        <TouchableOpacity style={styles.backButton} onPress={() => smartBack()}>
+          <Text style={styles.backText}>→ رجوع</Text>
+        </TouchableOpacity>
         <Text style={styles.title}>المصاريف</Text>
         <Text style={styles.subtitle}>{subtitle}</Text>
 

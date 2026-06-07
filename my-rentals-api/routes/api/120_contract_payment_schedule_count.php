@@ -120,24 +120,16 @@ if (!function_exists('mrsched_sync_schedule')) {
 
                 if ($payment) {
                     $keptIds[] = (int) $payment->id;
-                    if (mrsched_paid($payment)) {
-                        $updates = [];
-                        if (Schema::hasColumn('payments', 'sequence')) $updates['sequence'] = $sequence;
-                        if (Schema::hasColumn('payments', 'status')) $updates['status'] = 'paid';
-                        if (Schema::hasColumn('payments', 'remaining_amount')) $updates['remaining_amount'] = 0;
-                        if (Schema::hasColumn('payments', 'updated_at')) $updates['updated_at'] = now();
-                        if (!empty($updates)) DB::table('payments')->where('id', $payment->id)->update($updates);
-                        $sequence++;
-                        continue;
-                    }
 
+                    // تعديل العقد العام يغير المطلوب/المجدول فقط
+                    // ولا يلمس المسدد paid_amount ولا تاريخ الدفع paid_date
                     $updates = [];
                     if (Schema::hasColumn('payments', 'sequence')) $updates['sequence'] = $sequence;
                     if (Schema::hasColumn('payments', 'amount')) $updates['amount'] = $amount;
                     if (Schema::hasColumn('payments', 'due_date')) $updates['due_date'] = $dueDate;
-                    if (Schema::hasColumn('payments', 'status')) $updates['status'] = in_array($status, ['paid', 'مدفوع', 'مدفوعة'], true) ? 'due' : $status;
-                    if (Schema::hasColumn('payments', 'notes')) $updates['notes'] = $notes !== '' ? $notes : null;
+                    if (Schema::hasColumn('payments', 'notes') && $notes !== '') $updates['notes'] = $notes;
                     if (Schema::hasColumn('payments', 'updated_at')) $updates['updated_at'] = now();
+
                     if (!empty($updates)) DB::table('payments')->where('id', $payment->id)->update($updates);
                 } else {
                     $create = ['contract_id' => $contract->id];

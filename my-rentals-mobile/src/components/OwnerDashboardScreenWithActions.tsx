@@ -124,7 +124,6 @@ type TabKey = "summary" | "properties" | "contracts" | "financial" | "activity";
 const tabs: Array<{ key: TabKey; label: string }> = [
   { key: "summary", label: "الملخص" },
   { key: "properties", label: "العقارات" },
-  { key: "contracts", label: "العقود" },
   { key: "financial", label: "المالية" },
   { key: "activity", label: "النشاط" },
 ];
@@ -515,7 +514,7 @@ export default function OwnerDashboardScreenWithActions({ id }: { id: string | n
           </View>
         ) : null}
 
-        {!loading && !error && activeTab === "contracts" ? (
+        {!loading && !error && false ? (
           <View>
             <SectionTitle title="عقود المالك" subtitle="آخر العقود التابعة لوحدات هذا المالك" />
             {contracts.length ? contracts.map((contract) => (

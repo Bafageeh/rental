@@ -6,7 +6,6 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -20,7 +19,6 @@ type OwnerDashboardOwner = {
   email?: string | null;
   national_id?: string | null;
   type?: string | null;
-  properties_count?: number;
 };
 
 type OwnerDashboardSummary = {
@@ -28,17 +26,15 @@ type OwnerDashboardSummary = {
   units_count?: number;
   rented_units_count?: number;
   available_units_count?: number;
-  maintenance_units_count?: number;
-  occupancy_rate?: number;
   contracts_count?: number;
   active_contracts_count?: number;
-  ended_contracts_count?: number;
   expiring_soon_contracts_count?: number;
   paid_income?: number;
   due_income?: number;
   overdue_income?: number;
   expenses?: number;
   net_income?: number;
+  occupancy_rate?: number;
 };
 
 type OwnerDashboardUnit = {
@@ -65,7 +61,6 @@ type OwnerDashboardProperty = {
   rented_units_count?: number;
   active_contracts_count?: number;
   paid_income?: number;
-  due_income?: number;
   expenses?: number;
   units?: OwnerDashboardUnit[];
 };
@@ -113,9 +108,7 @@ type OwnerDashboardActivity = {
 };
 
 type OwnerDashboardData = {
-  status?: string;
   owner?: OwnerDashboardOwner;
-  filters?: { from?: string | null; to?: string | null };
   summary?: OwnerDashboardSummary;
   properties?: OwnerDashboardProperty[];
   units?: OwnerDashboardUnit[];
@@ -131,6 +124,7 @@ type TabKey = "summary" | "properties" | "contracts" | "financial" | "activity";
 const tabs: Array<{ key: TabKey; label: string }> = [
   { key: "summary", label: "الملخص" },
   { key: "properties", label: "العقارات" },
+  { key: "contracts", label: "العقود" },
   { key: "financial", label: "المالية" },
   { key: "activity", label: "النشاط" },
 ];
@@ -142,6 +136,29 @@ const statusLabel: Record<string, string> = {
   paid: "مدفوع",
   due: "مستحق",
   overdue: "متأخر",
+  available: "متاح",
+  rented: "مؤجر",
+  maintenance: "صيانة",
+};
+
+const propertyTypeLabels: Record<string, string> = {
+  building: "عمارة",
+  apartment: "شقة",
+  villa: "فيلا",
+  land: "أرض",
+  commercial: "تجاري",
+  office: "مكتب",
+  shop: "محل",
+  mixed: "مختلط",
+};
+
+const unitTypeLabels: Record<string, string> = {
+  apartment: "شقة",
+  studio: "استوديو",
+  room: "غرفة",
+  shop: "محل",
+  office: "مكتب",
+  warehouse: "مستودع",
 };
 
 function asNumber(value: unknown): number {
@@ -157,30 +174,26 @@ function count(value: unknown): string {
   return Math.round(asNumber(value)).toLocaleString("ar-SA");
 }
 
-const propertyTypeLabels: Record<string, string> = {
-  building: "عمارة",
-  apartment: "شقة",
-  villa: "فيلا",
-  land: "أرض",
-  commercial: "تجاري",
-  office: "مكتب",
-  shop: "محل",
-  mixed: "مختلط",
-};
+function valueOrDash(value: unknown): string {
+  if (value === null || value === undefined || value === "") return "-";
+  return String(value);
+}
+
+function dateOnly(value?: string | null) {
+  if (!value) return "-";
+  const match = String(value).match(/^(\d{4}-\d{2}-\d{2})/);
+  return match ? match[1] : String(value);
+}
+
+function statusText(status?: string | null): string {
+  if (!status) return "-";
+  return statusLabel[status] || status;
+}
 
 function propertyTypeText(type?: string | null): string {
   if (!type) return "عقار";
   return propertyTypeLabels[type] || type;
 }
-
-const unitTypeLabels: Record<string, string> = {
-  apartment: "شقة",
-  studio: "استوديو",
-  room: "غرفة",
-  shop: "محل",
-  office: "مكتب",
-  warehouse: "مستودع",
-};
 
 function unitTypeText(type?: string | null): string {
   if (!type) return "وحدة";
@@ -189,16 +202,6 @@ function unitTypeText(type?: string | null): string {
 
 function unitDisplayName(unit: OwnerDashboardUnit): string {
   return unit.name || unit.unit_number || `وحدة #${unit.id}`;
-}
-
-function valueOrDash(value: unknown): string {
-  if (value === null || value === undefined || value === "") return "-";
-  return String(value);
-}
-
-function statusText(status?: string | null): string {
-  if (!status) return "-";
-  return statusLabel[status] || status;
 }
 
 function StatCard({ label, value, color }: { label: string; value: string; color?: string }) {
@@ -227,16 +230,13 @@ function EmptyBox({ text }: { text: string }) {
   );
 }
 
-export default function OwnerDashboardScreen({ id }: { id: string | number }) {
+export default function OwnerDashboardScreenWithActions({ id }: { id: string | number }) {
   const ownerId = String(id || "");
   const [activeTab, setActiveTab] = useState<TabKey>("summary");
   const [data, setData] = useState<OwnerDashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
-  const [fromDate, setFromDate] = useState("");
-  const [toDate, setToDate] = useState("");
-  const [filtersOpen, setFiltersOpen] = useState(false);
 
   async function load(isRefresh = false) {
     if (!ownerId) return;
@@ -251,8 +251,7 @@ export default function OwnerDashboardScreen({ id }: { id: string | number }) {
         `/my/owners/${ownerId}/dashboard`,
       );
 
-      const payload = (response?.data ?? response) as OwnerDashboardData;
-      setData(payload);
+      setData((response?.data ?? response) as OwnerDashboardData);
     } catch (e) {
       setError(e instanceof Error ? e.message : "تعذر تحميل تفاصيل الأملاك");
     } finally {
@@ -275,27 +274,41 @@ export default function OwnerDashboardScreen({ id }: { id: string | number }) {
   const expenses = data?.expenses || [];
   const activities = data?.activities || [];
 
-  const ownerType = "مالك";
-  const filteredText = useMemo(() => {
-    const from = data?.filters?.from;
-    const to = data?.filters?.to;
-    if (from && to) return `الفترة: ${from} إلى ${to}`;
-    if (from) return `من تاريخ: ${from}`;
-    if (to) return `حتى تاريخ: ${to}`;
-    return "كل الفترات";
-  }, [data?.filters?.from, data?.filters?.to]);
+  const ownerName = owner?.name || "مالك بدون اسم";
+  const ownerNameForUrl = encodeURIComponent(ownerName);
 
-  const hasOwnerAssets = asNumber(summary.properties_count) > 0 || asNumber(summary.units_count) > 0 || asNumber(summary.contracts_count) > 0;
-  const ownerNameForUrl = encodeURIComponent(owner?.name || "مالك");
   const directOwnerUnits = useMemo(
     () => units.filter((unit) => !unit.property_id || String(unit.unit_scope || "") === "owner"),
     [units],
   );
+
   const unitsWithoutDirect = useMemo(
     () => units.filter((unit) => !directOwnerUnits.some((direct) => direct.id === unit.id)),
     [units, directOwnerUnits],
   );
-  const totalAssetRows = properties.length + units.length;
+
+  function openAddProperty() {
+    router.push(`/properties?owner_id=${encodeURIComponent(ownerId)}&owner_name=${ownerNameForUrl}&create=1` as never);
+  }
+
+  function openAddUnit() {
+    router.push(`/units?owner_id=${encodeURIComponent(ownerId)}&owner_name=${ownerNameForUrl}&create=1` as never);
+  }
+
+  function renderAssetActions() {
+    return (
+      <View style={styles.addActionsRow}>
+        <TouchableOpacity style={[styles.addActionButton, styles.addPropertyButton]} onPress={openAddProperty} activeOpacity={0.88}>
+          <Text style={styles.addActionIcon}>＋</Text>
+          <Text style={styles.addActionText}>إضافة عقار</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={[styles.addActionButton, styles.addUnitButton]} onPress={openAddUnit} activeOpacity={0.88}>
+          <Text style={styles.addActionIcon}>＋</Text>
+          <Text style={styles.addActionText}>إضافة وحدة</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
@@ -307,9 +320,9 @@ export default function OwnerDashboardScreen({ id }: { id: string | number }) {
       >
         <View style={styles.heroCard}>
           <View style={styles.heroTopRow}>
-            <Text style={styles.typeBadge}>{ownerType}</Text>
+            <Text style={styles.typeBadge}>مالك</Text>
             <View style={styles.heroTitleWrap}>
-              <Text numberOfLines={2} style={styles.ownerName}>{owner?.name || "مالك بدون اسم"}</Text>
+              <Text numberOfLines={2} style={styles.ownerName}>{ownerName}</Text>
             </View>
           </View>
           <View style={styles.contactGrid}>
@@ -325,6 +338,7 @@ export default function OwnerDashboardScreen({ id }: { id: string | number }) {
               key={tab.key}
               style={[styles.tabButton, activeTab === tab.key ? styles.tabButtonActive : null]}
               onPress={() => setActiveTab(tab.key)}
+              activeOpacity={0.88}
             >
               <View style={styles.tabInner}>
                 <Text style={[styles.tabText, activeTab === tab.key ? styles.tabTextActive : null]}>{tab.label}</Text>
@@ -383,7 +397,7 @@ export default function OwnerDashboardScreen({ id }: { id: string | number }) {
                   <Text style={styles.listTitle}>{payment.tenant_name || "مستأجر غير محدد"}</Text>
                 </View>
                 <Text style={styles.listMeta}>{payment.property_name || "عقار"} / وحدة {valueOrDash(payment.unit_number)}</Text>
-                <Text style={styles.listMeta}>تاريخ الاستحقاق: {valueOrDash(payment.due_date)}</Text>
+                <Text style={styles.listMeta}>تاريخ الاستحقاق: {dateOnly(payment.due_date)}</Text>
               </View>
             )) : <EmptyBox text="لا توجد دفعات متأخرة ضمن الفترة الحالية." />}
           </View>
@@ -396,10 +410,12 @@ export default function OwnerDashboardScreen({ id }: { id: string | number }) {
               <View style={{ flex: 1 }}>
                 <SectionTitle
                   title="العقارات والوحدات"
-                  subtitle={`${totalAssetRows.toLocaleString("ar-SA")} عنصر مرتبط بهذا المالك`}
+                  subtitle={`${(properties.length + units.length).toLocaleString("ar-SA")} عنصر مرتبط بهذا المالك`}
                 />
               </View>
             </View>
+
+            {renderAssetActions()}
 
             <View style={styles.assetSummaryStrip}>
               <View style={styles.assetSummaryItem}>
@@ -499,7 +515,7 @@ export default function OwnerDashboardScreen({ id }: { id: string | number }) {
           </View>
         ) : null}
 
-        {!loading && !error && false ? (
+        {!loading && !error && activeTab === "contracts" ? (
           <View>
             <SectionTitle title="عقود المالك" subtitle="آخر العقود التابعة لوحدات هذا المالك" />
             {contracts.length ? contracts.map((contract) => (
@@ -516,7 +532,7 @@ export default function OwnerDashboardScreen({ id }: { id: string | number }) {
                 <Text style={styles.listMeta}>المستأجر: {contract.tenant_name || "-"}</Text>
                 <Text style={styles.listMeta}>{contract.property_name || "عقار"} / وحدة {valueOrDash(contract.unit_number)}</Text>
                 <View style={styles.moneyRow}>
-                  <Text style={styles.moneyText}>النهاية: {valueOrDash(contract.end_date)}</Text>
+                  <Text style={styles.moneyText}>النهاية: {dateOnly(contract.end_date)}</Text>
                   <Text style={styles.moneyText}>الإيجار: {money(contract.rent_amount)}</Text>
                 </View>
               </TouchableOpacity>
@@ -534,7 +550,7 @@ export default function OwnerDashboardScreen({ id }: { id: string | number }) {
                   <Text style={styles.listTitle}>{money(payment.amount)}</Text>
                 </View>
                 <Text style={styles.listMeta}>{payment.tenant_name || "مستأجر"} - {payment.property_name || "عقار"} / وحدة {valueOrDash(payment.unit_number)}</Text>
-                <Text style={styles.listMeta}>استحقاق: {valueOrDash(payment.due_date)} | دفع: {valueOrDash(payment.paid_date)}</Text>
+                <Text style={styles.listMeta}>استحقاق: {dateOnly(payment.due_date)} | دفع: {dateOnly(payment.paid_date)}</Text>
               </View>
             )) : <EmptyBox text="لا توجد دفعات ضمن الفترة المحددة." />}
 
@@ -546,7 +562,7 @@ export default function OwnerDashboardScreen({ id }: { id: string | number }) {
                   <Text numberOfLines={1} style={styles.listTitle}>{expense.title || expense.category_name || "مصروف"}</Text>
                 </View>
                 <Text style={styles.listMeta}>{expense.property_name || "عقار"}</Text>
-                <Text style={styles.listMeta}>التاريخ: {valueOrDash(expense.expense_date)}</Text>
+                <Text style={styles.listMeta}>التاريخ: {dateOnly(expense.expense_date)}</Text>
               </View>
             )) : <EmptyBox text="لا توجد مصروفات ضمن الفترة المحددة." />}
           </View>
@@ -573,309 +589,73 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: "#F7F6F4" },
   scroll: { flex: 1 },
   container: { padding: 12, paddingBottom: 40 },
-  topBar: {
-    alignItems: "flex-end",
-    marginBottom: 6,
-  },
-  backButton: {
-    backgroundColor: "#ffffff",
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderWidth: 1,
-    borderColor: "#DDDBD6",
-  },
-  backText: { color: "#111827", fontWeight: "800" },
-  heroCard: {
-    backgroundColor: "#111827",
-    borderRadius: 18,
-    padding: 12,
-    marginBottom: 8,
-  },
-  heroTopRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 8,
-  },
+  heroCard: { backgroundColor: "#111827", borderRadius: 18, padding: 12, marginBottom: 8 },
+  heroTopRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
   heroTitleWrap: { flex: 1 },
-  ownerName: { color: "#ffffff", fontSize: 20, fontWeight: "900", textAlign: "right" },
-  typeBadge: {
-    color: "#064e3b",
-    backgroundColor: "#d1fae5",
-    paddingHorizontal: 9,
-    paddingVertical: 4,
-    borderRadius: 999,
-    overflow: "hidden",
-    fontWeight: "900",
-    fontSize: 12,
-  },
-  contactGrid: {
-    marginTop: 8,
-    backgroundColor: "rgba(255,255,255,0.08)",
-    borderRadius: 12,
-    paddingHorizontal: 9,
-    paddingVertical: 7,
-    gap: 3,
-  },
-  contactText: { color: "#F7F6F4", textAlign: "right", fontWeight: "700", fontSize: 12 },
-  filterCard: {
-    backgroundColor: "#ffffff",
-    borderRadius: 18,
-    padding: 12,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: "#EDECE9",
-  },
-  filterHeaderRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 8 },
-  filterTitle: { fontSize: 15, fontWeight: "900", color: "#111827", textAlign: "right" },
-  filterHint: { color: "#6b7280", fontWeight: "700", flex: 1 },
-  dateRow: { flexDirection: "row", gap: 8, marginTop: 10 },
-  dateInput: {
-    flex: 1,
-    backgroundColor: "#F7F6F4",
-    borderWidth: 1,
-    borderColor: "#DDDBD6",
-    borderRadius: 12,
-    padding: 10,
-    color: "#111827",
-  },
-  filterButtonsRow: { flexDirection: "row", gap: 8, marginTop: 10 },
-  filterButton: {
-    flex: 1,
-    backgroundColor: "#0f766e",
-    padding: 12,
-    borderRadius: 12,
-    alignItems: "center",
-  },
-  filterButtonText: { color: "#ffffff", fontWeight: "900" },
-  clearButton: { backgroundColor: "#f3f4f6" },
-  clearButtonText: { color: "#374151", fontWeight: "900" },
-  servicesCard: {
-    backgroundColor: "#ffffff",
-    borderRadius: 24,
-    padding: 12,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: "#EDECE9",
-    shadowColor: "#000000",
-    shadowOpacity: 0.04,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 1,
-  },
-  servicesHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: 8,
-    marginBottom: 10,
-  },
-  servicesTitle: { fontSize: 16, fontWeight: "900", color: "#111827", textAlign: "right" },
-  servicesSubtitle: { flex: 1, color: "#6b7280", fontWeight: "700" },
-  quickActionsRow: { flexDirection: "row-reverse", gap: 7, marginBottom: 10 },
-  quickActionButton: {
-    flex: 1,
-    borderRadius: 14,
-    paddingVertical: 10,
-    paddingHorizontal: 6,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  quickActionPrimary: { backgroundColor: "#0f766e" },
-  quickActionBlue: { backgroundColor: "#0F9B6F" },
-  quickActionDark: { backgroundColor: "#111827" },
-  quickActionIcon: { fontSize: 18, marginBottom: 3 },
-  quickActionText: { color: "#ffffff", fontWeight: "900", fontSize: 12, textAlign: "center" },
-  servicesGrid: { flexDirection: "row-reverse", flexWrap: "wrap", gap: 8 },
-  serviceTile: {
-    width: "48.7%",
-    backgroundColor: "#F7F6F4",
-    borderRadius: 16,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: "#DDDBD6",
-    minHeight: 126,
-    alignItems: "flex-end",
-  },
-  serviceIcon: { fontSize: 24, marginBottom: 8 },
-  serviceTitle: { color: "#111827", fontWeight: "900", textAlign: "right" },
-  serviceDesc: { color: "#6b7280", marginTop: 6, textAlign: "right", fontSize: 12, lineHeight: 18 },
-  servicesEmpty: { color: "#9a3412", backgroundColor: "#fff7ed", borderRadius: 14, padding: 10, textAlign: "right", fontWeight: "800" },
-  servicesHeroRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 10,
-    marginBottom: 12,
-  },
-  servicesHeroMetric: {
-    width: 78,
-    height: 78,
-    borderRadius: 22,
-    backgroundColor: "#0f766e",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  servicesMetricValue: { color: "#ffffff", fontSize: 22, fontWeight: "900" },
-  servicesMetricLabel: { color: "#d1fae5", fontSize: 12, fontWeight: "900", marginTop: 2 },
-  servicesHeroTextWrap: { flex: 1, alignItems: "flex-end" },
-  serviceActionGrid: { flexDirection: "row-reverse", flexWrap: "wrap", gap: 8 },
-  serviceActionTile: {
-    width: "48.7%",
-    minHeight: 92,
-    backgroundColor: "#F7F6F4",
-    borderRadius: 18,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: "#E7E5E1",
-    alignItems: "flex-end",
-    justifyContent: "center",
-  },
-  serviceActionTileActive: { backgroundColor: "#ecfdf5", borderColor: "#99f6e4" },
-  serviceActionIcon: { fontSize: 22, marginBottom: 4 },
-  serviceActionTitle: { color: "#111827", fontSize: 15, fontWeight: "900", textAlign: "right" },
-  serviceActionHint: { color: "#6b7280", fontSize: 11, fontWeight: "700", textAlign: "right", marginTop: 3 },
-  servicesFooterRow: { flexDirection: "row-reverse", gap: 8, marginTop: 10 },
-  serviceFooterButton: {
-    flex: 1,
-    backgroundColor: "#111827",
-    borderRadius: 14,
-    paddingVertical: 11,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  serviceFooterText: { color: "#ffffff", fontWeight: "900", textAlign: "center", fontSize: 12 },
-  assetsTitleRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 2 },
-  assetsCountBadge: { overflow: "hidden", backgroundColor: "#ecfdf5", color: "#047857", borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6, fontSize: 12, fontWeight: "900" },
-  assetSummaryStrip: { flexDirection: "row-reverse", gap: 8, marginBottom: 10 },
-  assetSummaryItem: {
-    flex: 1,
-    backgroundColor: "#ffffff",
-    borderRadius: 18,
-    paddingVertical: 12,
-    borderWidth: 1,
-    borderColor: "#EDECE9",
-    alignItems: "center",
-  },
-  assetSummaryValue: { color: "#111827", fontSize: 20, fontWeight: "900" },
-  assetSummaryLabel: { color: "#6b7280", fontWeight: "800", marginTop: 2 },
-  propertyAssetCard: {
-    backgroundColor: "#ffffff",
-    borderRadius: 22,
-    padding: 12,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: "#EDECE9",
-    shadowColor: "#000000",
-    shadowOpacity: 0.04,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 1,
-  },
-  propertyAssetHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
-  propertyAssetTitleWrap: { flex: 1, alignItems: "flex-end" },
-  propertyAssetTitle: { color: "#111827", fontSize: 17, fontWeight: "900", textAlign: "right" },
-  propertyAssetLocation: { color: "#6b7280", marginTop: 3, textAlign: "right", fontWeight: "700" },
-  unitsUnderPropertyBox: { marginTop: 10, backgroundColor: "#F7F6F4", borderRadius: 18, padding: 10, gap: 7 },
-  unitsUnderPropertyTitle: { color: "#111827", fontWeight: "900", textAlign: "right", marginBottom: 2 },
-  unitInlineRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8, backgroundColor: "#ffffff", borderRadius: 14, padding: 9 },
-  unitInlineStatus: { color: "#0f766e", backgroundColor: "#d1fae5", borderRadius: 999, overflow: "hidden", paddingHorizontal: 8, paddingVertical: 3, fontWeight: "900", fontSize: 11 },
-  unitInlineTextWrap: { flex: 1, alignItems: "flex-end" },
-  unitInlineTitle: { color: "#111827", fontWeight: "900", textAlign: "right" },
-  unitInlineMeta: { color: "#6b7280", fontSize: 12, marginTop: 3, textAlign: "right", fontWeight: "700" },
-  propertyNoUnits: { color: "#92400e", backgroundColor: "#fffbeb", borderRadius: 14, padding: 9, marginTop: 9, textAlign: "right", fontWeight: "800" },
-  directUnitCard: { backgroundColor: "#ffffff", borderRadius: 18, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: "#BBF7D0", borderRightWidth: 4, borderRightColor: "#16a34a" },
-  tabsWrap: {
-    flexDirection: "row",
-    backgroundColor: "#DDDBD6",
-    borderRadius: 16,
-    padding: 4,
-    marginBottom: 10,
-  },
-  tabButton: {
-    flex: 1,
-    paddingVertical: 9,
-    borderRadius: 12,
-    alignItems: "center",
-  },
+  ownerName: { color: "#ffffff", fontSize: 22, fontWeight: "900", textAlign: "right" },
+  typeBadge: { color: "#064e3b", backgroundColor: "#d1fae5", paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, overflow: "hidden", fontWeight: "900", fontSize: 13 },
+  contactGrid: { marginTop: 10, backgroundColor: "rgba(255,255,255,0.08)", borderRadius: 14, paddingHorizontal: 10, paddingVertical: 8, gap: 4 },
+  contactText: { color: "#F7F6F4", textAlign: "right", fontWeight: "800", fontSize: 13 },
+  tabsWrap: { flexDirection: "row-reverse", backgroundColor: "#deddd8", borderRadius: 18, padding: 4, marginBottom: 12, gap: 3 },
+  tabButton: { flex: 1, borderRadius: 16, minHeight: 50, alignItems: "center", justifyContent: "center" },
   tabButtonActive: { backgroundColor: "#ffffff" },
-  tabInner: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5 },
-  tabBadge: { overflow: "hidden", backgroundColor: "#0f766e", color: "#ffffff", borderRadius: 999, paddingHorizontal: 7, paddingVertical: 2, fontSize: 10, fontWeight: "900" },
-  tabText: { color: "#6b7280", fontSize: 12, fontWeight: "900" },
+  tabInner: { flexDirection: "row-reverse", alignItems: "center", justifyContent: "center", gap: 6 },
+  tabText: { color: "#6b7280", fontWeight: "900", fontSize: 13 },
   tabTextActive: { color: "#111827" },
-  stateBox: {
-    backgroundColor: "#ffffff",
-    borderRadius: 18,
-    padding: 18,
-    alignItems: "center",
-    gap: 8,
-  },
-  stateText: { color: "#4b5563", fontWeight: "700" },
+  tabBadge: { backgroundColor: "#0f766e", color: "#ffffff", borderRadius: 999, overflow: "hidden", paddingHorizontal: 7, paddingVertical: 2, fontSize: 11, fontWeight: "900" },
+  stateBox: { backgroundColor: "#fff", borderRadius: 18, padding: 16, alignItems: "center", marginBottom: 10 },
+  stateText: { color: "#6b7280", marginTop: 8, fontWeight: "800" },
   errorBox: { backgroundColor: "#fee2e2", borderRadius: 18, padding: 14, marginBottom: 10 },
-  errorTitle: { color: "#991b1b", fontWeight: "900", fontSize: 16, textAlign: "right" },
-  errorText: { color: "#7f1d1d", marginTop: 8, textAlign: "right" },
-  retryButton: { marginTop: 12, backgroundColor: "#991b1b", padding: 12, borderRadius: 12, alignItems: "center" },
-  retryText: { color: "#ffffff", fontWeight: "900" },
-  sectionHeader: { marginTop: 6, marginBottom: 8 },
-  sectionTitle: { fontSize: 18, fontWeight: "900", color: "#111827", textAlign: "right" },
-  sectionSubtitle: { color: "#6b7280", marginTop: 4, textAlign: "right" },
-  statsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 10 },
-  statCard: {
-    width: "48.7%",
-    backgroundColor: "#ffffff",
-    borderRadius: 18,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: "#EDECE9",
-    minHeight: 84,
-  },
-  statLabel: { color: "#6b7280", textAlign: "right", fontWeight: "800" },
-  statValue: { marginTop: 8, color: "#111827", textAlign: "right", fontSize: 19, fontWeight: "900" },
-  listCard: {
-    backgroundColor: "#ffffff",
-    borderRadius: 18,
-    padding: 12,
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: "#EDECE9",
-  },
-  listTopRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
+  errorTitle: { color: "#991b1b", fontWeight: "900", textAlign: "right", marginBottom: 5 },
+  errorText: { color: "#991b1b", textAlign: "right", fontWeight: "700", lineHeight: 22 },
+  retryButton: { backgroundColor: "#991b1b", borderRadius: 12, padding: 11, alignItems: "center", marginTop: 10 },
+  retryText: { color: "#fff", fontWeight: "900" },
+  sectionHeader: { alignItems: "flex-end", marginTop: 10, marginBottom: 8 },
+  sectionTitle: { color: "#111827", fontSize: 20, fontWeight: "900", textAlign: "right" },
+  sectionSubtitle: { color: "#7A766F", fontWeight: "800", textAlign: "right", marginTop: 4, lineHeight: 20 },
+  statsGrid: { flexDirection: "row-reverse", flexWrap: "wrap", gap: 8, marginBottom: 8 },
+  statCard: { width: "31.8%", backgroundColor: "#fff", borderRadius: 16, padding: 12, borderWidth: 1, borderColor: "#EDECE9", minHeight: 82, justifyContent: "center" },
+  statLabel: { color: "#7A766F", fontWeight: "800", textAlign: "right", fontSize: 12 },
+  statValue: { color: "#111827", fontWeight: "900", textAlign: "right", fontSize: 16, marginTop: 7 },
+  assetsTitleRow: { flexDirection: "row", alignItems: "flex-start", gap: 10 },
+  assetsCountBadge: { marginTop: 20, color: "#0f766e", backgroundColor: "#ecfdf5", borderRadius: 999, overflow: "hidden", paddingHorizontal: 12, paddingVertical: 6, fontWeight: "900" },
+  addActionsRow: { flexDirection: "row-reverse", gap: 10, marginBottom: 12 },
+  addActionButton: { flex: 1, minHeight: 54, borderRadius: 18, flexDirection: "row-reverse", alignItems: "center", justifyContent: "center", gap: 8, shadowColor: "#000", shadowOpacity: 0.05, shadowRadius: 10, elevation: 1 },
+  addPropertyButton: { backgroundColor: "#0f766e" },
+  addUnitButton: { backgroundColor: "#111827" },
+  addActionIcon: { color: "#ffffff", fontSize: 22, fontWeight: "900", marginTop: -2 },
+  addActionText: { color: "#ffffff", fontSize: 15, fontWeight: "900" },
+  assetSummaryStrip: { flexDirection: "row-reverse", gap: 8, marginBottom: 12 },
+  assetSummaryItem: { flex: 1, backgroundColor: "#ffffff", borderRadius: 16, padding: 12, alignItems: "center", borderWidth: 1, borderColor: "#EDECE9" },
+  assetSummaryValue: { color: "#111827", fontSize: 18, fontWeight: "900" },
+  assetSummaryLabel: { color: "#7A766F", fontWeight: "800", marginTop: 5 },
+  propertyAssetCard: { backgroundColor: "#fff", borderRadius: 18, padding: 14, marginBottom: 10, borderWidth: 1, borderColor: "#EDECE9", shadowColor: "#000", shadowOpacity: 0.04, shadowRadius: 10, elevation: 1 },
+  propertyAssetHeader: { flexDirection: "row", alignItems: "center", gap: 9, marginBottom: 10 },
+  propertyAssetTitleWrap: { flex: 1 },
+  propertyAssetTitle: { color: "#111827", fontWeight: "900", fontSize: 18, textAlign: "right" },
+  propertyAssetLocation: { color: "#7A766F", fontWeight: "800", textAlign: "right", marginTop: 3 },
+  typeBadgeLight: { color: "#0f766e", backgroundColor: "#ecfdf5", borderRadius: 999, overflow: "hidden", paddingHorizontal: 10, paddingVertical: 5, fontWeight: "900", fontSize: 12 },
+  miniStatsRow: { flexDirection: "row-reverse", flexWrap: "wrap", gap: 6, marginBottom: 10 },
+  miniPill: { color: "#374151", backgroundColor: "#F7F6F4", borderRadius: 999, overflow: "hidden", paddingHorizontal: 9, paddingVertical: 5, fontWeight: "800", fontSize: 12 },
+  unitsUnderPropertyBox: { backgroundColor: "#F7F6F4", borderRadius: 14, padding: 10, gap: 7 },
+  unitsUnderPropertyTitle: { color: "#111827", fontWeight: "900", textAlign: "right", marginBottom: 2 },
+  unitInlineRow: { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: "#fff", borderRadius: 12, padding: 9 },
+  unitInlineTextWrap: { flex: 1 },
+  unitInlineTitle: { color: "#111827", fontWeight: "900", textAlign: "right" },
+  unitInlineMeta: { color: "#7A766F", textAlign: "right", fontSize: 12, marginTop: 3, fontWeight: "700" },
+  unitInlineStatus: { color: "#0f766e", backgroundColor: "#ecfdf5", borderRadius: 999, overflow: "hidden", paddingHorizontal: 8, paddingVertical: 4, fontWeight: "900", fontSize: 11 },
+  propertyNoUnits: { color: "#7A766F", backgroundColor: "#F7F6F4", borderRadius: 14, padding: 10, textAlign: "right", fontWeight: "800" },
+  directUnitCard: { backgroundColor: "#fff", borderRadius: 16, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: "#EDECE9" },
+  listCard: { backgroundColor: "#fff", borderRadius: 16, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: "#EDECE9" },
+  listTopRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 6 },
   listTitle: { flex: 1, color: "#111827", fontSize: 16, fontWeight: "900", textAlign: "right" },
-  listMeta: { color: "#4b5563", marginTop: 6, textAlign: "right", fontWeight: "700" },
-  typeBadgeLight: {
-    color: "#075985",
-    backgroundColor: "#e0f2fe",
-    paddingHorizontal: 9,
-    paddingVertical: 4,
-    borderRadius: 999,
-    overflow: "hidden",
-    fontWeight: "900",
-  },
-  miniStatsRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 9 },
-  miniPill: {
-    backgroundColor: "#f3f4f6",
-    color: "#374151",
-    paddingHorizontal: 9,
-    paddingVertical: 4,
-    borderRadius: 999,
-    overflow: "hidden",
-    fontWeight: "800",
-    fontSize: 12,
-  },
-  moneyRow: { flexDirection: "row", justifyContent: "space-between", gap: 8, marginTop: 9 },
-  moneyText: { color: "#111827", fontWeight: "800", textAlign: "right" },
+  listMeta: { color: "#7A766F", fontWeight: "700", textAlign: "right", lineHeight: 21 },
   amountDanger: { color: "#dc2626", fontWeight: "900" },
-  activityCard: {
-    backgroundColor: "#ffffff",
-    borderRadius: 18,
-    padding: 12,
-    marginBottom: 8,
-    borderRightWidth: 4,
-    borderRightColor: "#0f766e",
-  },
-  activityTitle: { color: "#111827", fontSize: 16, fontWeight: "900", textAlign: "right" },
-  activityMeta: { color: "#6b7280", marginTop: 6, textAlign: "right", fontWeight: "700" },
-  emptyBox: { backgroundColor: "#ffffff", borderRadius: 18, padding: 18, alignItems: "center", marginBottom: 10 },
-  emptyText: { color: "#6b7280", fontWeight: "800", textAlign: "center" },
+  moneyRow: { flexDirection: "row-reverse", justifyContent: "space-between", gap: 8, marginTop: 10 },
+  moneyText: { color: "#374151", fontWeight: "800" },
+  activityCard: { backgroundColor: "#fff", borderRadius: 16, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: "#EDECE9" },
+  activityTitle: { color: "#111827", fontWeight: "900", textAlign: "right", fontSize: 16 },
+  activityMeta: { color: "#7A766F", fontWeight: "700", textAlign: "right", marginTop: 5 },
+  emptyBox: { backgroundColor: "#fff", borderRadius: 18, padding: 18, alignItems: "center", borderWidth: 1, borderColor: "#EDECE9", marginBottom: 10 },
+  emptyText: { color: "#7A766F", fontWeight: "900", textAlign: "center", lineHeight: 22 },
 });

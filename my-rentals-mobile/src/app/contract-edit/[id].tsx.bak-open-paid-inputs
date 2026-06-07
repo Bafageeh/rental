@@ -225,7 +225,10 @@ export default function ContractEditScreen() {
     const payment = payments.find((item) => item.id === paymentId);
     const currentRow = paymentForms[String(paymentId)];
     const paid = payment ? isPaidPayment(payment, currentRow) : false;
-    
+    if (paid && field !== "notes") {
+      Alert.alert("تنبيه", "هذه الدفعة مدفوعة، لا يمكن تغيير قيمتها أو حالتها من تعديل العقد.");
+      return;
+    }
     setPaymentForms((prev) => ({
       ...prev,
       [String(paymentId)]: {
@@ -387,9 +390,9 @@ export default function ContractEditScreen() {
                         <Text style={[styles.paymentBadge, paid ? styles.paymentBadgePaid : null]}>{paid ? "مدفوع محفوظ" : statusLabel(row.status)}</Text>
                       </View>
 
-                      <MoneyField label="المبلغ" value={row.amount} onChange={(value) => setPaymentField(payment.id, "amount", value)} compact editable={true} />
-                      <TextField label="تاريخ الاستحقاق" value={row.due_date} onChange={(value) => setPaymentField(payment.id, "due_date", value)} placeholder="YYYY-MM-DD" editable={true} />
-                      <TextField label="تاريخ السداد" value={row.paid_date} onChange={(value) => setPaymentField(payment.id, "paid_date", value)} placeholder="YYYY-MM-DD" editable={true} />
+                      <MoneyField label="المبلغ" value={row.amount} onChange={(value) => setPaymentField(payment.id, "amount", value)} compact editable={!paid} />
+                      <TextField label="تاريخ الاستحقاق" value={row.due_date} onChange={(value) => setPaymentField(payment.id, "due_date", value)} placeholder="YYYY-MM-DD" editable={!paid} />
+                      <TextField label="تاريخ السداد" value={row.paid_date} onChange={(value) => setPaymentField(payment.id, "paid_date", value)} placeholder="YYYY-MM-DD" editable={!paid} />
 
                       <View style={styles.choiceRow}>
                         {[
@@ -400,7 +403,7 @@ export default function ContractEditScreen() {
                         ].map(([value, label]) => {
                           const active = row.status === value || (paid && value === "paid");
                           return (
-                            <TouchableOpacity key={value} disabled={false} style={[styles.choice, active ? styles.choiceActive : null, paid ? styles.choiceDisabled : null]} onPress={() => setPaymentField(payment.id, "status", value)}>
+                            <TouchableOpacity key={value} disabled={paid} style={[styles.choice, active ? styles.choiceActive : null, paid ? styles.choiceDisabled : null]} onPress={() => setPaymentField(payment.id, "status", value)}>
                               <Text style={[styles.choiceText, active ? styles.choiceTextActive : null]}>{label}</Text>
                             </TouchableOpacity>
                           );
@@ -452,13 +455,6 @@ function TextField({ label, value, onChange, placeholder, keyboardType = "defaul
 }
 
 const styles = StyleSheet.create({
-  savedPaidBadgeLeft: {
-    position: "absolute",
-    left: 10,
-    top: 10,
-    zIndex: 20,
-    alignSelf: "flex-start",
-  },
   safe: { flex: 1, backgroundColor: "#F7F6F4" },
   container: { padding: 14, paddingBottom: 34 },
   hero: { backgroundColor: "#111827", borderRadius: 28, padding: 16, flexDirection: "row-reverse", alignItems: "center", gap: 12, marginBottom: 12 },

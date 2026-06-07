@@ -452,13 +452,6 @@ function TextField({ label, value, onChange, placeholder, keyboardType = "defaul
 }
 
 const styles = StyleSheet.create({
-  savedPaidBadgeLeft: {
-    position: "absolute",
-    left: 10,
-    top: 10,
-    zIndex: 20,
-    alignSelf: "flex-start",
-  },
   safe: { flex: 1, backgroundColor: "#F7F6F4" },
   container: { padding: 14, paddingBottom: 34 },
   hero: { backgroundColor: "#111827", borderRadius: 28, padding: 16, flexDirection: "row-reverse", alignItems: "center", gap: 12, marginBottom: 12 },

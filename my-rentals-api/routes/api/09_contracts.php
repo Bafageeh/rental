@@ -18,6 +18,76 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
 
+
+if (!function_exists('mr_contract_payment_num')) {
+    function mr_contract_payment_num($value): float
+    {
+        if ($value === null || $value === '') return 0.0;
+        return is_numeric($value) ? (float) $value : (float) str_replace(',', '', (string) $value);
+    }
+}
+
+if (!function_exists('mr_contract_apply_running_payment_status')) {
+    function mr_contract_apply_running_payment_status($contract)
+    {
+        if (!$contract || !$contract->relationLoaded('payments')) {
+            return $contract;
+        }
+
+        $runningRequired = 0.0;
+        $runningPaid = 0.0;
+        $today = now()->toDateString();
+
+        $contract->payments = $contract->payments
+            ->sortBy([
+                ['due_date', 'asc'],
+                ['id', 'asc'],
+            ])
+            ->values()
+            ->map(function ($payment) use (&$runningRequired, &$runningPaid, $today) {
+                $amount = mr_contract_payment_num($payment->amount ?? 0);
+                $paid = mr_contract_payment_num($payment->paid_amount ?? 0);
+
+                $requiredBefore = $runningRequired;
+                $runningRequired += $amount;
+                $runningPaid += $paid;
+
+                $coveredForThis = max(0.0, min($amount, $runningPaid - $requiredBefore));
+                $remainingForThis = max(0.0, $amount - $coveredForThis);
+
+                $dueDate = substr((string) ($payment->due_date ?? ''), 0, 10);
+                $isDue = preg_match('/^\d{4}-\d{2}-\d{2}$/', $dueDate) && $dueDate <= $today;
+
+                if ($amount > 0 && $coveredForThis >= ($amount - 0.009)) {
+                    $visualStatus = 'paid';
+                    $visualBadge = 'مدفوعة';
+                } elseif ($coveredForThis > 0 && $coveredForThis < $amount) {
+                    $visualStatus = 'partial';
+                    $visualBadge = 'جزئي';
+                } elseif ($isDue) {
+                    $visualStatus = 'overdue';
+                    $visualBadge = 'متأخرة';
+                } else {
+                    $visualStatus = 'due';
+                    $visualBadge = 'مستحقة';
+                }
+
+                $payment->setAttribute('status', $visualStatus);
+                $payment->setAttribute('badge', $visualBadge);
+                $payment->setAttribute('actual_paid_amount', round($coveredForThis, 2));
+                $payment->setAttribute('display_amount', $visualStatus === 'due' || $visualStatus === 'overdue' ? $amount : round($coveredForThis, 2));
+                $payment->setAttribute('remaining_amount', round($remainingForThis, 2));
+                $payment->setAttribute('running_required_amount', round($runningRequired, 2));
+                $payment->setAttribute('running_paid_amount', round($runningPaid, 2));
+                $payment->setAttribute('running_remaining_amount', round(max(0.0, $runningRequired - $runningPaid), 2));
+
+                return $payment;
+            });
+
+        return $contract;
+    }
+}
+
 /*
 |--------------------------------------------------------------------------
 | Contracts & Payments
@@ -250,13 +320,17 @@ Route::get('/contracts/{contract}', function (Request $request, Contract $contra
         }
     }
 
-    return $contract->load([
+    $loadedContract = $contract->load([
         'tenant',
         'unit.property.owner',
         'parkingSpot',
         'files',
-        'payments' => function ($query) { $query->orderBy('due_date'); },
+        'payments' => function ($query) { $query->orderBy('due_date')->orderBy('id'); },
     ]);
+
+    return function_exists('mr_contract_apply_running_payment_status')
+        ? mr_contract_apply_running_payment_status($loadedContract)
+        : $loadedContract;
 });
 
 Route::post('/contracts/{contract}/close', function (Contract $contract) {
@@ -281,7 +355,23 @@ Route::get('/payments', function () {
 });
 
 Route::post('/payments/{payment}/mark-paid', function (Payment $payment) {
-    $payment->update(['status' => 'paid', 'paid_date' => now()->toDateString()]);
+    $paidAmount = (float) str_replace(',', '', (string) ($payment->paid_amount ?? 0));
+    if ($paidAmount <= 0) {
+        $paidAmount = (float) str_replace(',', '', (string) ($payment->amount ?? 0));
+    }
+
+    $updates = ['status' => 'paid', 'paid_date' => now()->toDateString()];
+
+    if (Schema::hasColumn('payments', 'paid_amount')) {
+        $updates['paid_amount'] = $paidAmount;
+    }
+
+    if (Schema::hasColumn('payments', 'remaining_amount')) {
+        $updates['remaining_amount'] = 0;
+    }
+
+    DB::table('payments')->where('id', $payment->id)->update($updates);
+
     return response()->json(['status' => 'ok', 'message' => 'تم تسجيل الدفعة كمدفوعة', 'payment' => $payment->fresh()->load(['contract.tenant', 'contract.unit.property.owner'])]);
 });
 

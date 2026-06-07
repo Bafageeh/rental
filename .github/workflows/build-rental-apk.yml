@@ -2,60 +2,89 @@ name: Build Rental APK
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
-    paths:
-      - 'my-rentals-mobile/**'
-      - '.github/workflows/build-rental-apk.yml'
+    inputs:
+      profile:
+        description: "EAS build profile"
+        required: true
+        default: "preview"
+        type: choice
+        options:
+          - preview
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: my-rentals-mobile
 
 jobs:
-  build-apk:
+  build-android-apk:
+    name: Build Android APK
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Node.js
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: my-rentals-mobile/package-lock.json
 
-      - name: Set up Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: 17
-
       - name: Install dependencies
-        working-directory: my-rentals-mobile
         run: npm ci
 
-      - name: Prebuild Android project
-        working-directory: my-rentals-mobile
+      - name: Setup Expo and EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Build APK with EAS
         env:
-          EXPO_NO_TELEMETRY: '1'
-        run: npx expo prebuild --platform android --clean --no-install
-
-      - name: Build debug APK
-        working-directory: my-rentals-mobile/android
+          EXPO_NO_TELEMETRY: 1
+          EAS_NO_VCS: 1
         run: |
-          chmod +x ./gradlew
-          ./gradlew assembleDebug --no-daemon
+          eas build --platform android --profile preview --non-interactive --wait --json > eas-build-result.json
+          cat eas-build-result.json
 
-      - name: Rename APK
+      - name: Extract APK URL
+        id: apk_url
         run: |
-          mkdir -p artifacts
-          cp my-rentals-mobile/android/app/build/outputs/apk/debug/app-debug.apk artifacts/my-rentals.apk
+          node <<'NODE'
+          const fs = require('fs');
+          const raw = fs.readFileSync('eas-build-result.json', 'utf8').trim();
+          const parsed = JSON.parse(raw);
+          const build = Array.isArray(parsed) ? parsed[0] : parsed;
+          const url = build?.artifacts?.buildUrl || build?.artifactUrl || build?.apkUrl || '';
+          fs.writeFileSync('APK_URL.txt', url ? `${url}\n` : '');
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `apk_url=${url}\n`);
+          if (!url) {
+            console.error('APK URL not found');
+            process.exit(1);
+          }
+          NODE
+
+      - name: Download APK
+        run: |
+          curl -L "${{ steps.apk_url.outputs.apk_url }}" -o my-rentals.apk
+          ls -lh my-rentals.apk
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: my-rentals-apk
-          path: artifacts/my-rentals.apk
+          path: my-rentals-mobile/my-rentals.apk
           if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload APK URL
+        uses: actions/upload-artifact@v4
+        with:
+          name: apk-url
+          path: my-rentals-mobile/APK_URL.txt
           retention-days: 14

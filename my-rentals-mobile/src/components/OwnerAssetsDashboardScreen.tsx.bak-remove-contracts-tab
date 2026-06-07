@@ -17,6 +17,7 @@ type TabKey = "summary" | "properties" | "contracts";
 const tabs: Array<{ key: TabKey; label: string }> = [
   { key: "summary", label: "الملخص" },
   { key: "properties", label: "العقارات" },
+  { key: "contracts", label: "العقود" },
 ];
 const propertyTypeLabels: Record<string, string> = { building: "عمارة", apartment: "شقة", villa: "فيلا", land: "أرض", commercial: "تجاري", mixed: "مختلط" };
 
@@ -148,7 +149,7 @@ export default function OwnerAssetsDashboardScreen({ id }: { id: string | number
           {!properties.length ? <EmptyBox text="لا توجد عقارات تابعة لهذا المالك." /> : null}
         </View> : null}
 
-        {!loading && !error && false ? <View><View style={styles.sectionHeader}><Text style={styles.sectionTitle}>عقود المالك</Text><Text style={styles.sectionSubtitle}>العقود التابعة لعقارات ووحدات هذا المالك</Text></View>{contracts.length ? contracts.map((contract) => <TouchableOpacity key={contract.id} style={styles.contractCard} activeOpacity={0.9} onPress={() => router.push(`/contract/${contract.id}` as never)}><Text style={styles.contractTitle}>عقد {contract.government_contract_number || contract.contract_number || contract.id}</Text><Text style={styles.contractMeta}>المستأجر: {contract.tenant_name || "-"}</Text><Text style={styles.contractMeta}>{contract.property_name || "عقار"} / وحدة {valueOrDash(contract.unit_number)}</Text><Text style={styles.contractRent}>{money(contract.rent_amount)}</Text></TouchableOpacity>) : <EmptyBox text="لا توجد عقود لهذا المالك." />}</View> : null}
+        {!loading && !error && activeTab === "contracts" ? <View><View style={styles.sectionHeader}><Text style={styles.sectionTitle}>عقود المالك</Text><Text style={styles.sectionSubtitle}>العقود التابعة لعقارات ووحدات هذا المالك</Text></View>{contracts.length ? contracts.map((contract) => <TouchableOpacity key={contract.id} style={styles.contractCard} activeOpacity={0.9} onPress={() => router.push(`/contract/${contract.id}` as never)}><Text style={styles.contractTitle}>عقد {contract.government_contract_number || contract.contract_number || contract.id}</Text><Text style={styles.contractMeta}>المستأجر: {contract.tenant_name || "-"}</Text><Text style={styles.contractMeta}>{contract.property_name || "عقار"} / وحدة {valueOrDash(contract.unit_number)}</Text><Text style={styles.contractRent}>{money(contract.rent_amount)}</Text></TouchableOpacity>) : <EmptyBox text="لا توجد عقود لهذا المالك." />}</View> : null}
       </ScrollView>
     </SafeAreaView>
   );
