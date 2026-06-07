@@ -25,6 +25,10 @@ function value(v: unknown) {
   return text || '-';
 }
 
+function openThread(id: number) {
+  router.push({ pathname: '/chat-thread' as any, params: { id: String(id) } });
+}
+
 export default function ChatThreadsScreen() {
   const { isTenant } = useAuth();
   const [loading, setLoading] = useState(true);
@@ -53,7 +57,7 @@ export default function ChatThreadsScreen() {
       const response = await apiPost('/chat/threads', {});
       const data = response?.data ?? response;
       const thread = data?.thread;
-      if (thread?.id) router.push(`/chat-thread/${thread.id}` as any);
+      if (thread?.id) openThread(Number(thread.id));
       else await load(false);
     } catch (e) {
       Alert.alert('تعذر فتح المحادثة', e instanceof Error ? e.message : 'لا يوجد عقد نشط لإنشاء المحادثة');
@@ -89,7 +93,7 @@ export default function ChatThreadsScreen() {
             </View>
           )}
           renderItem={({ item }) => (
-            <TouchableOpacity style={styles.threadCard} activeOpacity={0.88} onPress={() => router.push(`/chat-thread/${item.id}` as any)}>
+            <TouchableOpacity style={styles.threadCard} activeOpacity={0.88} onPress={() => openThread(item.id)}>
               <View style={styles.threadTop}>
                 <View style={styles.threadAvatar}><Text style={styles.threadAvatarText}>{value(item.tenant_name)[0]}</Text></View>
                 <View style={styles.threadMain}>
