@@ -15,7 +15,11 @@ export type AuthUser = {
   email?: string | null;
   role?: string | null;
   owner_id?: number | null;
+  tenant_id?: number | null;
+  phone?: string | null;
+  national_id?: string | null;
   is_admin?: boolean;
+  is_tenant?: boolean;
 };
 
 type AuthState = {
@@ -24,13 +28,14 @@ type AuthState = {
   locked: boolean;
   isAdmin: boolean;
   isOwner: boolean;
+  isTenant: boolean;
   loading: boolean;
   refresh: () => Promise<void>;
   logout: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthState>({
-  user: null, loggedIn: false, locked: false, isAdmin: false, isOwner: false, loading: true,
+  user: null, loggedIn: false, locked: false, isAdmin: false, isOwner: false, isTenant: false, loading: true,
   refresh: async () => {}, logout: async () => {},
 });
 
@@ -99,11 +104,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const effectiveRole = !role || role === 'null' || (role === 'owner' && (ownerId === null || ownerId === undefined || ownerId === 0))
     ? 'admin'
     : role;
-  const isAdmin = Boolean(user?.is_admin) || ['admin', 'manager', 'super_admin'].includes(effectiveRole);
-  const isOwner = effectiveRole === 'owner';
+  const isTenant = Boolean(user?.is_tenant) || effectiveRole === 'tenant';
+  const isAdmin = !isTenant && (Boolean(user?.is_admin) || ['admin', 'manager', 'super_admin'].includes(effectiveRole));
+  const isOwner = !isTenant && effectiveRole === 'owner';
 
   return (
-    <AuthContext.Provider value={{ user, loggedIn, locked, isAdmin, isOwner, loading, refresh, logout }}>
+    <AuthContext.Provider value={{ user, loggedIn, locked, isAdmin, isOwner, isTenant, loading, refresh, logout }}>
       {children}
     </AuthContext.Provider>
   );
