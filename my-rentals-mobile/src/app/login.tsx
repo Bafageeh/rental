@@ -1,128 +1,71 @@
 import { router } from 'expo-router';
-import { useEffect, useState } from 'react';
-import {
-  ActivityIndicator,
-  Alert,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import { useState } from 'react';
+import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { apiGet, apiPost } from '../lib/api';
-import {
-  enableBiometricLogin,
-  saveAuthSession,
-  shouldRequireBiometricUnlock,
-  unlockSavedSessionWithBiometrics,
-} from '../lib/auth';
+import { enableBiometricLogin, saveAuthSession } from '../lib/auth';
 import { useAuth } from '../context/AuthContext';
 import { colors, spacing, radii, shadows, typography } from '../constants/theme';
 
 export default function LoginScreen() {
-  const { refresh, locked } = useAuth();
+  const { refresh } = useAuth();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const [biometricLoading, setBiometricLoading] = useState(false);
-  const [showManualLogin, setShowManualLogin] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const [usernameError, setUsernameError] = useState('');
-  const [passwordError, setPasswordError] = useState('');
 
-  useEffect(() => {
-    let active = true;
-
-    async function runBiometricUnlock() {
-      const requiresUnlock = await shouldRequireBiometricUnlock();
-      if (!active || !requiresUnlock) return;
-
-      setBiometricLoading(true);
-      const ok = await unlockSavedSessionWithBiometrics();
-      if (!active) return;
-      setBiometricLoading(false);
-
-      if (ok) {
-        await refresh();
-        router.replace('/' as any);
-      } else {
-        setShowManualLogin(true);
-      }
-    }
-
-    void runBiometricUnlock();
-
-    return () => {
-      active = false;
-    };
-  }, [refresh]);
-
-  function validate(): boolean {
-    let valid = true;
-    setUsernameError('');
-    setPasswordError('');
-
-    const trimmedUsername = username.trim();
-    if (!trimmedUsername) {
-      setUsernameError('اسم المستخدم مطلوب');
-      valid = false;
-    }
-
-    if (!password) {
-      setPasswordError('الرقم السري مطلوب');
-      valid = false;
-    } else if (password.length < 4) {
-      setPasswordError('الرقم السري قصير جداً');
-      valid = false;
-    }
-
-    return valid;
+  function goToOtp() {
+    router.push({ pathname: '/password-otp' as any, params: { identifier: username.trim() } });
   }
 
   async function login() {
-    if (!validate()) return;
+    const name = username.trim();
+    if (!name) {
+      Alert.alert('تنبيه', 'اسم المستخدم مطلوب');
+      return;
+    }
+    if (!password) {
+      Alert.alert('تنبيه', 'الرقم السري مطلوب أو اضغط نسيت كلمة السر / أول دخول');
+      return;
+    }
 
     try {
       setLoading(true);
-      const result = await apiPost('/auth/login', {
-        username: username.trim(),
-        password,
-      });
+      const result = await apiPost('/auth/login', { username: name, password });
       const token = result?.data?.token ?? result?.token;
       const user = result?.data?.user ?? result?.user;
-
       if (!token) throw new Error('لم يتم استلام token من الخادم');
 
       await saveAuthSession(token, user);
-
       const verified = await apiGet('/auth/me');
       const verifiedUser = verified?.data ?? verified?.user ?? user;
       await saveAuthSession(token, verifiedUser);
       await enableBiometricLogin();
       await refresh();
 
-      router.replace('/' as any);
+      const role = String(verifiedUser?.role ?? user?.role ?? '').toLowerCase();
+      router.replace(role === 'tenant' || verifiedUser?.is_tenant ? '/tenant-payments' as any : '/' as any);
     } catch (e) {
-      Alert.alert('خطأ في الدخول', e instanceof Error ? e.message : 'اسم المستخدم أو الرقم السري غير صحيح');
+      const message = e instanceof Error ? e.message : 'اسم المستخدم أو الرقم السري غير صحيح';
+      if (message.includes('لا توجد كلمة سر')) {
+        Alert.alert('أول دخول', 'هذا الحساب لا يملك كلمة سر. أرسل رمز واتساب لتعيين كلمة السر.', [
+          { text: 'إلغاء', style: 'cancel' },
+          { text: 'إرسال الرمز', onPress: goToOtp },
+        ]);
+      } else {
+        Alert.alert('خطأ في الدخول', message);
+      }
     } finally {
       setLoading(false);
     }
   }
-
-  const biometricGate = locked && !showManualLogin;
 
   return (
     <SafeAreaView style={styles.safe}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
           <View style={styles.logoWrap}>
-            <View style={styles.logoCircle}>
-              <Text style={{ fontSize: 40 }}>🏢</Text>
-            </View>
+            <View style={styles.logoCircle}><Text style={{ fontSize: 40 }}>🏢</Text></View>
             <Text style={styles.appName}>إيجاراتي</Text>
             <Text style={styles.appSub}>نظام إدارة العقارات والإيجارات</Text>
           </View>
@@ -130,83 +73,46 @@ export default function LoginScreen() {
           <View style={styles.card}>
             <Text style={styles.formTitle}>تسجيل الدخول</Text>
 
-            {biometricGate ? (
-              <>
-                <View style={styles.biometricIconWrap}>
-                  <Text style={styles.biometricIcon}>🔐</Text>
-                </View>
-                <Text style={styles.biometricTitle}>الدخول الآمن مفعل</Text>
-                <Text style={styles.biometricText}>استخدم البصمة أو بصمة الوجه للدخول مباشرة دون إدخال بيانات الدخول مرة أخرى.</Text>
-                <TouchableOpacity style={[styles.btn, biometricLoading && { opacity: 0.7 }]} onPress={async () => {
-                  try {
-                    setBiometricLoading(true);
-                    const ok = await unlockSavedSessionWithBiometrics();
-                    if (ok) {
-                      await refresh();
-                      router.replace('/' as any);
-                    } else {
-                      setShowManualLogin(true);
-                    }
-                  } finally {
-                    setBiometricLoading(false);
-                  }
-                }} disabled={biometricLoading} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel="الدخول بالبصمة" accessibilityState={{ busy: biometricLoading }}>
-                  {biometricLoading ? <ActivityIndicator color={colors.textInverse} /> : <Text style={styles.btnText}>الدخول بالبصمة</Text>}
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.secondaryBtn} onPress={() => setShowManualLogin(true)} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel="الدخول باسم المستخدم">
-                  <Text style={styles.secondaryBtnText}>الدخول باسم المستخدم</Text>
-                </TouchableOpacity>
-              </>
-            ) : (
-              <>
-                <Text style={styles.label}>اسم المستخدم</Text>
-                <TextInput
-                  style={[styles.input, usernameError && styles.inputError]}
-                  value={username}
-                  onChangeText={(t) => {
-                    setUsername(t);
-                    if (usernameError) setUsernameError('');
-                  }}
-                  placeholder="رقم الهوية أو اسم المستخدم"
-                  placeholderTextColor={colors.textTertiary}
-                  keyboardType="default"
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  autoComplete="username"
-                  textAlign="right"
-                  editable={!loading}
-                  accessibilityLabel="اسم المستخدم"
-                />
-                {usernameError ? <Text style={styles.errorText}>{usernameError}</Text> : null}
+            <Text style={styles.label}>اسم المستخدم</Text>
+            <TextInput
+              style={styles.input}
+              value={username}
+              onChangeText={setUsername}
+              placeholder="رقم الهوية أو رقم الجوال أو اسم المستخدم"
+              placeholderTextColor={colors.textTertiary}
+              keyboardType="default"
+              autoCapitalize="none"
+              autoCorrect={false}
+              autoComplete="username"
+              textAlign="right"
+              editable={!loading}
+            />
 
-                <Text style={styles.label}>الرقم السري</Text>
-                <View style={styles.passwordRow}>
-                  <TextInput
-                    style={[styles.input, styles.passwordInput, passwordError && styles.inputError]}
-                    value={password}
-                    onChangeText={(t) => {
-                      setPassword(t);
-                      if (passwordError) setPasswordError('');
-                    }}
-                    placeholder="••••••••"
-                    placeholderTextColor={colors.textTertiary}
-                    secureTextEntry={!showPassword}
-                    textAlign="right"
-                    editable={!loading}
-                    autoComplete="password"
-                    accessibilityLabel="الرقم السري"
-                  />
-                  <TouchableOpacity style={styles.eyeBtn} onPress={() => setShowPassword((v) => !v)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityRole="button" accessibilityLabel={showPassword ? 'إخفاء الرقم السري' : 'إظهار الرقم السري'}>
-                    <Text style={{ fontSize: 18 }}>{showPassword ? '🙈' : '👁️'}</Text>
-                  </TouchableOpacity>
-                </View>
-                {passwordError ? <Text style={styles.errorText}>{passwordError}</Text> : null}
+            <Text style={styles.label}>الرقم السري</Text>
+            <View style={styles.passwordRow}>
+              <TextInput
+                style={[styles.input, styles.passwordInput]}
+                value={password}
+                onChangeText={setPassword}
+                placeholder="••••••••"
+                placeholderTextColor={colors.textTertiary}
+                secureTextEntry={!showPassword}
+                textAlign="right"
+                editable={!loading}
+                autoComplete="password"
+              />
+              <TouchableOpacity style={styles.eyeBtn} onPress={() => setShowPassword((v) => !v)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Text style={{ fontSize: 18 }}>{showPassword ? 'إخفاء' : 'إظهار'}</Text>
+              </TouchableOpacity>
+            </View>
 
-                <TouchableOpacity style={[styles.btn, loading && { opacity: 0.7 }]} onPress={login} disabled={loading} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel="تسجيل الدخول" accessibilityState={{ busy: loading }}>
-                  {loading ? <ActivityIndicator color={colors.textInverse} /> : <Text style={styles.btnText}>دخول</Text>}
-                </TouchableOpacity>
-              </>
-            )}
+            <TouchableOpacity style={[styles.btn, loading && { opacity: 0.7 }]} onPress={login} disabled={loading} activeOpacity={0.85}>
+              {loading ? <ActivityIndicator color={colors.textInverse} /> : <Text style={styles.btnText}>دخول</Text>}
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.secondaryBtn} onPress={goToOtp} disabled={loading} activeOpacity={0.85}>
+              <Text style={styles.secondaryBtnText}>نسيت كلمة السر / أول دخول</Text>
+            </TouchableOpacity>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -225,17 +131,11 @@ const styles = StyleSheet.create({
   formTitle: { ...typography.h3, color: colors.text, textAlign: 'center', marginBottom: spacing.xl },
   label: { ...typography.captionBold, color: colors.textSecondary, textAlign: 'right', marginBottom: 6, marginTop: spacing.xs },
   input: { height: 48, backgroundColor: colors.background, borderRadius: radii.md, borderWidth: 1, borderColor: colors.border, paddingHorizontal: spacing.md + 2, fontSize: 15, color: colors.text, marginBottom: 6 },
-  inputError: { borderColor: colors.danger, backgroundColor: colors.dangerBg },
-  errorText: { ...typography.small, color: colors.danger, textAlign: 'right', marginBottom: spacing.sm },
   passwordRow: { position: 'relative', justifyContent: 'center' },
-  passwordInput: { paddingLeft: 44 },
-  eyeBtn: { position: 'absolute', left: 12, top: 12, height: 24, width: 24, alignItems: 'center', justifyContent: 'center' },
+  passwordInput: { paddingLeft: 64 },
+  eyeBtn: { position: 'absolute', left: 12, top: 12, height: 24, alignItems: 'center', justifyContent: 'center' },
   btn: { height: 50, backgroundColor: colors.primary, borderRadius: radii.md, alignItems: 'center', justifyContent: 'center', marginTop: spacing.md, ...shadows.md, shadowColor: colors.primary, shadowOpacity: 0.3 },
   btnText: { fontSize: 16, fontWeight: '700', color: colors.textInverse },
-  biometricIconWrap: { width: 72, height: 72, borderRadius: 36, alignSelf: 'center', alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primaryLight, marginBottom: spacing.md },
-  biometricIcon: { fontSize: 34 },
-  biometricTitle: { ...typography.bodyBold, color: colors.text, textAlign: 'center', marginBottom: spacing.xs },
-  biometricText: { ...typography.caption, color: colors.textSecondary, textAlign: 'center', lineHeight: 22, marginBottom: spacing.md },
   secondaryBtn: { height: 46, borderRadius: radii.md, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center', marginTop: spacing.sm, backgroundColor: colors.background },
   secondaryBtnText: { fontSize: 15, fontWeight: '700', color: colors.textSecondary },
 });
