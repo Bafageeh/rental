@@ -128,7 +128,7 @@ class AuthController extends Controller
         $payload = [
             'name' => $tenant->name ?: 'مستأجر',
             'username' => $username,
-            'email' => $tenant->email ?: null,
+            'email' => $this->tenantEmail($tenant),
             'password' => Hash::make(Str::random(32)),
             'role' => 'tenant',
             'status' => 'active',
@@ -178,6 +178,13 @@ class AuthController extends Controller
         if (Str::startsWith($phone, '0')) return '966' . substr($phone, 1);
         if (Str::startsWith($phone, '5') && strlen($phone) === 9) return '966' . $phone;
         return $phone;
+    }
+
+    private function tenantEmail(Tenant $tenant): string
+    {
+        $email = trim((string) ($tenant->email ?? ''));
+        if ($email !== '') return $email;
+        return 'tenant+' . $tenant->id . '@rental.local';
     }
 
     private function userPayload(User $user): array
