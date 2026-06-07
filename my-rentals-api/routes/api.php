@@ -146,6 +146,8 @@ foreach ([
 Route::middleware(['auth.api'])->group(function () {
     foreach ([
         __DIR__ . '/api/124_chat_threads.php',
+        __DIR__ . '/api/125_chat_new_threads.php',
+        __DIR__ . '/api/126_chat_attachments.php',
     ] as $publicAuthenticatedRouteModule) {
         if (is_file($publicAuthenticatedRouteModule)) {
             require $publicAuthenticatedRouteModule;
