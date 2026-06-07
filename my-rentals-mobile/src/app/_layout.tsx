@@ -16,11 +16,12 @@ function TabIcon({ name, color, size, lib = "ion" }: { name: string; color: stri
 const hidden = { href: null as any };
 
 function AppTabs() {
-  const { loading, loggedIn, locked, isAdmin } = useAuth();
+  const { loading, loggedIn, locked, isAdmin, isTenant } = useAuth();
   const pathname = usePathname();
   const routeParams = useGlobalSearchParams();
   const routeParamsKey = JSON.stringify(routeParams);
   const isLoginRoute = pathname === "/login";
+  const isTenantPaymentsRoute = pathname === "/tenant-payments";
 
   useEffect(() => {
     if (loading) return;
@@ -28,8 +29,14 @@ function AppTabs() {
       router.replace("/login" as any);
       return;
     }
-    if (loggedIn && !locked && isLoginRoute) router.replace("/" as any);
-  }, [isLoginRoute, loading, loggedIn, locked]);
+    if (loggedIn && !locked && isLoginRoute) {
+      router.replace(isTenant ? "/tenant-payments" as any : "/" as any);
+      return;
+    }
+    if (loggedIn && !locked && isTenant && !isTenantPaymentsRoute) {
+      router.replace("/tenant-payments" as any);
+    }
+  }, [isLoginRoute, isTenantPaymentsRoute, isTenant, loading, loggedIn, locked]);
 
   useEffect(() => {
     if (loading || !loggedIn || locked || isLoginRoute) return;
@@ -44,7 +51,7 @@ function AppTabs() {
         tabBarInactiveTintColor: colors.textTertiary,
         tabBarLabelStyle: { fontSize: 11, fontWeight: "800", paddingBottom: 2 },
         tabBarStyle: {
-          display: loggedIn && !locked ? "flex" : "none",
+          display: loggedIn && !locked && !isTenant ? "flex" : "none",
           height: 62,
           paddingTop: 5,
           paddingBottom: 7,
@@ -75,6 +82,7 @@ function AppTabs() {
       <Tabs.Screen name="owners" options={{ href: isAdmin ? "/owners" : null, title: "الملاك", tabBarIcon: ({ color, size }) => <TabIcon name="people" color={color} size={size} />, tabBarAccessibilityLabel: "الملاك" }} />
       <Tabs.Screen name="more" options={{ title: "مزيد", tabBarIcon: ({ color, size }) => <TabIcon name="grid" color={color} size={size} />, tabBarAccessibilityLabel: "مزيد" }} />
 
+      <Tabs.Screen name="tenant-payments" options={{ ...hidden, title: "دفعاتي", headerRight: () => null }} />
       <Tabs.Screen name="payments" options={{ ...hidden, title: "الدفعات" }} />
       <Tabs.Screen name="statistics" options={{ ...hidden, title: "التقارير" }} />
       <Tabs.Screen name="settings" options={{ ...hidden, title: "الإعدادات" }} />
