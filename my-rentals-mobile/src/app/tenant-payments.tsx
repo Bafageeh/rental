@@ -85,7 +85,10 @@ export default function TenantPaymentsScreen() {
           <Text style={styles.title}>دفعاتي</Text>
           <Text style={styles.sub}>{name}</Text>
         </View>
-        <TouchableOpacity style={styles.out} onPress={logout}><Text style={styles.outText}>خروج</Text></TouchableOpacity>
+        <View style={styles.actions}>
+          <TouchableOpacity style={styles.chat} onPress={() => router.push('/chat-threads' as any)}><Text style={styles.chatText}>المراسلات</Text></TouchableOpacity>
+          <TouchableOpacity style={styles.out} onPress={logout}><Text style={styles.outText}>خروج</Text></TouchableOpacity>
+        </View>
       </View>
       {loading ? <ActivityIndicator color={colors.primary} /> : (
         <FlatList
@@ -120,10 +123,13 @@ export default function TenantPaymentsScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   header: { padding: spacing.xl, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' },
+  actions: { flexDirection: 'row-reverse', gap: spacing.sm, alignItems: 'center' },
   title: { ...typography.h2, color: colors.text, textAlign: 'right' },
   sub: { color: colors.textSecondary, textAlign: 'right', marginTop: 4 },
   out: { backgroundColor: colors.surface, borderRadius: radii.md, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderWidth: 1, borderColor: colors.border },
   outText: { color: colors.textSecondary, fontWeight: '800' },
+  chat: { backgroundColor: colors.primary, borderRadius: radii.md, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderWidth: 1, borderColor: colors.primary },
+  chatText: { color: colors.textInverse, fontWeight: '900' },
   list: { padding: spacing.xl },
   empty: { color: colors.textSecondary, textAlign: 'center', padding: spacing.xl, backgroundColor: colors.surface, borderRadius: radii.lg },
   card: { backgroundColor: colors.surface, borderRadius: radii.xl, padding: spacing.lg, marginBottom: spacing.md, borderWidth: 1, borderColor: colors.borderLight },
