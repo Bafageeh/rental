@@ -1,6 +1,6 @@
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { Tabs, router, useGlobalSearchParams, usePathname } from "expo-router";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { HeaderBackAction as HeaderBackRight, HeaderQuickActions as HeaderActionsLeft } from "../components/AppHeaderActions";
 import { colors } from "../constants/theme";
 import { AuthProvider, useAuth } from "../context/AuthContext";
@@ -43,12 +43,23 @@ function AppTabs() {
   const pathname = usePathname();
   const routeParams = useGlobalSearchParams();
   const routeParamsKey = JSON.stringify(routeParams);
+  const forcedLoginOnLaunch = useRef(false);
   const isLoginRoute = pathname === "/login";
   const isPasswordOtpRoute = pathname === "/password-otp";
   const isTenantPaymentsRoute = pathname === "/tenant-payments";
   const isChatRoute = pathname === "/chat-threads" || pathname === "/chat-thread" || pathname.startsWith("/chat-thread/");
   const isTenantAllowedRoute = isTenantPaymentsRoute || isChatRoute;
   const isPublicAuthRoute = isLoginRoute || isPasswordOtpRoute;
+
+  useEffect(() => {
+    if (forcedLoginOnLaunch.current) return;
+    forcedLoginOnLaunch.current = true;
+
+    // أول شاشة عند فتح التطبيق تكون تسجيل الدخول دائماً، ثم يتم التوجيه حسب الحساب بعد اكتمال حالة الدخول.
+    if (!isPublicAuthRoute) {
+      router.replace("/login" as any);
+    }
+  }, []);
 
   useEffect(() => {
     if (loading) return;
@@ -64,6 +75,7 @@ function AppTabs() {
 
   return (
     <Tabs
+      initialRouteName="login"
       screenOptions={{
         headerShown: true,
         tabBarActiveTintColor: colors.primary,
