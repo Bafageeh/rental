@@ -91,7 +91,7 @@ export default function ChatThreadsScreen() {
   async function startTenantThread() {
     try {
       setLoading(true);
-      const response = await apiPost('/chat/threads/new', { request_type: 'general', priority: 'normal' });
+      const response = await apiPost('/chat/threads', { request_type: 'general', priority: 'normal', force_new: true });
       const data = response?.data ?? response;
       const thread = data?.thread;
       if (thread?.id) openThread(Number(thread.id));
