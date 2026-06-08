@@ -27,6 +27,8 @@ type ChatThread = {
   closed_at?: string | null;
 };
 
+type StatusFilter = 'all' | 'open' | 'closed';
+
 function value(v: unknown) {
   const text = String(v ?? '').trim();
   return text || '-';
@@ -47,6 +49,7 @@ export default function ChatThreadsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [threads, setThreads] = useState<ChatThread[]>([]);
   const [term, setTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
 
   const load = useCallback(async (refresh = false, silent = false) => {
     try {
@@ -70,23 +73,34 @@ export default function ChatThreadsScreen() {
     return () => clearInterval(timer);
   }, [load]);
 
+  const counters = useMemo(() => {
+    const closed = threads.filter((item) => item.status === 'closed').length;
+    const open = threads.length - closed;
+    return { all: threads.length, open, closed };
+  }, [threads]);
+
   const visibleThreads = useMemo(() => {
     const text = term.trim().toLowerCase();
-    if (!text) return threads;
-    return threads.filter((item) => [
-      item.id,
-      item.tenant_name,
-      item.tenant_phone,
-      item.contract_number,
-      item.property_name,
-      item.unit_number,
-      item.owner_name,
-      item.last_message,
-      item.status_label,
-      item.request_type_label,
-      item.priority_label,
-    ].some((part) => String(part ?? '').toLowerCase().includes(text)));
-  }, [term, threads]);
+    return threads.filter((item) => {
+      const closed = item.status === 'closed';
+      if (statusFilter === 'open' && closed) return false;
+      if (statusFilter === 'closed' && !closed) return false;
+      if (!text) return true;
+      return [
+        item.id,
+        item.tenant_name,
+        item.tenant_phone,
+        item.contract_number,
+        item.property_name,
+        item.unit_number,
+        item.owner_name,
+        item.last_message,
+        item.status_label,
+        item.request_type_label,
+        item.priority_label,
+      ].some((part) => String(part ?? '').toLowerCase().includes(text));
+    });
+  }, [statusFilter, term, threads]);
 
   async function startTenantThread() {
     try {
@@ -102,6 +116,12 @@ export default function ChatThreadsScreen() {
       setLoading(false);
     }
   }
+
+  const filterButtons: { key: StatusFilter; label: string; count: number }[] = [
+    { key: 'all', label: 'كل التذاكر', count: counters.all },
+    { key: 'open', label: 'المفتوحة', count: counters.open },
+    { key: 'closed', label: 'المغلقة', count: counters.closed },
+  ];
 
   return (
     <SafeAreaView style={styles.safe} edges={['bottom']}>
@@ -119,6 +139,20 @@ export default function ChatThreadsScreen() {
         {term ? <TouchableOpacity onPress={() => setTerm('')}><Ionicons name="close-circle" size={18} color={colors.textTertiary} /></TouchableOpacity> : null}
       </View>
 
+      <View style={styles.filterRow}>
+        {filterButtons.map((item) => {
+          const selected = statusFilter === item.key;
+          return (
+            <TouchableOpacity key={item.key} style={[styles.filterChip, selected ? styles.filterChipActive : null]} activeOpacity={0.85} onPress={() => setStatusFilter(item.key)}>
+              <Text style={[styles.filterChipText, selected ? styles.filterChipTextActive : null]}>{item.label}</Text>
+              <View style={[styles.filterCount, selected ? styles.filterCountActive : null]}>
+                <Text style={[styles.filterCountText, selected ? styles.filterCountTextActive : null]}>{item.count}</Text>
+              </View>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+
       {loading ? (
         <View style={styles.center}><ActivityIndicator color={colors.primary} /><Text style={styles.loadingText}>جاري تحميل تذاكر المراسلات...</Text></View>
       ) : (
@@ -130,9 +164,9 @@ export default function ChatThreadsScreen() {
           ListEmptyComponent={(
             <View style={styles.emptyCard}>
               <Ionicons name="chatbox-ellipses-outline" size={38} color="#94A3B8" />
-              <Text style={styles.emptyTitle}>{term ? 'لا توجد نتائج' : 'لا توجد تذاكر حالياً'}</Text>
+              <Text style={styles.emptyTitle}>{term ? 'لا توجد نتائج' : statusFilter === 'closed' ? 'لا توجد تذاكر مغلقة' : statusFilter === 'open' ? 'لا توجد تذاكر مفتوحة' : 'لا توجد تذاكر حالياً'}</Text>
               <Text style={styles.emptyText}>{term ? 'غيّر عبارة البحث أو امسحها.' : isTenant ? 'افتح تذكرة جديدة مرتبطة بعقدك النشط مع إدارة العقار.' : 'ستظهر هنا تذاكر المستأجرين عند فتحها.'}</Text>
-              {isTenant && !term ? <TouchableOpacity style={styles.startBtn} onPress={startTenantThread}><Text style={styles.startBtnText}>فتح تذكرة جديدة</Text></TouchableOpacity> : null}
+              {isTenant && !term && statusFilter !== 'closed' ? <TouchableOpacity style={styles.startBtn} onPress={startTenantThread}><Text style={styles.startBtnText}>فتح تذكرة جديدة</Text></TouchableOpacity> : null}
             </View>
           )}
           renderItem={({ item }) => {
@@ -181,8 +215,17 @@ const styles = StyleSheet.create({
   headerText: { flex: 1, alignItems: 'flex-end' },
   title: { ...typography.h2, color: colors.text, textAlign: 'right' },
   subtitle: { color: colors.textSecondary, textAlign: 'right', marginTop: 4, lineHeight: 21 },
-  searchBox: { marginHorizontal: spacing.xl, marginBottom: spacing.md, height: 48, borderRadius: radii.lg, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.borderLight, paddingHorizontal: spacing.md, flexDirection: 'row-reverse', alignItems: 'center', gap: spacing.sm },
+  searchBox: { marginHorizontal: spacing.xl, marginBottom: spacing.sm, height: 48, borderRadius: radii.lg, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.borderLight, paddingHorizontal: spacing.md, flexDirection: 'row-reverse', alignItems: 'center', gap: spacing.sm },
   searchInput: { flex: 1, color: colors.text, fontSize: 15 },
+  filterRow: { flexDirection: 'row-reverse', gap: spacing.xs, paddingHorizontal: spacing.xl, marginBottom: spacing.md },
+  filterChip: { flex: 1, minHeight: 40, borderRadius: 999, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.borderLight, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 6, paddingHorizontal: 8 },
+  filterChipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  filterChipText: { color: colors.textSecondary, fontWeight: '900', fontSize: 12, textAlign: 'center' },
+  filterChipTextActive: { color: colors.textInverse },
+  filterCount: { minWidth: 24, height: 24, borderRadius: 12, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 },
+  filterCountActive: { backgroundColor: 'rgba(255,255,255,0.18)' },
+  filterCountText: { color: colors.textSecondary, fontWeight: '900', fontSize: 11 },
+  filterCountTextActive: { color: colors.textInverse },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   loadingText: { color: colors.textSecondary, marginTop: spacing.sm },
   list: { padding: spacing.xl, paddingTop: spacing.sm, paddingBottom: spacing['4xl'] },
