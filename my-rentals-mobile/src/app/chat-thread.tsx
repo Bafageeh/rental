@@ -28,7 +28,6 @@ type ChatMessage = {
   created_at?: string;
   read_at?: string | null;
   attachments?: ChatAttachment[];
-  has_attachments?: boolean;
 };
 
 type ThreadInfo = {
@@ -41,7 +40,6 @@ type ThreadInfo = {
   unit_number?: string | null;
   contract_number?: string | null;
   contract_status?: string | null;
-  owner_name?: string | null;
   status?: string | null;
   status_label?: string | null;
   request_type?: string | null;
@@ -105,10 +103,12 @@ export default function ChatThreadScreen() {
   const [sending, setSending] = useState(false);
   const [sendingAttachment, setSendingAttachment] = useState(false);
   const [updatingMeta, setUpdatingMeta] = useState(false);
+  const [closing, setClosing] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [thread, setThread] = useState<ThreadInfo | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [body, setBody] = useState('');
+  const closedForTicket = Boolean(thread?.is_closed);
 
   const load = useCallback(async (silent = false) => {
     if (!threadId) return;
@@ -120,7 +120,7 @@ export default function ChatThreadScreen() {
       setMessages(Array.isArray(data?.messages) ? data.messages : []);
       setTimeout(() => listRef.current?.scrollToEnd({ animated: false }), 100);
     } catch (e) {
-      if (!silent) Alert.alert('تعذر تحميل المحادثة', e instanceof Error ? e.message : 'حدث خطأ أثناء تحميل الرسائل');
+      if (!silent) Alert.alert('تعذر تحميل التذكرة', e instanceof Error ? e.message : 'حدث خطأ أثناء تحميل الرسائل');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -140,7 +140,7 @@ export default function ChatThreadScreen() {
   }
 
   async function updateMeta(changes: Record<string, string>) {
-    if (!threadId || updatingMeta) return;
+    if (!threadId || updatingMeta || closing) return;
     try {
       setUpdatingMeta(true);
       const response = await apiPost(`/chat/threads/${threadId}/meta`, changes);
@@ -148,17 +148,41 @@ export default function ChatThreadScreen() {
       if (data?.thread) setThread(data.thread);
       await load(true);
     } catch (e) {
-      Alert.alert('تعذر التحديث', e instanceof Error ? e.message : 'حدث خطأ أثناء تحديث بيانات المحادثة');
+      Alert.alert('تعذر التحديث', e instanceof Error ? e.message : 'حدث خطأ أثناء تحديث بيانات التذكرة');
     } finally {
       setUpdatingMeta(false);
     }
   }
 
+  function closeTicket() {
+    if (!threadId || closedForTicket || closing) return;
+    Alert.alert('إغلاق التذكرة', 'بعد الإغلاق تبقى التذكرة محفوظة ويمكن الرجوع لها، لكن لا يمكن الرد عليها إلا بعد إعادة فتحها من الإدارة.', [
+      { text: 'إلغاء', style: 'cancel' },
+      {
+        text: 'إغلاق',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            setClosing(true);
+            const response = await apiPost(`/chat/threads/${threadId}/close`, {});
+            const data = response?.data ?? response;
+            if (data?.thread) setThread(data.thread);
+            await load(true);
+          } catch (e) {
+            Alert.alert('تعذر إغلاق التذكرة', e instanceof Error ? e.message : 'حدث خطأ أثناء إغلاق التذكرة');
+          } finally {
+            setClosing(false);
+          }
+        },
+      },
+    ]);
+  }
+
   async function sendMessage() {
     const text = body.trim();
     if (!text || sending) return;
-    if (isTenant && thread?.is_closed) {
-      Alert.alert('المحادثة مغلقة', 'لا يمكن الرد على محادثة مغلقة. انتظر إعادة فتحها من الإدارة.');
+    if (closedForTicket) {
+      Alert.alert('التذكرة مغلقة', 'هذه التذكرة مغلقة ولا يمكن الرد عليها. افتح تذكرة جديدة عند الحاجة.');
       return;
     }
 
@@ -180,7 +204,7 @@ export default function ChatThreadScreen() {
   }
 
   async function pickAndSendAttachment() {
-    if (sendingAttachment || closedForTenant) return;
+    if (sendingAttachment || closedForTicket) return;
 
     try {
       const result = await DocumentPicker.getDocumentAsync({
@@ -259,8 +283,8 @@ export default function ChatThreadScreen() {
             <Text style={styles.statusText}>{thread.status_label || 'مفتوحة'}</Text>
           </View>
           <View style={styles.infoTitleWrap}>
-            <Text style={styles.infoTitle}>بيانات الطلب والعقد</Text>
-            <Text style={styles.infoSub}>نوع الطلب: {thread.request_type_label || 'استفسار عام'} | الأولوية: {thread.priority_label || 'عادي'}</Text>
+            <Text style={styles.infoTitle}>تذكرة #{thread.id}</Text>
+            <Text style={styles.infoSub}>النوع: {thread.request_type_label || 'استفسار عام'} | الأولوية: {thread.priority_label || 'عادي'}</Text>
           </View>
         </View>
 
@@ -287,7 +311,7 @@ export default function ChatThreadScreen() {
           {REQUEST_TYPES.map((item) => {
             const selected = thread.request_type === item.key;
             return (
-              <TouchableOpacity key={item.key} style={[styles.chip, selected ? styles.chipSelected : null]} onPress={() => updateMeta({ request_type: item.key })} disabled={updatingMeta || thread.is_closed === true && isTenant}>
+              <TouchableOpacity key={item.key} style={[styles.chip, selected ? styles.chipSelected : null]} onPress={() => updateMeta({ request_type: item.key })} disabled={updatingMeta || closedForTicket}>
                 <Text style={[styles.chipText, selected ? styles.chipTextSelected : null]}>{item.label}</Text>
               </TouchableOpacity>
             );
@@ -296,7 +320,7 @@ export default function ChatThreadScreen() {
 
         {!isTenant ? (
           <>
-            <Text style={styles.controlLabel}>حالة المحادثة</Text>
+            <Text style={styles.controlLabel}>حالة التذكرة</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipsRow}>
               {STATUS_OPTIONS.map((item) => {
                 const selected = thread.status === item.key;
@@ -321,11 +345,16 @@ export default function ChatThreadScreen() {
             </ScrollView>
           </>
         ) : null}
+
+        {!closedForTicket ? (
+          <TouchableOpacity style={styles.closeTicketBtn} activeOpacity={0.85} onPress={closeTicket} disabled={closing}>
+            {closing ? <ActivityIndicator size="small" color="#B91C1C" /> : <Ionicons name="checkmark-done-outline" size={18} color="#B91C1C" />}
+            <Text style={styles.closeTicketText}>إغلاق التذكرة</Text>
+          </TouchableOpacity>
+        ) : null}
       </View>
     );
   }
-
-  const closedForTenant = Boolean(isTenant && thread?.is_closed);
 
   return (
     <SafeAreaView style={styles.safe} edges={['bottom']}>
@@ -335,13 +364,13 @@ export default function ChatThreadScreen() {
             <Ionicons name="arrow-forward" size={22} color={colors.text} />
           </TouchableOpacity>
           <View style={styles.headerText}>
-            <Text numberOfLines={1} style={styles.title}>{thread?.tenant_name || 'المحادثة'}</Text>
+            <Text numberOfLines={1} style={styles.title}>تذكرة #{thread?.id || ''}</Text>
             <Text numberOfLines={1} style={styles.subtitle}>العقار: {thread?.property_name || '-'} | الوحدة: {thread?.unit_number || '-'}</Text>
           </View>
         </View>
 
         {loading ? (
-          <View style={styles.center}><ActivityIndicator color={colors.primary} /><Text style={styles.loadingText}>جاري تحميل الرسائل...</Text></View>
+          <View style={styles.center}><ActivityIndicator color={colors.primary} /><Text style={styles.loadingText}>جاري تحميل التذكرة...</Text></View>
         ) : (
           <FlatList
             ref={listRef}
@@ -378,15 +407,15 @@ export default function ChatThreadScreen() {
           />
         )}
 
-        {closedForTenant ? <Text style={styles.closedNotice}>هذه المحادثة مغلقة من الإدارة ولا يمكن الرد عليها.</Text> : null}
+        {closedForTicket ? <Text style={styles.closedNotice}>هذه التذكرة مغلقة ويمكن الرجوع لها من شاشة مراسلاتي.</Text> : null}
         <View style={styles.inputWrap}>
-          <TouchableOpacity style={[styles.attachBtn, (sendingAttachment || closedForTenant) && styles.sendBtnDisabled]} onPress={pickAndSendAttachment} disabled={sendingAttachment || closedForTenant} activeOpacity={0.85}>
+          <TouchableOpacity style={[styles.attachBtn, (sendingAttachment || closedForTicket) && styles.sendBtnDisabled]} onPress={pickAndSendAttachment} disabled={sendingAttachment || closedForTicket} activeOpacity={0.85}>
             {sendingAttachment ? <ActivityIndicator size="small" color={colors.primary} /> : <Ionicons name="attach-outline" size={23} color={colors.primary} />}
           </TouchableOpacity>
-          <TouchableOpacity style={[styles.sendBtn, (!body.trim() || sending || closedForTenant) && styles.sendBtnDisabled]} onPress={sendMessage} disabled={!body.trim() || sending || closedForTenant}>
+          <TouchableOpacity style={[styles.sendBtn, (!body.trim() || sending || closedForTicket) && styles.sendBtnDisabled]} onPress={sendMessage} disabled={!body.trim() || sending || closedForTicket}>
             {sending ? <ActivityIndicator size="small" color="#fff" /> : <Ionicons name="send" size={20} color="#fff" />}
           </TouchableOpacity>
-          <TextInput style={styles.input} value={body} onChangeText={setBody} placeholder={closedForTenant ? 'المحادثة مغلقة' : 'اكتب رسالتك أو أرفق صورة/ملف...'} placeholderTextColor={colors.textTertiary} textAlign="right" multiline maxLength={2000} editable={!closedForTenant} />
+          <TextInput style={styles.input} value={body} onChangeText={setBody} placeholder={closedForTicket ? 'التذكرة مغلقة' : 'اكتب رسالتك أو أرفق صورة/ملف...'} placeholderTextColor={colors.textTertiary} textAlign="right" multiline maxLength={2000} editable={!closedForTicket} />
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -437,6 +466,8 @@ const styles = StyleSheet.create({
   chipDanger: { borderColor: '#FCA5A5' },
   chipText: { color: colors.textSecondary, fontWeight: '900', fontSize: 12 },
   chipTextSelected: { color: colors.textInverse },
+  closeTicketBtn: { marginTop: spacing.md, borderRadius: radii.md, borderWidth: 1, borderColor: '#FCA5A5', backgroundColor: '#FEF2F2', height: 44, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  closeTicketText: { color: '#B91C1C', fontWeight: '900' },
   messageRow: { marginBottom: spacing.sm, flexDirection: 'row' },
   messageRowMine: { justifyContent: 'flex-end' },
   messageRowOther: { justifyContent: 'flex-start' },
