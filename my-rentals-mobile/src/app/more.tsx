@@ -88,9 +88,9 @@ export default function MoreScreen() {
         <View style={styles.card}>
           <ActionTile
             icon="chatbubbles-outline"
-            title="المراسلات"
-            subtitle="شات داخلي بين الإدارة والمستأجرين."
-            onPress={() => requireLogin('/chat-threads', 'المراسلات')}
+            title="تذاكر المستأجرين"
+            subtitle="تذاكر داخلية بين الإدارة والمستأجرين حسب النوع والأولوية."
+            onPress={() => requireLogin('/chat-threads', 'تذاكر المستأجرين')}
           />
         </View>
 
