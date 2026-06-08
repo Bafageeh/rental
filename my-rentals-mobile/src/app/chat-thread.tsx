@@ -389,8 +389,8 @@ export default function ChatThreadScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.safe} edges={['bottom']}>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={80} style={styles.flex}>
+    <SafeAreaView style={styles.safe} edges={[]}>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={0} style={styles.flex}>
         <View style={styles.header}>
           <TouchableOpacity style={styles.backBtn} onPress={() => router.back()} activeOpacity={0.85}>
             <Ionicons name="arrow-forward" size={22} color={colors.text} />
@@ -540,7 +540,7 @@ const styles = StyleSheet.create({
   messageTimeOther: { color: colors.textTertiary },
   readText: { color: 'rgba(255,255,255,0.75)', fontSize: 10, fontWeight: '800' },
   closedNotice: { color: '#B91C1C', backgroundColor: '#FEF2F2', borderTopWidth: 1, borderTopColor: '#FCA5A5', textAlign: 'center', paddingVertical: 8, fontWeight: '900' },
-  inputWrap: { flexDirection: 'row', alignItems: 'flex-end', gap: spacing.sm, padding: spacing.md, backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.borderLight },
+  inputWrap: { flexDirection: 'row', alignItems: 'flex-end', gap: spacing.sm, paddingHorizontal: spacing.md, paddingTop: 8, paddingBottom: 8, backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.borderLight },
   input: { flex: 1, minHeight: 46, maxHeight: 120, borderRadius: 18, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.background, color: colors.text, paddingHorizontal: spacing.md, paddingVertical: 10, fontSize: 15 },
   attachBtn: { width: 46, height: 46, borderRadius: 23, backgroundColor: colors.background, borderWidth: 1, borderColor: colors.borderLight, alignItems: 'center', justifyContent: 'center' },
   sendBtn: { width: 46, height: 46, borderRadius: 23, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
