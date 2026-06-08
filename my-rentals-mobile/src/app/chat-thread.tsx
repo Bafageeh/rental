@@ -462,7 +462,7 @@ function InfoItem({ label, value }: { label: string; value: unknown }) {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   flex: { flex: 1 },
-  header: { flexDirection: 'row-reverse', alignItems: 'center', gap: spacing.md, padding: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.borderLight, backgroundColor: colors.surface },
+  header: { flexDirection: 'row-reverse', alignItems: 'center', gap: spacing.md, padding: spacing.md, paddingTop: spacing.md + 25, borderBottomWidth: 1, borderBottomColor: colors.borderLight, backgroundColor: colors.surface },
   backBtn: { width: 42, height: 42, borderRadius: 21, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.borderLight },
   headerText: { flex: 1, alignItems: 'flex-end' },
   title: { ...typography.h3, color: colors.text, textAlign: 'right' },
