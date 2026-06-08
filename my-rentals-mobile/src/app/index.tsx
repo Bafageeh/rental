@@ -1,5 +1,5 @@
-import { router } from "expo-router";
-import { useEffect, useState } from "react";
+import { router, useFocusEffect } from "expo-router";
+import { useCallback, useState } from "react";
 import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuth } from "../context/AuthContext";
@@ -26,6 +26,7 @@ type Summary = {
 type DashboardPayload = {
   summary?: Summary;
   recent_due_payments?: Array<any>;
+  fallback?: boolean;
 };
 
 const EMPTY_DASHBOARD: DashboardPayload = {
@@ -83,13 +84,17 @@ export default function StatisticsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [warning, setWarning] = useState("");
 
-  async function load(refresh = false) {
+  const load = useCallback(async (refresh = false) => {
     try {
       if (refresh) setRefreshing(true);
       else setLoading(true);
       setWarning("");
       const result = await apiGetScoped("/dashboard", "/my/dashboard");
-      setData((result?.data ?? result) as DashboardPayload);
+      const payload = (result?.data ?? result) as DashboardPayload;
+      setData(payload);
+      if (payload?.fallback) {
+        setWarning("تعذر حساب الإحصائيات الحية من الخادم.");
+      }
     } catch (e) {
       setData(EMPTY_DASHBOARD);
       setWarning(e instanceof Error ? e.message : "تعذر تحميل الإحصائيات من الخادم، تم عرض قيم مؤقتة.");
@@ -97,11 +102,13 @@ export default function StatisticsScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }
-
-  useEffect(() => {
-    load(false);
   }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      void load(false);
+    }, [load]),
+  );
 
   const s = data?.summary || {};
   const vacant = s.vacant_units_count ?? s.available_units_count ?? 0;
@@ -117,7 +124,7 @@ export default function StatisticsScreen() {
         <View style={styles.hero}>
           <View style={styles.heroBadge}><Text style={styles.heroBadgeText}>{isAdmin ? "لوحة مدير" : "لوحة مالك"}</Text></View>
           <Text style={styles.heroTitle}>الإحصائيات</Text>
-          <Text style={styles.heroSubtitle}>أهلًا {firstName}، هذه نظرة عامة بحسب صلاحيات الحساب الحالي.</Text>
+          <Text style={styles.heroSubtitle}>{isAdmin ? "نظرة عامة على كل النظام حسب صلاحيات المدير." : `أهلًا ${firstName}، هذه نظرة عامة على عقاراتك.`}</Text>
         </View>
 
         {loading ? (
@@ -129,8 +136,8 @@ export default function StatisticsScreen() {
 
         {warning && !loading ? (
           <View style={styles.warningBanner}>
-            <Text style={styles.warningTitle}>تنبيه مؤقت</Text>
-            <Text style={styles.warningText}>تعذر تحميل البيانات الحية من الخادم، وتم عرض قيم مؤقتة بدل تعطيل الشاشة.</Text>
+            <Text style={styles.warningTitle}>تنبيه</Text>
+            <Text style={styles.warningText}>{warning}</Text>
             <TouchableOpacity style={styles.warningButton} onPress={() => load(false)}><Text style={styles.warningButtonText}>إعادة التحميل</Text></TouchableOpacity>
           </View>
         ) : null}
@@ -138,7 +145,7 @@ export default function StatisticsScreen() {
         {!loading ? (
           <>
             <View style={styles.grid}>
-              <StatCard title="العقارات" value={count(s.properties_count)} subtitle={isAdmin ? "عقارات حساب المدير فقط في عقاراتي" : "عقاراتك الخاصة"} tone="dark" />
+              <StatCard title="العقارات" value={count(s.properties_count)} subtitle={isAdmin ? "إجمالي العقارات" : "عقاراتك الخاصة"} tone="dark" />
               <StatCard title="الوحدات" value={count(s.units_count)} subtitle="إجمالي الوحدات" />
               <StatCard title="نسبة الإشغال" value={pct(s.occupancy_rate)} subtitle="مؤجر / إجمالي" tone="success" />
               <StatCard title="وحدات مؤجرة" value={count(s.rented_units_count)} subtitle="نشطة حاليًا" tone="success" />
