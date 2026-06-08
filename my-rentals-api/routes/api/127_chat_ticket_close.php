@@ -50,7 +50,7 @@ Route::prefix('chat')->group(function () {
         }
 
         $requestType = in_array(($data['request_type'] ?? 'general'), ['general', 'maintenance', 'payment', 'contract'], true) ? $data['request_type'] : 'general';
-        $priority = in_array(($data['priority'] ?? 'normal'), ['normal', 'important', 'urgent'], true) ? $data['priority'] : 'normal';
+        $priority = ($role === 'tenant' && in_array(($data['priority'] ?? 'normal'), ['normal', 'important', 'urgent'], true)) ? $data['priority'] : 'normal';
         $forceNew = filter_var($data['force_new'] ?? false, FILTER_VALIDATE_BOOLEAN);
 
         if (!$forceNew) {
@@ -93,6 +93,80 @@ Route::prefix('chat')->group(function () {
             'message' => 'تم فتح تذكرة جديدة',
             'data' => [
                 'thread' => mr_chat_serialize_thread(DB::table('chat_threads')->where('id', $threadId)->first(), $user),
+            ],
+        ]);
+    });
+
+    Route::post('/threads/{thread}/meta', function (Request $request, int $thread) {
+        mr_chat_ensure_schema();
+
+        $data = $request->validate([
+            'status' => ['nullable', 'string', 'in:open,in_progress,closed'],
+            'request_type' => ['nullable', 'string', 'in:general,maintenance,payment,contract'],
+            'priority' => ['nullable', 'string', 'in:normal,important,urgent'],
+        ]);
+
+        $user = $request->user();
+        $threadRow = DB::table('chat_threads')->where('id', $thread)->first();
+        if (!$threadRow) {
+            return response()->json(['status' => 'error', 'message' => 'التذكرة غير موجودة.'], 404);
+        }
+        if (!mr_chat_authorize_thread($threadRow, $user)) {
+            return response()->json(['status' => 'error', 'message' => 'غير مصرح.'], 403);
+        }
+
+        $role = mr_chat_role($user);
+        $isManager = mr_chat_is_manager($user);
+        $updates = ['updated_at' => now()];
+        $systemMessages = [];
+
+        if (array_key_exists('request_type', $data) && $data['request_type'] !== ($threadRow->request_type ?? 'general')) {
+            if (($threadRow->status ?? 'open') === 'closed' && !$isManager) {
+                return response()->json(['status' => 'error', 'message' => 'التذكرة مغلقة ولا يمكن تعديل نوع الطلب.'], 422);
+            }
+            $updates['request_type'] = $data['request_type'];
+            $systemMessages[] = 'تم تغيير نوع الطلب إلى: ' . mr_chat_request_type_label($data['request_type']);
+        }
+
+        if (array_key_exists('priority', $data) && $data['priority'] !== ($threadRow->priority ?? 'normal')) {
+            if ($role !== 'tenant') {
+                return response()->json(['status' => 'error', 'message' => 'الأولوية يحددها المستأجر فقط.'], 403);
+            }
+            if (($threadRow->status ?? 'open') === 'closed') {
+                return response()->json(['status' => 'error', 'message' => 'التذكرة مغلقة ولا يمكن تعديل الأولوية.'], 422);
+            }
+            $updates['priority'] = $data['priority'];
+            $systemMessages[] = 'تم تغيير الأولوية إلى: ' . mr_chat_priority_label($data['priority']);
+        }
+
+        if (array_key_exists('status', $data) && $data['status'] !== ($threadRow->status ?? 'open')) {
+            if (!$isManager) {
+                return response()->json(['status' => 'error', 'message' => 'تغيير حالة التذكرة مخصص للإدارة فقط.'], 403);
+            }
+            $updates['status'] = $data['status'];
+            $updates['status_updated_at'] = now();
+            if ($data['status'] === 'closed') {
+                $updates['closed_at'] = now();
+                $updates['closed_by_user_id'] = $user->id;
+            } else {
+                $updates['closed_at'] = null;
+                $updates['closed_by_user_id'] = null;
+            }
+            $systemMessages[] = 'تم تغيير حالة التذكرة إلى: ' . mr_chat_status_label($data['status']);
+        }
+
+        if (count($updates) > 1) {
+            DB::table('chat_threads')->where('id', $thread)->update($updates);
+            foreach ($systemMessages as $message) {
+                mr_chat_system_message($thread, $message);
+            }
+        }
+
+        return response()->json([
+            'status' => 'ok',
+            'message' => 'تم تحديث بيانات التذكرة',
+            'data' => [
+                'thread' => mr_chat_serialize_thread(DB::table('chat_threads')->where('id', $thread)->first(), $user),
             ],
         ]);
     });
