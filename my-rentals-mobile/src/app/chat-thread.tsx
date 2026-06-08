@@ -68,14 +68,14 @@ const PRIORITY_OPTIONS = [
   { key: 'urgent', label: 'عاجل' },
 ];
 
+function display(value: unknown) {
+  const text = String(value ?? '').trim();
+  return text || '-';
+}
+
 function timeText(value?: string | null) {
   const raw = String(value || '').replace('T', ' ');
   return raw ? raw.slice(0, 16) : '';
-}
-
-function display(v: unknown) {
-  const text = String(v ?? '').trim();
-  return text || '-';
 }
 
 function fileSize(value?: number | null) {
@@ -156,7 +156,7 @@ export default function ChatThreadScreen() {
 
   function closeTicket() {
     if (!threadId || closedForTicket || closing) return;
-    Alert.alert('إغلاق التذكرة', 'بعد الإغلاق تبقى التذكرة محفوظة ويمكن الرجوع لها، لكن لا يمكن الرد عليها إلا بعد إعادة فتحها من الإدارة.', [
+    Alert.alert('إغلاق التذكرة', 'بعد الإغلاق تبقى التذكرة محفوظة ويمكن الرجوع لها، لكن لا يمكن الرد عليها.', [
       { text: 'إلغاء', style: 'cancel' },
       {
         text: 'إغلاق',
@@ -205,14 +205,12 @@ export default function ChatThreadScreen() {
 
   async function pickAndSendAttachment() {
     if (sendingAttachment || closedForTicket) return;
-
     try {
       const result = await DocumentPicker.getDocumentAsync({
         multiple: false,
         copyToCacheDirectory: true,
         type: ['image/*', 'application/pdf', 'text/plain', 'text/csv', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],
       });
-
       if (result.canceled || !result.assets?.[0]) return;
 
       const asset = result.assets[0];
@@ -222,7 +220,6 @@ export default function ChatThreadScreen() {
         name: asset.name || 'attachment',
         type: asset.mimeType || 'application/octet-stream',
       } as any);
-
       const caption = body.trim();
       if (caption) formData.append('body', caption);
 
@@ -257,7 +254,10 @@ export default function ChatThreadScreen() {
       return (
         <TouchableOpacity style={styles.imageAttachmentWrap} activeOpacity={0.9} onPress={() => openAttachment(attachment)}>
           <Image source={{ uri: url }} style={styles.imageAttachment} resizeMode="cover" />
-          <View style={styles.attachmentCaption}><Ionicons name="image-outline" size={14} color="#fff" /><Text numberOfLines={1} style={styles.imageCaptionText}>{attachmentName(attachment)}</Text></View>
+          <View style={styles.attachmentCaption}>
+            <Ionicons name="image-outline" size={14} color="#fff" />
+            <Text numberOfLines={1} style={styles.imageCaptionText}>{attachmentName(attachment)}</Text>
+          </View>
         </TouchableOpacity>
       );
     }
@@ -275,7 +275,6 @@ export default function ChatThreadScreen() {
 
   function InfoCard() {
     if (!thread) return null;
-
     const detailsToggleLabel = detailsOpen
       ? (isTenant ? 'إخفاء تفاصيل العقد' : 'إخفاء تفاصيل المستأجر والعقد')
       : (isTenant ? 'عرض تفاصيل العقد' : 'عرض تفاصيل المستأجر والعقد');
@@ -341,18 +340,26 @@ export default function ChatThreadScreen() {
             </ScrollView>
 
             <Text style={styles.controlLabel}>الأولوية</Text>
+            <View style={[styles.readOnlyPill, thread.priority === 'urgent' ? styles.readOnlyUrgent : thread.priority === 'important' ? styles.readOnlyImportant : null]}>
+              <Ionicons name="information-circle-outline" size={16} color={colors.textSecondary} />
+              <Text style={styles.readOnlyPillText}>{thread.priority_label || 'عادي'} - يحددها المستأجر فقط</Text>
+            </View>
+          </>
+        ) : (
+          <>
+            <Text style={styles.controlLabel}>الأولوية</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipsRow}>
               {PRIORITY_OPTIONS.map((item) => {
                 const selected = thread.priority === item.key;
                 return (
-                  <TouchableOpacity key={item.key} style={[styles.chip, selected ? styles.chipSelected : null, item.key === 'urgent' ? styles.chipDanger : null]} onPress={() => updateMeta({ priority: item.key })} disabled={updatingMeta}>
+                  <TouchableOpacity key={item.key} style={[styles.chip, selected ? styles.chipSelected : null, item.key === 'urgent' ? styles.chipDanger : null]} onPress={() => updateMeta({ priority: item.key })} disabled={updatingMeta || closedForTicket}>
                     <Text style={[styles.chipText, selected ? styles.chipTextSelected : null]}>{item.label}</Text>
                   </TouchableOpacity>
                 );
               })}
             </ScrollView>
           </>
-        ) : null}
+        )}
 
         {!closedForTicket ? (
           <TouchableOpacity style={styles.closeTicketBtn} activeOpacity={0.85} onPress={closeTicket} disabled={closing}>
@@ -399,11 +406,7 @@ export default function ChatThreadScreen() {
                 <View style={[styles.messageRow, mine ? styles.messageRowMine : styles.messageRowOther]}>
                   <View style={[styles.messageBubble, mine ? styles.messageBubbleMine : styles.messageBubbleOther]}>
                     {item.body ? <Text style={[styles.messageText, mine ? styles.messageTextMine : styles.messageTextOther]}>{item.body}</Text> : null}
-                    {attachments.length > 0 ? (
-                      <View style={styles.attachmentsList}>
-                        {attachments.map((attachment) => <AttachmentView key={attachment.id} attachment={attachment} mine={mine} />)}
-                      </View>
-                    ) : null}
+                    {attachments.length > 0 ? <View style={styles.attachmentsList}>{attachments.map((a) => <AttachmentView key={a.id} attachment={a} mine={mine} />)}</View> : null}
                     <View style={styles.messageFooter}>
                       <Text style={[styles.messageTime, mine ? styles.messageTimeMine : styles.messageTimeOther]}>{timeText(item.created_at)}</Text>
                       {mine ? <Text style={styles.readText}>{item.read_at ? 'مقروءة' : 'مرسلة'}</Text> : null}
@@ -474,6 +477,10 @@ const styles = StyleSheet.create({
   chipDanger: { borderColor: '#FCA5A5' },
   chipText: { color: colors.textSecondary, fontWeight: '900', fontSize: 12 },
   chipTextSelected: { color: colors.textInverse },
+  readOnlyPill: { alignSelf: 'flex-end', flexDirection: 'row-reverse', alignItems: 'center', gap: 6, borderRadius: 999, borderWidth: 1, borderColor: colors.borderLight, backgroundColor: colors.background, paddingHorizontal: spacing.md, paddingVertical: 8, marginBottom: spacing.xs },
+  readOnlyUrgent: { backgroundColor: '#FEE2E2', borderColor: '#FCA5A5' },
+  readOnlyImportant: { backgroundColor: '#FEF3C7', borderColor: '#FBBF24' },
+  readOnlyPillText: { color: colors.textSecondary, fontWeight: '900', fontSize: 12 },
   closeTicketBtn: { marginTop: spacing.md, borderRadius: radii.md, borderWidth: 1, borderColor: '#FCA5A5', backgroundColor: '#FEF2F2', height: 44, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 8 },
   closeTicketText: { color: '#B91C1C', fontWeight: '900' },
   messageRow: { marginBottom: spacing.sm, flexDirection: 'row' },
