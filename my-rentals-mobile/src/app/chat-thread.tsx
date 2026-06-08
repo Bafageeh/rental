@@ -105,6 +105,7 @@ export default function ChatThreadScreen() {
   const [updatingMeta, setUpdatingMeta] = useState(false);
   const [closing, setClosing] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [controlsOpen, setControlsOpen] = useState(false);
   const [thread, setThread] = useState<ThreadInfo | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [body, setBody] = useState('');
@@ -277,7 +278,7 @@ export default function ChatThreadScreen() {
     if (!thread) return null;
     const detailsToggleLabel = detailsOpen
       ? (isTenant ? 'إخفاء تفاصيل العقد' : 'إخفاء تفاصيل المستأجر والعقد')
-      : (isTenant ? 'عرض تفاصيل العقد' : 'عرض تفاصيل المستأجر والعقد');
+      : (isTenant ? 'تفاصيل العقد' : 'تفاصيل المستأجر والعقد');
 
     return (
       <View style={styles.infoCard}>
@@ -287,14 +288,26 @@ export default function ChatThreadScreen() {
           </View>
           <View style={styles.infoTitleWrap}>
             <Text style={styles.infoTitle}>تذكرة #{thread.id}</Text>
-            <Text style={styles.infoSub}>النوع: {thread.request_type_label || 'استفسار عام'} | الأولوية: {thread.priority_label || 'عادي'}</Text>
+            <Text style={styles.infoSub}>العقار: {display(thread.property_name)} | الوحدة: {display(thread.unit_number)}</Text>
           </View>
         </View>
 
-        <TouchableOpacity style={styles.detailsToggle} activeOpacity={0.85} onPress={() => setDetailsOpen((v) => !v)}>
-          <Ionicons name={detailsOpen ? 'chevron-up-outline' : 'chevron-down-outline'} size={17} color={colors.textSecondary} />
-          <Text style={styles.detailsToggleText}>{detailsToggleLabel}</Text>
-        </TouchableOpacity>
+        <View style={styles.summaryRow}>
+          <View style={styles.summaryPill}><Text style={styles.summaryLabel}>النوع</Text><Text style={styles.summaryValue}>{thread.request_type_label || 'استفسار عام'}</Text></View>
+          <View style={[styles.summaryPill, thread.priority === 'urgent' ? styles.summaryUrgent : thread.priority === 'important' ? styles.summaryImportant : null]}><Text style={styles.summaryLabel}>الأولوية</Text><Text style={styles.summaryValue}>{thread.priority_label || 'عادي'}</Text></View>
+          <View style={styles.summaryPill}><Text style={styles.summaryLabel}>العقد</Text><Text numberOfLines={1} style={styles.summaryValue}>{display(thread.contract_number)}</Text></View>
+        </View>
+
+        <View style={styles.quickActionsRow}>
+          <TouchableOpacity style={styles.compactToggle} activeOpacity={0.85} onPress={() => setDetailsOpen((v) => !v)}>
+            <Ionicons name={detailsOpen ? 'chevron-up-outline' : 'document-text-outline'} size={16} color={colors.textSecondary} />
+            <Text style={styles.compactToggleText}>{detailsToggleLabel}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.compactToggle, controlsOpen ? styles.compactToggleActive : null]} activeOpacity={0.85} onPress={() => setControlsOpen((v) => !v)}>
+            <Ionicons name={controlsOpen ? 'chevron-up-outline' : 'options-outline'} size={16} color={controlsOpen ? colors.primary : colors.textSecondary} />
+            <Text style={[styles.compactToggleText, controlsOpen ? styles.compactToggleTextActive : null]}>{controlsOpen ? 'إخفاء التحكم' : 'إدارة التذكرة'}</Text>
+          </TouchableOpacity>
+        </View>
 
         {detailsOpen ? (
           <View style={styles.infoGrid}>
@@ -313,59 +326,63 @@ export default function ChatThreadScreen() {
           </View>
         ) : null}
 
-        <Text style={styles.controlLabel}>نوع الطلب</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipsRow}>
-          {REQUEST_TYPES.map((item) => {
-            const selected = thread.request_type === item.key;
-            return (
-              <TouchableOpacity key={item.key} style={[styles.chip, selected ? styles.chipSelected : null]} onPress={() => updateMeta({ request_type: item.key })} disabled={updatingMeta || closedForTicket}>
-                <Text style={[styles.chipText, selected ? styles.chipTextSelected : null]}>{item.label}</Text>
+        {controlsOpen ? (
+          <View style={styles.controlsPanel}>
+            <Text style={styles.controlLabel}>نوع الطلب</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipsRow}>
+              {REQUEST_TYPES.map((item) => {
+                const selected = thread.request_type === item.key;
+                return (
+                  <TouchableOpacity key={item.key} style={[styles.chip, selected ? styles.chipSelected : null]} onPress={() => updateMeta({ request_type: item.key })} disabled={updatingMeta || closedForTicket}>
+                    <Text style={[styles.chipText, selected ? styles.chipTextSelected : null]}>{item.label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+
+            {!isTenant ? (
+              <>
+                <Text style={styles.controlLabel}>حالة التذكرة</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipsRow}>
+                  {STATUS_OPTIONS.map((item) => {
+                    const selected = thread.status === item.key;
+                    return (
+                      <TouchableOpacity key={item.key} style={[styles.chip, selected ? styles.chipSelected : null]} onPress={() => updateMeta({ status: item.key })} disabled={updatingMeta}>
+                        <Text style={[styles.chipText, selected ? styles.chipTextSelected : null]}>{item.label}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+
+                <Text style={styles.controlLabel}>الأولوية</Text>
+                <View style={[styles.readOnlyPill, thread.priority === 'urgent' ? styles.readOnlyUrgent : thread.priority === 'important' ? styles.readOnlyImportant : null]}>
+                  <Ionicons name="information-circle-outline" size={16} color={colors.textSecondary} />
+                  <Text style={styles.readOnlyPillText}>{thread.priority_label || 'عادي'} - يحددها المستأجر فقط</Text>
+                </View>
+              </>
+            ) : (
+              <>
+                <Text style={styles.controlLabel}>الأولوية</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipsRow}>
+                  {PRIORITY_OPTIONS.map((item) => {
+                    const selected = thread.priority === item.key;
+                    return (
+                      <TouchableOpacity key={item.key} style={[styles.chip, selected ? styles.chipSelected : null, item.key === 'urgent' ? styles.chipDanger : null]} onPress={() => updateMeta({ priority: item.key })} disabled={updatingMeta || closedForTicket}>
+                        <Text style={[styles.chipText, selected ? styles.chipTextSelected : null]}>{item.label}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              </>
+            )}
+
+            {!closedForTicket ? (
+              <TouchableOpacity style={styles.closeTicketBtn} activeOpacity={0.85} onPress={closeTicket} disabled={closing}>
+                {closing ? <ActivityIndicator size="small" color="#B91C1C" /> : <Ionicons name="checkmark-done-outline" size={18} color="#B91C1C" />}
+                <Text style={styles.closeTicketText}>إغلاق التذكرة</Text>
               </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-
-        {!isTenant ? (
-          <>
-            <Text style={styles.controlLabel}>حالة التذكرة</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipsRow}>
-              {STATUS_OPTIONS.map((item) => {
-                const selected = thread.status === item.key;
-                return (
-                  <TouchableOpacity key={item.key} style={[styles.chip, selected ? styles.chipSelected : null]} onPress={() => updateMeta({ status: item.key })} disabled={updatingMeta}>
-                    <Text style={[styles.chipText, selected ? styles.chipTextSelected : null]}>{item.label}</Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-
-            <Text style={styles.controlLabel}>الأولوية</Text>
-            <View style={[styles.readOnlyPill, thread.priority === 'urgent' ? styles.readOnlyUrgent : thread.priority === 'important' ? styles.readOnlyImportant : null]}>
-              <Ionicons name="information-circle-outline" size={16} color={colors.textSecondary} />
-              <Text style={styles.readOnlyPillText}>{thread.priority_label || 'عادي'} - يحددها المستأجر فقط</Text>
-            </View>
-          </>
-        ) : (
-          <>
-            <Text style={styles.controlLabel}>الأولوية</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipsRow}>
-              {PRIORITY_OPTIONS.map((item) => {
-                const selected = thread.priority === item.key;
-                return (
-                  <TouchableOpacity key={item.key} style={[styles.chip, selected ? styles.chipSelected : null, item.key === 'urgent' ? styles.chipDanger : null]} onPress={() => updateMeta({ priority: item.key })} disabled={updatingMeta || closedForTicket}>
-                    <Text style={[styles.chipText, selected ? styles.chipTextSelected : null]}>{item.label}</Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-          </>
-        )}
-
-        {!closedForTicket ? (
-          <TouchableOpacity style={styles.closeTicketBtn} activeOpacity={0.85} onPress={closeTicket} disabled={closing}>
-            {closing ? <ActivityIndicator size="small" color="#B91C1C" /> : <Ionicons name="checkmark-done-outline" size={18} color="#B91C1C" />}
-            <Text style={styles.closeTicketText}>إغلاق التذكرة</Text>
-          </TouchableOpacity>
+            ) : null}
+          </View>
         ) : null}
       </View>
     );
@@ -445,43 +462,53 @@ function InfoItem({ label, value }: { label: string; value: unknown }) {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   flex: { flex: 1 },
-  header: { flexDirection: 'row-reverse', alignItems: 'center', gap: spacing.md, padding: spacing.lg, borderBottomWidth: 1, borderBottomColor: colors.borderLight, backgroundColor: colors.surface },
-  backBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.borderLight },
+  header: { flexDirection: 'row-reverse', alignItems: 'center', gap: spacing.md, padding: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.borderLight, backgroundColor: colors.surface },
+  backBtn: { width: 42, height: 42, borderRadius: 21, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.borderLight },
   headerText: { flex: 1, alignItems: 'flex-end' },
   title: { ...typography.h3, color: colors.text, textAlign: 'right' },
-  subtitle: { color: colors.textSecondary, textAlign: 'right', marginTop: 3 },
+  subtitle: { color: colors.textSecondary, textAlign: 'right', marginTop: 2, fontSize: 12 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   loadingText: { color: colors.textSecondary, marginTop: spacing.sm },
-  messagesList: { padding: spacing.lg, paddingBottom: spacing.xl },
+  messagesList: { padding: spacing.md, paddingBottom: spacing.lg },
   emptyText: { color: colors.textSecondary, textAlign: 'center', backgroundColor: colors.surface, padding: spacing.lg, borderRadius: radii.lg, overflow: 'hidden' },
-  infoCard: { backgroundColor: colors.surface, borderRadius: radii.xl, borderWidth: 1, borderColor: colors.borderLight, padding: spacing.lg, marginBottom: spacing.lg },
-  infoTop: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm, marginBottom: spacing.md },
+  infoCard: { backgroundColor: colors.surface, borderRadius: radii.xl, borderWidth: 1, borderColor: colors.borderLight, padding: spacing.md, marginBottom: spacing.md },
+  infoTop: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm, marginBottom: spacing.sm },
   infoTitleWrap: { flex: 1, alignItems: 'flex-end' },
-  infoTitle: { color: colors.text, fontWeight: '900', fontSize: 16, textAlign: 'right' },
+  infoTitle: { color: colors.text, fontWeight: '900', fontSize: 18, textAlign: 'right' },
   infoSub: { color: colors.textSecondary, fontWeight: '700', fontSize: 12, marginTop: 3, textAlign: 'right' },
   statusPill: { borderRadius: 999, paddingHorizontal: 12, paddingVertical: 7 },
   statusOpen: { backgroundColor: '#DCFCE7' },
   statusProgress: { backgroundColor: '#FEF3C7' },
   statusClosed: { backgroundColor: '#FEE2E2' },
   statusText: { color: colors.text, fontWeight: '900', fontSize: 12 },
-  detailsToggle: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 6, borderWidth: 1, borderColor: colors.borderLight, backgroundColor: colors.background, borderRadius: radii.md, paddingVertical: 9, marginBottom: spacing.sm },
-  detailsToggleText: { color: colors.textSecondary, fontWeight: '900', fontSize: 12 },
-  infoGrid: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.sm },
+  summaryRow: { flexDirection: 'row-reverse', gap: 7, marginBottom: spacing.sm },
+  summaryPill: { flex: 1, minHeight: 50, borderRadius: radii.lg, backgroundColor: colors.background, borderWidth: 1, borderColor: colors.borderLight, alignItems: 'flex-end', justifyContent: 'center', paddingHorizontal: spacing.sm },
+  summaryUrgent: { backgroundColor: '#FEF2F2', borderColor: '#FCA5A5' },
+  summaryImportant: { backgroundColor: '#FFFBEB', borderColor: '#FBBF24' },
+  summaryLabel: { color: colors.textTertiary, fontWeight: '800', fontSize: 10, marginBottom: 2 },
+  summaryValue: { color: colors.text, fontWeight: '900', fontSize: 12, textAlign: 'right' },
+  quickActionsRow: { flexDirection: 'row-reverse', gap: spacing.sm, marginBottom: spacing.xs },
+  compactToggle: { flex: 1, minHeight: 42, borderRadius: radii.md, borderWidth: 1, borderColor: colors.borderLight, backgroundColor: colors.background, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 6, paddingHorizontal: spacing.sm },
+  compactToggleActive: { borderColor: '#99F6E4', backgroundColor: '#ECFDF5' },
+  compactToggleText: { color: colors.textSecondary, fontWeight: '900', fontSize: 12, textAlign: 'center' },
+  compactToggleTextActive: { color: colors.primary },
+  infoGrid: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.sm },
   infoItem: { width: '48%', backgroundColor: colors.background, borderRadius: radii.md, borderWidth: 1, borderColor: colors.borderLight, padding: spacing.sm, alignItems: 'flex-end' },
   infoLabel: { color: colors.textTertiary, fontSize: 11, fontWeight: '800' },
   infoValue: { color: colors.text, fontSize: 13, fontWeight: '900', marginTop: 3, textAlign: 'right' },
-  controlLabel: { color: colors.textSecondary, fontSize: 12, fontWeight: '900', textAlign: 'right', marginTop: spacing.sm, marginBottom: 6 },
+  controlsPanel: { marginTop: spacing.sm, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.borderLight, backgroundColor: '#FBFBFA', padding: spacing.sm },
+  controlLabel: { color: colors.textSecondary, fontSize: 12, fontWeight: '900', textAlign: 'right', marginTop: spacing.xs, marginBottom: 6 },
   chipsRow: { flexDirection: 'row-reverse', gap: spacing.xs, paddingBottom: 2 },
-  chip: { borderRadius: 999, borderWidth: 1, borderColor: colors.borderLight, backgroundColor: colors.background, paddingHorizontal: spacing.md, paddingVertical: 8 },
+  chip: { borderRadius: 999, borderWidth: 1, borderColor: colors.borderLight, backgroundColor: colors.surface, paddingHorizontal: spacing.md, paddingVertical: 8 },
   chipSelected: { backgroundColor: colors.primary, borderColor: colors.primary },
   chipDanger: { borderColor: '#FCA5A5' },
   chipText: { color: colors.textSecondary, fontWeight: '900', fontSize: 12 },
   chipTextSelected: { color: colors.textInverse },
-  readOnlyPill: { alignSelf: 'flex-end', flexDirection: 'row-reverse', alignItems: 'center', gap: 6, borderRadius: 999, borderWidth: 1, borderColor: colors.borderLight, backgroundColor: colors.background, paddingHorizontal: spacing.md, paddingVertical: 8, marginBottom: spacing.xs },
+  readOnlyPill: { alignSelf: 'flex-end', flexDirection: 'row-reverse', alignItems: 'center', gap: 6, borderRadius: 999, borderWidth: 1, borderColor: colors.borderLight, backgroundColor: colors.surface, paddingHorizontal: spacing.md, paddingVertical: 8, marginBottom: spacing.xs },
   readOnlyUrgent: { backgroundColor: '#FEE2E2', borderColor: '#FCA5A5' },
   readOnlyImportant: { backgroundColor: '#FEF3C7', borderColor: '#FBBF24' },
   readOnlyPillText: { color: colors.textSecondary, fontWeight: '900', fontSize: 12 },
-  closeTicketBtn: { marginTop: spacing.md, borderRadius: radii.md, borderWidth: 1, borderColor: '#FCA5A5', backgroundColor: '#FEF2F2', height: 44, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  closeTicketBtn: { marginTop: spacing.md, borderRadius: radii.md, borderWidth: 1, borderColor: '#FCA5A5', backgroundColor: '#FEF2F2', height: 42, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 8 },
   closeTicketText: { color: '#B91C1C', fontWeight: '900' },
   messageRow: { marginBottom: spacing.sm, flexDirection: 'row' },
   messageRowMine: { justifyContent: 'flex-end' },
