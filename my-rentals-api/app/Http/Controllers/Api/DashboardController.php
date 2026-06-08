@@ -31,7 +31,7 @@ class DashboardController extends Controller
                 'line' => $e->getLine(),
             ]);
 
-            return response()->json($this->emptyDashboardPayload($request));
+            return response()->json($this->emptyDashboardPayload($request, true));
         }
     }
 
@@ -41,23 +41,35 @@ class DashboardController extends Controller
             ? my_rentals_current_user_for_scope($request)
             : $request->user();
 
-        $ownerIds = $this->ownerIdsForUser($user);
-        $propertyIds = $this->propertyIds($ownerIds);
-        $visibleUnitIds = $this->visibleUnitIds($propertyIds);
-        $allUnitIds = $this->allUnitIds($propertyIds);
-        $contractIds = $this->contractIds($allUnitIds);
         $today = Carbon::today('Asia/Riyadh');
+        $role = $this->effectiveRole($user);
+        $isAdmin = $this->isAdminRole($role);
+
+        // في حساب المدير يجب أن تكون الإحصائيات عامة للنظام، أما حساب المالك فتقتصر على ملاكه فقط.
+        // سابقاً كانت تعتمد على مالك type=self فقط، وهذا جعل البطاقات تظهر أصفاراً إذا لم يكن مالك المدير مضبوطاً.
+        $ownerIds = $this->ownerIdsForUser($user, $request, $isAdmin);
+        $propertyIds = $this->propertyIds($ownerIds, $isAdmin);
+        $visibleUnitIds = $this->unitIdsForScope($propertyIds, $ownerIds, true, $isAdmin);
+        $allUnitIds = $this->unitIdsForScope($propertyIds, $ownerIds, false, $isAdmin);
+        $contractIds = $this->contractIds($allUnitIds, $isAdmin);
+        $activeContractIds = $this->activeContractsQuery($allUnitIds, $today, $isAdmin)->pluck('id')->map(fn ($id) => (int) $id)->unique()->values();
 
         $paidIncome = $this->paymentsSum($contractIds, ['paid', 'مدفوع', 'مسدد']);
-        $dueIncome = $this->paymentsSum($contractIds, ['due', 'مستحق']);
+        $dueIncome = $this->paymentsSum($contractIds, ['due', 'مستحق', 'unpaid', 'غير مدفوع', 'partial', 'جزئي']);
         $overdueIncome = $this->overduePaymentsQuery($contractIds, $today)->sum('amount');
-        $expenses = $this->expensesSum($propertyIds);
+        $expenses = $this->expensesSum($propertyIds, $visibleUnitIds);
 
-        $unitsQuery = Unit::query()->whereIn('id', $visibleUnitIds);
-        $unitsCount = (clone $unitsQuery)->count();
-        $rentedUnits = (clone $unitsQuery)->whereIn('status', ['rented', 'مؤجرة', 'مؤجر'])->count();
-        $availableUnits = (clone $unitsQuery)->whereIn('status', ['available', 'vacant', 'متاحة', 'شاغرة'])->count();
-        $vacantUnits = $availableUnits;
+        $unitsCount = $visibleUnitIds->count();
+        $statusRentedUnitIds = $this->rentedUnitIdsByStatus($visibleUnitIds);
+        $activeContractUnitIds = $this->activeContractsQuery($allUnitIds, $today, $isAdmin)
+            ->whereIn('unit_id', $visibleUnitIds)
+            ->pluck('unit_id')
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values();
+
+        $rentedUnits = $statusRentedUnitIds->merge($activeContractUnitIds)->unique()->count();
+        $vacantUnits = max(0, $unitsCount - $rentedUnits);
 
         $overduePayments = $this->overduePaymentsQuery($contractIds, $today)
             ->with([
@@ -79,7 +91,7 @@ class DashboardController extends Controller
                 ];
             });
 
-        $owners = $this->ownersSummary($ownerIds);
+        $owners = $this->ownersSummary($ownerIds, $isAdmin);
 
         return response()->json([
             'status' => 'ok',
@@ -88,18 +100,19 @@ class DashboardController extends Controller
                 'owner_ids' => $ownerIds->values(),
                 'property_ids' => $propertyIds->values(),
                 'user_id' => $user?->id,
-                'role' => $user?->role,
+                'role' => $role,
+                'is_admin_scope' => $isAdmin,
             ],
             'summary' => [
                 'owners_count' => $ownerIds->count(),
                 'properties_count' => $propertyIds->count(),
                 'units_count' => $unitsCount,
                 'rented_units_count' => $rentedUnits,
-                'available_units_count' => $availableUnits,
+                'available_units_count' => $vacantUnits,
                 'vacant_units_count' => $vacantUnits,
                 'occupancy_rate' => $unitsCount > 0 ? round(($rentedUnits / $unitsCount) * 100, 1) : 0,
                 'tenants_count' => $this->tenantsCount($contractIds),
-                'active_contracts_count' => $contractIds->isEmpty() ? 0 : Contract::whereIn('id', $contractIds)->whereIn('status', ['active', 'نشط'])->count(),
+                'active_contracts_count' => $activeContractIds->count(),
                 'paid_income' => $paidIncome,
                 'due_income' => $dueIncome,
                 'overdue_income' => (float) $overdueIncome,
@@ -110,7 +123,7 @@ class DashboardController extends Controller
                 'total_expenses' => $expenses,
                 'overdue_count' => $overduePayments->count(),
                 'critical_alerts_count' => $overduePayments->count(),
-                'open_followups_count' => 0,
+                'open_followups_count' => $this->openChatTicketsCount($ownerIds, $isAdmin),
             ],
             'owners' => $owners,
             'overdue_payments' => $overduePayments,
@@ -118,19 +131,19 @@ class DashboardController extends Controller
         ]);
     }
 
-    private function emptyDashboardPayload(Request $request): array
+    private function emptyDashboardPayload(Request $request, bool $fallback = false): array
     {
         $user = $request->user();
 
         return [
             'status' => 'ok',
             'app' => 'my-rentals-api',
-            'fallback' => true,
+            'fallback' => $fallback,
             'scope' => [
                 'owner_ids' => [],
                 'property_ids' => [],
                 'user_id' => $user?->id,
-                'role' => $user?->role,
+                'role' => $this->effectiveRole($user),
             ],
             'summary' => [
                 'owners_count' => 0,
@@ -164,19 +177,21 @@ class DashboardController extends Controller
     {
         $query = Payment::query();
 
-        if ($contractIds->isEmpty() || !Schema::hasTable('payments')) {
+        if ($contractIds->isEmpty() || !$this->hasTable('payments')) {
             return $query->whereRaw('1 = 0');
         }
 
-        $query->whereIn('contract_id', $contractIds);
+        if ($this->hasColumn('payments', 'contract_id')) {
+            $query->whereIn('contract_id', $contractIds);
+        }
 
-        if (Schema::hasColumn('payments', 'status')) {
+        if ($this->hasColumn('payments', 'status')) {
             $query->whereNotIn('status', ['paid', 'مدفوع', 'مسدد', 'cancelled', 'canceled', 'ملغي', 'ملغى']);
         }
 
-        if (Schema::hasColumn('payments', 'due_date')) {
+        if ($this->hasColumn('payments', 'due_date')) {
             $query->whereDate('due_date', '<', $today->toDateString());
-        } elseif (Schema::hasColumn('payments', 'status')) {
+        } elseif ($this->hasColumn('payments', 'status')) {
             $query->whereIn('status', ['overdue', 'متأخر', 'متاخر']);
         } else {
             $query->whereRaw('1 = 0');
@@ -185,25 +200,86 @@ class DashboardController extends Controller
         return $query;
     }
 
-    private function ownersSummary(Collection $ownerIds): Collection
+    private function activeContractsQuery(Collection $unitIds, Carbon $today, bool $isAdmin)
     {
-        if ($ownerIds->isEmpty() || !Schema::hasTable('owners')) {
+        $query = Contract::query();
+
+        if (!$this->hasTable('contracts')) {
+            return $query->whereRaw('1 = 0');
+        }
+
+        if ($unitIds->isEmpty() && !$isAdmin) {
+            return $query->whereRaw('1 = 0');
+        }
+
+        if ($unitIds->isNotEmpty() && $this->hasColumn('contracts', 'unit_id')) {
+            $query->whereIn('unit_id', $unitIds);
+        }
+
+        $hasStatus = $this->hasColumn('contracts', 'status');
+        $hasStart = $this->hasColumn('contracts', 'start_date');
+        $hasEnd = $this->hasColumn('contracts', 'end_date');
+
+        if ($hasStatus || $hasStart || $hasEnd) {
+            $query->where(function ($statusOrDateQuery) use ($hasStatus, $hasStart, $hasEnd, $today) {
+                $used = false;
+
+                if ($hasStatus) {
+                    $statusOrDateQuery->whereIn('status', ['active', 'نشط', 'ساري', 'مفتوح', 'open']);
+                    $used = true;
+                }
+
+                if ($hasStart || $hasEnd) {
+                    $dateScope = function ($dateQuery) use ($hasStart, $hasEnd, $today) {
+                        if ($hasStart) {
+                            $dateQuery->where(function ($q) use ($today) {
+                                $q->whereNull('start_date')->orWhereDate('start_date', '<=', $today->toDateString());
+                            });
+                        }
+
+                        if ($hasEnd) {
+                            $dateQuery->where(function ($q) use ($today) {
+                                $q->whereNull('end_date')->orWhereDate('end_date', '>=', $today->toDateString());
+                            });
+                        }
+                    };
+
+                    if ($used) {
+                        $statusOrDateQuery->orWhere($dateScope);
+                    } else {
+                        $statusOrDateQuery->where($dateScope);
+                    }
+                }
+            });
+        }
+
+        return $query;
+    }
+
+    private function ownersSummary(Collection $ownerIds, bool $isAdmin): Collection
+    {
+        if (!$this->hasTable('owners')) {
             return collect();
         }
 
-        return Owner::query()
-            ->whereIn('id', $ownerIds)
-            ->withCount('properties')
-            ->orderBy(Schema::hasColumn('owners', 'type') ? 'type' : 'id')
+        $query = Owner::query()->withCount('properties');
+        if ($ownerIds->isNotEmpty()) {
+            $query->whereIn('id', $ownerIds);
+        } elseif (!$isAdmin) {
+            return collect();
+        }
+
+        return $query
+            ->orderBy($this->hasColumn('owners', 'type') ? 'type' : 'id')
             ->orderBy('name')
             ->get()
             ->map(function ($owner) {
-                $ownerPropertyIds = Property::where('owner_id', $owner->id)->pluck('id');
-                $ownerUnitIds = Unit::whereIn('property_id', $ownerPropertyIds)->pluck('id');
-                $ownerContractIds = Contract::whereIn('unit_id', $ownerUnitIds)->pluck('id');
-                $income = Payment::whereIn('contract_id', $ownerContractIds)->whereIn('status', ['paid', 'مدفوع', 'مسدد'])->sum('amount');
-                $due = Payment::whereIn('contract_id', $ownerContractIds)->whereNotIn('status', ['paid', 'مدفوع', 'مسدد'])->sum('amount');
-                $expenses = PropertyExpense::whereIn('property_id', $ownerPropertyIds)->sum('amount');
+                $ownerPropertyIds = $this->propertyIds(collect([(int) $owner->id]), false);
+                $ownerUnitIds = $this->unitIdsForScope($ownerPropertyIds, collect([(int) $owner->id]), false, false);
+                $ownerContractIds = $this->contractIds($ownerUnitIds, false);
+                $income = $this->paymentsSum($ownerContractIds, ['paid', 'مدفوع', 'مسدد']);
+                $due = $this->paymentsSum($ownerContractIds, ['due', 'مستحق', 'unpaid', 'غير مدفوع', 'partial', 'جزئي']);
+                $expenses = $this->expensesSum($ownerPropertyIds, $ownerUnitIds);
 
                 return [
                     'id' => $owner->id,
@@ -220,16 +296,21 @@ class DashboardController extends Controller
             });
     }
 
-    private function ownerIdsForUser($user): Collection
+    private function ownerIdsForUser($user, Request $request, bool $isAdmin): Collection
     {
-        if (!$user || !Schema::hasTable('owners')) {
+        if (!$user || !$this->hasTable('owners')) {
             return collect();
         }
 
-        $role = method_exists($user, 'effectiveRole') ? $user->effectiveRole() : strtolower((string) ($user->role ?? ''));
-        $isAdmin = in_array($role, ['admin', 'manager', 'super_admin'], true);
-        $ownerIds = collect();
+        if ($isAdmin && $request->filled('owner_id')) {
+            return collect([(int) $request->integer('owner_id')])->filter()->values();
+        }
 
+        if ($isAdmin) {
+            return DB::table('owners')->pluck('id')->map(fn ($id) => (int) $id)->filter()->unique()->values();
+        }
+
+        $ownerIds = collect();
         if (!empty($user->owner_id)) {
             $ownerIds->push((int) $user->owner_id);
         }
@@ -238,12 +319,12 @@ class DashboardController extends Controller
             $hasCondition = false;
 
             if (!empty($user->id)) {
-                if (Schema::hasColumn('owners', 'user_id')) {
+                if ($this->hasColumn('owners', 'user_id')) {
                     $query->orWhere('user_id', $user->id);
                     $hasCondition = true;
                 }
 
-                if (Schema::hasColumn('owners', 'account_user_id')) {
+                if ($this->hasColumn('owners', 'account_user_id')) {
                     $query->orWhere('account_user_id', $user->id);
                     $hasCondition = true;
                 }
@@ -254,91 +335,206 @@ class DashboardController extends Controller
             }
         })->pluck('id');
 
-        $ownerIds = $ownerIds->merge($linkedOwners);
-
-        if ($isAdmin && $ownerIds->isEmpty() && Schema::hasColumn('owners', 'type')) {
-            $ownerIds = $ownerIds->merge(DB::table('owners')->where('type', 'self')->pluck('id'));
-        }
-
         return $ownerIds
+            ->merge($linkedOwners)
             ->filter(fn ($id) => !empty($id))
             ->map(fn ($id) => (int) $id)
             ->unique()
             ->values();
     }
 
-    private function propertyIds(Collection $ownerIds): Collection
+    private function propertyIds(Collection $ownerIds, bool $isAdmin): Collection
     {
-        if ($ownerIds->isEmpty() || !Schema::hasTable('properties') || !Schema::hasColumn('properties', 'owner_id')) {
+        if (!$this->hasTable('properties') || !$this->hasColumn('properties', 'id')) {
             return collect();
         }
 
-        return Property::whereIn('owner_id', $ownerIds)->pluck('id')->values();
+        $query = Property::query();
+        if ($ownerIds->isNotEmpty() && $this->hasColumn('properties', 'owner_id')) {
+            $query->whereIn('owner_id', $ownerIds);
+        } elseif (!$isAdmin) {
+            return collect();
+        }
+
+        return $query->pluck('id')->map(fn ($id) => (int) $id)->unique()->values();
     }
 
-    private function visibleUnitIds(Collection $propertyIds): Collection
+    private function unitIdsForScope(Collection $propertyIds, Collection $ownerIds, bool $visibleOnly, bool $isAdmin): Collection
     {
-        if ($propertyIds->isEmpty() || !Schema::hasTable('units') || !Schema::hasColumn('units', 'property_id')) {
+        if (!$this->hasTable('units') || !$this->hasColumn('units', 'id')) {
             return collect();
         }
 
-        $query = Unit::whereIn('property_id', $propertyIds);
+        $query = Unit::query();
+        $canUseOwner = $this->hasColumn('units', 'owner_id') && $ownerIds->isNotEmpty();
+        $canUseProperty = $this->hasColumn('units', 'property_id') && $propertyIds->isNotEmpty();
 
-        if (Schema::hasColumn('units', 'unit_number')) {
-            $query->where('unit_number', '!=', 'العقار كامل');
-        }
+        if ($canUseOwner || $canUseProperty) {
+            $query->where(function ($unitScope) use ($canUseOwner, $canUseProperty, $ownerIds, $propertyIds) {
+                $used = false;
 
-        if (Schema::hasColumn('units', 'type')) {
-            $query->where(function ($subQuery) {
-                $subQuery->whereNull('type')->orWhere('type', '!=', 'whole_property');
+                if ($canUseOwner) {
+                    $unitScope->whereIn('owner_id', $ownerIds);
+                    $used = true;
+                }
+
+                if ($canUseProperty) {
+                    if ($used) {
+                        $unitScope->orWhereIn('property_id', $propertyIds);
+                    } else {
+                        $unitScope->whereIn('property_id', $propertyIds);
+                    }
+                }
             });
-        }
-
-        return $query->pluck('id')->values();
-    }
-
-    private function allUnitIds(Collection $propertyIds): Collection
-    {
-        if ($propertyIds->isEmpty() || !Schema::hasTable('units') || !Schema::hasColumn('units', 'property_id')) {
+        } elseif (!$isAdmin) {
             return collect();
         }
 
-        return Unit::whereIn('property_id', $propertyIds)->pluck('id')->values();
+        if ($visibleOnly) {
+            if ($this->hasColumn('units', 'unit_number')) {
+                $query->where('unit_number', '!=', 'العقار كامل');
+            }
+
+            if ($this->hasColumn('units', 'type')) {
+                $query->where(function ($subQuery) {
+                    $subQuery->whereNull('type')->orWhere('type', '!=', 'whole_property');
+                });
+            }
+        }
+
+        return $query->pluck('id')->map(fn ($id) => (int) $id)->unique()->values();
     }
 
-    private function contractIds(Collection $unitIds): Collection
+    private function contractIds(Collection $unitIds, bool $isAdmin): Collection
     {
-        if ($unitIds->isEmpty() || !Schema::hasTable('contracts') || !Schema::hasColumn('contracts', 'unit_id')) {
+        if (!$this->hasTable('contracts') || !$this->hasColumn('contracts', 'id')) {
             return collect();
         }
 
-        return Contract::whereIn('unit_id', $unitIds)->pluck('id')->values();
+        $query = Contract::query();
+        if ($unitIds->isNotEmpty() && $this->hasColumn('contracts', 'unit_id')) {
+            $query->whereIn('unit_id', $unitIds);
+        } elseif (!$isAdmin) {
+            return collect();
+        }
+
+        return $query->pluck('id')->map(fn ($id) => (int) $id)->unique()->values();
+    }
+
+    private function rentedUnitIdsByStatus(Collection $visibleUnitIds): Collection
+    {
+        if ($visibleUnitIds->isEmpty() || !$this->hasTable('units') || !$this->hasColumn('units', 'status')) {
+            return collect();
+        }
+
+        return Unit::query()
+            ->whereIn('id', $visibleUnitIds)
+            ->whereIn('status', ['rented', 'مؤجرة', 'مؤجر', 'occupied'])
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values();
     }
 
     private function paymentsSum(Collection $contractIds, array $statuses): float
     {
-        if ($contractIds->isEmpty() || !Schema::hasTable('payments') || !Schema::hasColumn('payments', 'amount') || !Schema::hasColumn('payments', 'status')) {
+        if ($contractIds->isEmpty() || !$this->hasTable('payments') || !$this->hasColumn('payments', 'amount') || !$this->hasColumn('payments', 'status')) {
             return 0.0;
         }
 
         return (float) Payment::whereIn('contract_id', $contractIds)->whereIn('status', $statuses)->sum('amount');
     }
 
-    private function expensesSum(Collection $propertyIds): float
+    private function expensesSum(Collection $propertyIds, Collection $unitIds): float
     {
-        if ($propertyIds->isEmpty() || !class_exists(PropertyExpense::class) || !Schema::hasTable('property_expenses')) {
+        if (!$this->hasTable('property_expenses') || !$this->hasColumn('property_expenses', 'amount')) {
             return 0.0;
         }
 
-        return (float) PropertyExpense::whereIn('property_id', $propertyIds)->sum('amount');
+        $query = PropertyExpense::query();
+        $canUseProperty = $this->hasColumn('property_expenses', 'property_id') && $propertyIds->isNotEmpty();
+        $canUseUnit = $this->hasColumn('property_expenses', 'unit_id') && $unitIds->isNotEmpty();
+
+        if ($canUseProperty || $canUseUnit) {
+            $query->where(function ($expenseScope) use ($canUseProperty, $canUseUnit, $propertyIds, $unitIds) {
+                $used = false;
+
+                if ($canUseProperty) {
+                    $expenseScope->whereIn('property_id', $propertyIds);
+                    $used = true;
+                }
+
+                if ($canUseUnit) {
+                    if ($used) {
+                        $expenseScope->orWhereIn('unit_id', $unitIds);
+                    } else {
+                        $expenseScope->whereIn('unit_id', $unitIds);
+                    }
+                }
+            });
+        } else {
+            return 0.0;
+        }
+
+        return (float) $query->sum('amount');
     }
 
     private function tenantsCount(Collection $contractIds): int
     {
-        if ($contractIds->isEmpty() || !Schema::hasTable('contracts') || !Schema::hasColumn('contracts', 'tenant_id')) {
+        if ($contractIds->isEmpty() || !$this->hasTable('contracts') || !$this->hasColumn('contracts', 'tenant_id')) {
             return 0;
         }
 
         return (int) Contract::whereIn('id', $contractIds)->whereNotNull('tenant_id')->distinct('tenant_id')->count('tenant_id');
+    }
+
+    private function openChatTicketsCount(Collection $ownerIds, bool $isAdmin): int
+    {
+        if (!$this->hasTable('chat_threads')) {
+            return 0;
+        }
+
+        $query = DB::table('chat_threads')->where('status', '<>', 'closed');
+        if (!$isAdmin && $ownerIds->isNotEmpty() && $this->hasColumn('chat_threads', 'owner_id')) {
+            $query->whereIn('owner_id', $ownerIds);
+        }
+
+        return (int) $query->count();
+    }
+
+    private function effectiveRole($user): string
+    {
+        if (!$user) {
+            return '';
+        }
+
+        if (method_exists($user, 'effectiveRole')) {
+            return strtolower((string) $user->effectiveRole());
+        }
+
+        return strtolower((string) ($user->role ?? ''));
+    }
+
+    private function isAdminRole(string $role): bool
+    {
+        return in_array($role, ['admin', 'manager', 'super_admin'], true);
+    }
+
+    private function hasTable(string $table): bool
+    {
+        try {
+            return Schema::hasTable($table);
+        } catch (Throwable $e) {
+            return false;
+        }
+    }
+
+    private function hasColumn(string $table, string $column): bool
+    {
+        try {
+            return Schema::hasColumn($table, $column);
+        } catch (Throwable $e) {
+            return false;
+        }
     }
 }
