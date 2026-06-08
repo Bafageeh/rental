@@ -276,6 +276,10 @@ export default function ChatThreadScreen() {
   function InfoCard() {
     if (!thread) return null;
 
+    const detailsToggleLabel = detailsOpen
+      ? (isTenant ? 'إخفاء تفاصيل العقد' : 'إخفاء تفاصيل المستأجر والعقد')
+      : (isTenant ? 'عرض تفاصيل العقد' : 'عرض تفاصيل المستأجر والعقد');
+
     return (
       <View style={styles.infoCard}>
         <View style={styles.infoTop}>
@@ -290,15 +294,19 @@ export default function ChatThreadScreen() {
 
         <TouchableOpacity style={styles.detailsToggle} activeOpacity={0.85} onPress={() => setDetailsOpen((v) => !v)}>
           <Ionicons name={detailsOpen ? 'chevron-up-outline' : 'chevron-down-outline'} size={17} color={colors.textSecondary} />
-          <Text style={styles.detailsToggleText}>{detailsOpen ? 'إخفاء تفاصيل المستأجر والعقد' : 'عرض تفاصيل المستأجر والعقد'}</Text>
+          <Text style={styles.detailsToggleText}>{detailsToggleLabel}</Text>
         </TouchableOpacity>
 
         {detailsOpen ? (
           <View style={styles.infoGrid}>
-            <InfoItem label="المستأجر" value={thread.tenant_name} />
-            <InfoItem label="الجوال" value={thread.tenant_phone} />
-            <InfoItem label="رقم الهوية" value={thread.tenant_national_id} />
-            <InfoItem label="الجنسية" value={thread.tenant_nationality} />
+            {!isTenant ? (
+              <>
+                <InfoItem label="المستأجر" value={thread.tenant_name} />
+                <InfoItem label="الجوال" value={thread.tenant_phone} />
+                <InfoItem label="رقم الهوية" value={thread.tenant_national_id} />
+                <InfoItem label="الجنسية" value={thread.tenant_nationality} />
+              </>
+            ) : null}
             <InfoItem label="العقار" value={thread.property_name} />
             <InfoItem label="الوحدة" value={thread.unit_number} />
             <InfoItem label="رقم العقد" value={thread.contract_number} />
