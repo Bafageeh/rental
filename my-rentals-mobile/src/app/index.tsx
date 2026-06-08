@@ -3,7 +3,7 @@ import { useCallback, useState } from "react";
 import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuth } from "../context/AuthContext";
-import { apiGetScoped } from "../lib/api";
+import { apiGet, apiGetScoped } from "../lib/api";
 
 type Summary = {
   properties_count?: number;
@@ -27,6 +27,7 @@ type DashboardPayload = {
   summary?: Summary;
   recent_due_payments?: Array<any>;
   fallback?: boolean;
+  calculated_locally?: boolean;
 };
 
 const EMPTY_DASHBOARD: DashboardPayload = {
@@ -51,7 +52,7 @@ const EMPTY_DASHBOARD: DashboardPayload = {
 };
 
 function numberValue(value: unknown) {
-  const n = Number(value ?? 0);
+  const n = Number(String(value ?? 0).replace(/,/g, ""));
   return Number.isFinite(n) ? n : 0;
 }
 
@@ -65,6 +66,153 @@ function money(value: unknown) {
 
 function pct(value: unknown) {
   return `${Math.round(numberValue(value)).toLocaleString("ar-SA")}%`;
+}
+
+function unwrapArray(payload: any, key?: string): any[] {
+  const data = payload?.data ?? payload;
+  if (Array.isArray(data)) return data;
+  if (key && Array.isArray(data?.[key])) return data[key];
+  if (Array.isArray(data?.items)) return data.items;
+  return [];
+}
+
+function isRealUnit(unit: any) {
+  const number = String(unit?.unit_number ?? unit?.number ?? "").trim();
+  const type = String(unit?.type ?? "").trim();
+  return number !== "العقار كامل" && type !== "whole_property";
+}
+
+function isPaidStatus(status: unknown) {
+  return ["paid", "مدفوع", "مسدد"].includes(String(status ?? "").trim());
+}
+
+function isCancelledStatus(status: unknown) {
+  return ["cancelled", "canceled", "ملغي", "ملغى"].includes(String(status ?? "").trim());
+}
+
+function isActiveContract(contract: any) {
+  const status = String(contract?.status ?? "").trim();
+  if (["active", "نشط", "ساري", "مفتوح", "open"].includes(status)) return true;
+  if (["ended", "expired", "closed", "منتهي", "مغلق", "ملغي", "ملغى"].includes(status)) return false;
+
+  const today = new Date().toISOString().slice(0, 10);
+  const start = String(contract?.start_date ?? "").slice(0, 10);
+  const end = String(contract?.end_date ?? "").slice(0, 10);
+  const startOk = !/^\d{4}-\d{2}-\d{2}$/.test(start) || start <= today;
+  const endOk = !/^\d{4}-\d{2}-\d{2}$/.test(end) || end >= today;
+  return startOk && endOk;
+}
+
+function summaryIsEmpty(payload: DashboardPayload | null | undefined) {
+  const s = payload?.summary || {};
+  return [s.properties_count, s.units_count, s.active_contracts_count, s.rented_units_count, s.paid_income, s.due_income, s.overdue_income]
+    .every((item) => numberValue(item) === 0);
+}
+
+async function safeGet(path: string) {
+  try {
+    return await apiGet(path);
+  } catch {
+    return null;
+  }
+}
+
+async function buildLocalDashboard(isAdmin: boolean): Promise<DashboardPayload | null> {
+  const [propertiesRes, unitsRes, contractsRes, paymentsRes, expensesRes, threadsRes] = await Promise.all([
+    safeGet(isAdmin ? "/properties" : "/profile/properties"),
+    safeGet(isAdmin ? "/units" : "/my/units"),
+    safeGet("/contracts"),
+    safeGet("/payments"),
+    safeGet("/expenses"),
+    safeGet("/chat/threads"),
+  ]);
+
+  const properties = unwrapArray(propertiesRes);
+  const allUnits = unwrapArray(unitsRes).filter(isRealUnit);
+  const contracts = unwrapArray(contractsRes);
+  const payments = unwrapArray(paymentsRes);
+  const expenses = unwrapArray(expensesRes);
+  const threads = unwrapArray(threadsRes, "threads");
+
+  if (properties.length === 0 && allUnits.length === 0 && contracts.length === 0) {
+    return null;
+  }
+
+  const unitIds = new Set(allUnits.map((unit: any) => Number(unit?.id)).filter(Boolean));
+  const activeContracts = contracts.filter((contract: any) => {
+    const unitId = Number(contract?.unit_id ?? contract?.unit?.id);
+    return (!unitId || unitIds.has(unitId)) && isActiveContract(contract);
+  });
+
+  const activeUnitIds = new Set<number>();
+  activeContracts.forEach((contract: any) => {
+    const unitId = Number(contract?.unit_id ?? contract?.unit?.id);
+    if (unitId) activeUnitIds.add(unitId);
+  });
+  allUnits.forEach((unit: any) => {
+    if (["rented", "مؤجرة", "مؤجر", "occupied"].includes(String(unit?.status ?? "").trim())) {
+      const unitId = Number(unit?.id);
+      if (unitId) activeUnitIds.add(unitId);
+    }
+  });
+
+  const today = new Date().toISOString().slice(0, 10);
+  let paidIncome = 0;
+  let dueIncome = 0;
+  let overdueIncome = 0;
+  let criticalCount = 0;
+
+  payments.forEach((payment: any) => {
+    const status = payment?.status;
+    if (isCancelledStatus(status)) return;
+    const amount = numberValue(payment?.amount);
+    const paidAmount = numberValue(payment?.paid_amount ?? payment?.actual_paid_amount);
+    const dueDate = String(payment?.due_date ?? "").slice(0, 10);
+    const remaining = Math.max(0, amount - paidAmount);
+
+    if (isPaidStatus(status) || paidAmount >= amount) {
+      paidIncome += paidAmount > 0 ? paidAmount : amount;
+      return;
+    }
+
+    dueIncome += remaining > 0 ? remaining : amount;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dueDate) && dueDate < today) {
+      overdueIncome += remaining > 0 ? remaining : amount;
+      criticalCount += 1;
+    }
+  });
+
+  const tenants = new Set<string>();
+  contracts.forEach((contract: any) => {
+    const tenantId = contract?.tenant_id ?? contract?.tenant?.id;
+    if (tenantId) tenants.add(String(tenantId));
+  });
+
+  const expensesSum = expenses.reduce((sum: number, expense: any) => sum + numberValue(expense?.amount), 0);
+  const unitsCount = allUnits.length;
+  const rentedUnits = activeUnitIds.size;
+  const vacantUnits = Math.max(0, unitsCount - rentedUnits);
+
+  return {
+    calculated_locally: true,
+    summary: {
+      properties_count: properties.length,
+      units_count: unitsCount,
+      rented_units_count: rentedUnits,
+      vacant_units_count: vacantUnits,
+      available_units_count: vacantUnits,
+      occupancy_rate: unitsCount > 0 ? Math.round((rentedUnits / unitsCount) * 100) : 0,
+      active_contracts_count: activeContracts.length,
+      tenants_count: tenants.size,
+      paid_income: paidIncome,
+      due_income: dueIncome,
+      overdue_income: overdueIncome,
+      expenses: expensesSum,
+      net_income: paidIncome - expensesSum,
+      critical_alerts_count: criticalCount,
+      open_followups_count: threads.filter((thread: any) => String(thread?.status ?? "") !== "closed").length,
+    },
+  };
 }
 
 function StatCard({ title, value, subtitle, tone = "default" }: { title: string; value: string; subtitle?: string; tone?: "default" | "success" | "warning" | "danger" | "dark" }) {
@@ -89,20 +237,36 @@ export default function StatisticsScreen() {
       if (refresh) setRefreshing(true);
       else setLoading(true);
       setWarning("");
+
       const result = await apiGetScoped("/dashboard", "/my/dashboard");
-      const payload = (result?.data ?? result) as DashboardPayload;
+      let payload = (result?.data ?? result) as DashboardPayload;
+
+      if (payload?.fallback || summaryIsEmpty(payload)) {
+        const localPayload = await buildLocalDashboard(isAdmin);
+        if (localPayload && !summaryIsEmpty(localPayload)) {
+          payload = localPayload;
+          setWarning("تم حساب الإحصائيات مباشرة من بيانات العقارات والعقود.");
+        }
+      }
+
       setData(payload);
-      if (payload?.fallback) {
+      if (payload?.fallback && !payload?.calculated_locally) {
         setWarning("تعذر حساب الإحصائيات الحية من الخادم.");
       }
     } catch (e) {
-      setData(EMPTY_DASHBOARD);
-      setWarning(e instanceof Error ? e.message : "تعذر تحميل الإحصائيات من الخادم، تم عرض قيم مؤقتة.");
+      const localPayload = await buildLocalDashboard(isAdmin);
+      if (localPayload) {
+        setData(localPayload);
+        setWarning("تم حساب الإحصائيات مباشرة من بيانات العقارات والعقود.");
+      } else {
+        setData(EMPTY_DASHBOARD);
+        setWarning(e instanceof Error ? e.message : "تعذر تحميل الإحصائيات من الخادم، تم عرض قيم مؤقتة.");
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [isAdmin]);
 
   useFocusEffect(
     useCallback(() => {
