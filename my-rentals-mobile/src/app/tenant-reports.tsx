@@ -11,6 +11,9 @@ type ReportPayload = {
   reports?: {
     overdue_payments_count?: number;
     overdue_amount?: number;
+    required_due_total?: number;
+    paid_total?: number;
+    installment_value?: number;
     next_payment_date?: string | null;
     next_payment?: any;
     open_tickets_count?: number;
@@ -37,16 +40,6 @@ function dateText(v: unknown) {
   return raw ? raw.slice(0, 10) : '-';
 }
 
-function paymentStatus(item: any) {
-  const amount = numberValue(item?.amount);
-  const paid = numberValue(item?.paid_amount);
-  const remaining = numberValue(item?.remaining_amount ?? Math.max(0, amount - paid));
-  const status = String(item?.status ?? '').toLowerCase();
-  if (remaining <= 0.009 && paid > 0) return 'paid';
-  if (status.includes('overdue') || status.includes('متأخر')) return 'overdue';
-  return 'due';
-}
-
 async function fallbackReports(): Promise<ReportPayload> {
   const [paymentsResponse, threadsResponse] = await Promise.all([
     apiGet('/tenant/payments'),
@@ -57,11 +50,18 @@ async function fallbackReports(): Promise<ReportPayload> {
   const payments = Array.isArray(paymentsData?.payments) ? paymentsData.payments : [];
   const threads = Array.isArray(threadsData?.threads) ? threadsData.threads : [];
   const today = new Date().toISOString().slice(0, 10);
-  const overdue = payments.filter((item: any) => {
+
+  const requiredDueTotal = payments.reduce((sum: number, item: any) => {
     const dueDate = String(item?.due_date ?? '').slice(0, 10);
-    const rem = numberValue(item?.remaining_amount);
-    return rem > 0.009 && (paymentStatus(item) === 'overdue' || (!!dueDate && dueDate <= today));
-  });
+    return dueDate && dueDate <= today ? sum + numberValue(item?.amount) : sum;
+  }, 0);
+  const paidTotal = payments.reduce((sum: number, item: any) => sum + numberValue(item?.paid_amount), 0);
+  const firstDue = payments.find((item: any) => String(item?.due_date ?? '').slice(0, 10) <= today && numberValue(item?.amount) > 0);
+  const firstAny = payments.find((item: any) => numberValue(item?.amount) > 0);
+  const installmentValue = numberValue(firstDue?.amount ?? firstAny?.amount ?? 0);
+  const overdueAmount = Math.max(0, requiredDueTotal - paidTotal);
+  const overdueCount = overdueAmount > 0.009 && installmentValue > 0 ? Math.ceil(overdueAmount / installmentValue) : 0;
+
   const upcoming = payments
     .filter((item: any) => numberValue(item?.remaining_amount) > 0.009 && String(item?.due_date ?? '').slice(0, 10) > today)
     .sort((a: any, b: any) => String(a?.due_date ?? '').localeCompare(String(b?.due_date ?? '')))[0] ?? null;
@@ -70,8 +70,11 @@ async function fallbackReports(): Promise<ReportPayload> {
   return {
     tenant: paymentsData?.tenant ?? {},
     reports: {
-      overdue_payments_count: overdue.length,
-      overdue_amount: overdue.reduce((sum: number, item: any) => sum + numberValue(item?.remaining_amount), 0),
+      overdue_payments_count: overdueCount,
+      overdue_amount: overdueAmount,
+      required_due_total: requiredDueTotal,
+      paid_total: paidTotal,
+      installment_value: installmentValue,
       next_payment_date: upcoming?.due_date ?? null,
       next_payment: upcoming,
       open_tickets_count: threads.filter((item: any) => String(item?.status ?? '') !== 'closed').length,
@@ -172,8 +175,8 @@ export default function TenantReportsScreen() {
             </View>
 
             <View style={styles.grid}>
-              <StatCard title="عدد الدفعات المتأخرة" value={String(Math.round(overdueCount)).toLocaleString('ar-SA')} subtitle="دفعات غير مكتملة ومستحقة" icon="calendar-alert" tone={overdueCount > 0 ? 'danger' : 'success'} />
-              <StatCard title="المبالغ المتأخرة" value={money(overdueAmount)} subtitle="إجمالي المتبقي المستحق" icon="cash-alert" tone={overdueAmount > 0 ? 'danger' : 'success'} />
+              <StatCard title="عدد الدفعات المتأخرة" value={String(Math.round(overdueCount)).toLocaleString('ar-SA')} subtitle="يحسب من الفرق ÷ قيمة الدفعة ويجبر للأعلى" icon="calendar-alert" tone={overdueCount > 0 ? 'danger' : 'success'} />
+              <StatCard title="المبالغ المتأخرة" value={money(overdueAmount)} subtitle="المطلوب المستحق ناقص المستلم" icon="cash-alert" tone={overdueAmount > 0 ? 'danger' : 'success'} />
               <StatCard title="أقرب دفعة قادمة" value={dateText(reports.next_payment_date)} subtitle={next ? `المتبقي: ${money(next.remaining_amount ?? next.amount)}` : 'لا توجد دفعات قادمة'} icon="calendar-clock" tone="warning" />
               <StatCard title="التذاكر المفتوحة" value={String(Math.round(openTickets)).toLocaleString('ar-SA')} subtitle="تذاكر مراسلات لم تغلق" icon="chat-alert-outline" tone={openTickets > 0 ? 'warning' : 'success'} />
               <StatCard title="تاريخ انتهاء العقد" value={dateText(reports.contract_end_date)} subtitle={reports.contract_number ? `العقد: ${reports.contract_number}` : 'العقد الحالي'} icon="file-document-check-outline" tone="dark" />
