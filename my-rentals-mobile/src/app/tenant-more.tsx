@@ -1,15 +1,67 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { Alert, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, radii, spacing, typography } from '../constants/theme';
 import { useAuth } from '../context/AuthContext';
-import ProfileSecurityScreen from './profile-security';
+import { apiPost } from '../lib/api';
 
 export default function TenantMoreScreen() {
   const { user, logout } = useAuth();
   const [securityVisible, setSecurityVisible] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+
+  function resetPasswordForm() {
+    setCurrentPassword('');
+    setNewPassword('');
+    setConfirmPassword('');
+  }
+
+  function openPasswordModal() {
+    resetPasswordForm();
+    setSecurityVisible(true);
+  }
+
+  function closePasswordModal() {
+    if (saving) return;
+    setSecurityVisible(false);
+    resetPasswordForm();
+  }
+
+  async function savePassword() {
+    if (!currentPassword.trim()) {
+      Alert.alert('تنبيه', 'أدخل الرقم السري الحالي.');
+      return;
+    }
+    if (newPassword.length < 6) {
+      Alert.alert('تنبيه', 'الرقم السري الجديد يجب ألا يقل عن 6 خانات.');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      Alert.alert('تنبيه', 'تأكيد الرقم السري غير مطابق.');
+      return;
+    }
+
+    try {
+      setSaving(true);
+      await apiPost('/auth/change-password', {
+        current_password: currentPassword,
+        password: newPassword,
+        password_confirmation: confirmPassword,
+      });
+      setSecurityVisible(false);
+      resetPasswordForm();
+      Alert.alert('تم', 'تم تغيير الرقم السري بنجاح.');
+    } catch (e) {
+      Alert.alert('تعذر تغيير الرقم السري', e instanceof Error ? e.message : 'حدث خطأ غير متوقع');
+    } finally {
+      setSaving(false);
+    }
+  }
 
   function confirmLogout() {
     Alert.alert('تسجيل الخروج', 'هل تريد تسجيل الخروج؟', [
@@ -35,7 +87,7 @@ export default function TenantMoreScreen() {
           </View>
         </View>
 
-        <TouchableOpacity style={styles.actionCard} activeOpacity={0.86} onPress={() => setSecurityVisible(true)}>
+        <TouchableOpacity style={styles.actionCard} activeOpacity={0.86} onPress={openPasswordModal}>
           <Ionicons name="chevron-back" size={20} color={colors.textTertiary} />
           <View style={styles.actionTextBox}><Text style={styles.actionTitle}>تغيير الرقم السري</Text><Text style={styles.actionSubtitle}>فتح شاشة عائمة لتغيير رقم الدخول.</Text></View>
           <View style={styles.actionIconBox}><Ionicons name="lock-closed-outline" size={24} color={colors.primary} /></View>
@@ -48,15 +100,61 @@ export default function TenantMoreScreen() {
         </TouchableOpacity>
       </View>
 
-      <Modal visible={securityVisible} transparent animationType="slide" onRequestClose={() => setSecurityVisible(false)}>
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
-            <TouchableOpacity style={styles.closeButton} onPress={() => setSecurityVisible(false)}>
-              <Ionicons name="close" size={22} color={colors.textSecondary} />
-            </TouchableOpacity>
-            <ProfileSecurityScreen />
+      <Modal visible={securityVisible} transparent animationType="fade" onRequestClose={closePasswordModal}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.modalBackdrop}>
+          <TouchableOpacity style={styles.modalDismissArea} activeOpacity={1} onPress={closePasswordModal} />
+          <View style={styles.modalSheet}>
+            <View style={styles.sheetHandle} />
+            <View style={styles.modalHeader}>
+              <TouchableOpacity style={styles.closeButton} onPress={closePasswordModal} disabled={saving}>
+                <Ionicons name="close" size={22} color={colors.textSecondary} />
+              </TouchableOpacity>
+              <View style={styles.modalTitleBox}>
+                <Text style={styles.modalTitle}>تغيير الرقم السري</Text>
+                <Text style={styles.modalSubtitle}>أدخل الرقم الحالي ثم الرقم الجديد.</Text>
+              </View>
+            </View>
+
+            <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={styles.modalForm}>
+              <Text style={styles.inputLabel}>الرقم السري الحالي</Text>
+              <TextInput
+                value={currentPassword}
+                onChangeText={setCurrentPassword}
+                style={styles.input}
+                secureTextEntry
+                textAlign="right"
+                placeholder="اكتب الرقم الحالي"
+                placeholderTextColor={colors.textTertiary}
+              />
+
+              <Text style={styles.inputLabel}>الرقم السري الجديد</Text>
+              <TextInput
+                value={newPassword}
+                onChangeText={setNewPassword}
+                style={styles.input}
+                secureTextEntry
+                textAlign="right"
+                placeholder="لا يقل عن 6 خانات"
+                placeholderTextColor={colors.textTertiary}
+              />
+
+              <Text style={styles.inputLabel}>تأكيد الرقم السري الجديد</Text>
+              <TextInput
+                value={confirmPassword}
+                onChangeText={setConfirmPassword}
+                style={styles.input}
+                secureTextEntry
+                textAlign="right"
+                placeholder="أعد كتابة الرقم الجديد"
+                placeholderTextColor={colors.textTertiary}
+              />
+
+              <TouchableOpacity style={[styles.saveButton, saving ? styles.disabledButton : null]} activeOpacity={0.86} onPress={savePassword} disabled={saving}>
+                {saving ? <ActivityIndicator size="small" color="#fff" /> : <Text style={styles.saveButtonText}>حفظ الرقم السري</Text>}
+              </TouchableOpacity>
+            </ScrollView>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
   );
@@ -83,7 +181,19 @@ const styles = StyleSheet.create({
   actionTitle: { color: colors.text, fontWeight: '900', fontSize: 16, textAlign: 'right' },
   logoutText: { color: '#B91C1C' },
   actionSubtitle: { color: colors.textSecondary, fontWeight: '700', marginTop: 4, textAlign: 'right', lineHeight: 20 },
-  modalBackdrop: { flex: 1, backgroundColor: 'rgba(15,23,42,0.45)', alignItems: 'center', justifyContent: 'center', padding: spacing.lg },
-  modalCard: { width: '100%', maxHeight: '82%', backgroundColor: colors.surface, borderRadius: 26, overflow: 'hidden', borderWidth: 1, borderColor: colors.borderLight },
-  closeButton: { position: 'absolute', left: spacing.md, top: spacing.md, width: 42, height: 42, borderRadius: 21, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center', zIndex: 2 },
+  modalBackdrop: { flex: 1, backgroundColor: 'rgba(15,23,42,0.45)', justifyContent: 'flex-end' },
+  modalDismissArea: { flex: 1 },
+  modalSheet: { backgroundColor: colors.surface, borderTopLeftRadius: 28, borderTopRightRadius: 28, paddingHorizontal: spacing.lg, paddingTop: 10, paddingBottom: spacing.lg, maxHeight: '78%' },
+  sheetHandle: { alignSelf: 'center', width: 48, height: 5, borderRadius: 999, backgroundColor: colors.borderLight, marginBottom: spacing.md },
+  modalHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginBottom: spacing.md },
+  closeButton: { width: 42, height: 42, borderRadius: 21, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center' },
+  modalTitleBox: { flex: 1, alignItems: 'flex-end' },
+  modalTitle: { color: colors.text, fontSize: 21, fontWeight: '900', textAlign: 'right' },
+  modalSubtitle: { color: colors.textSecondary, marginTop: 4, textAlign: 'right', fontWeight: '700' },
+  modalForm: { paddingBottom: spacing.md },
+  inputLabel: { color: colors.textSecondary, fontWeight: '900', textAlign: 'right', marginBottom: 6, marginTop: spacing.xs },
+  input: { minHeight: 52, borderRadius: 16, backgroundColor: colors.background, borderWidth: 1, borderColor: colors.borderLight, color: colors.text, paddingHorizontal: spacing.md, marginBottom: spacing.sm, textAlign: 'right' },
+  saveButton: { minHeight: 52, borderRadius: 17, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', marginTop: spacing.md },
+  saveButtonText: { color: colors.textInverse, fontWeight: '900', fontSize: 15 },
+  disabledButton: { opacity: 0.65 },
 });
