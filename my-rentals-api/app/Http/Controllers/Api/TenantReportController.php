@@ -46,27 +46,35 @@ class TenantReportController extends Controller
         }) ?: $contracts->first();
 
         $today = now()->toDateString();
-        $overdueCount = 0;
-        $overdueAmount = 0.0;
+        $requiredDueTotal = 0.0;
+        $paidTotal = 0.0;
+        $installmentValue = 0.0;
         $upcoming = null;
 
         foreach ($contracts as $contract) {
+            $contractRegularPayment = $this->number($contract->regular_payment_amount ?? 0);
+            if ($installmentValue <= 0 && $contract === $activeContract && $contractRegularPayment > 0) {
+                $installmentValue = $contractRegularPayment;
+            }
+
             foreach ($contract->payments as $payment) {
                 $amount = $this->number($payment->amount ?? 0);
                 $paid = $this->number($payment->paid_amount ?? 0);
                 $remaining = max(0, $amount - $paid);
-                if ($remaining <= 0.009) {
-                    continue;
-                }
-
                 $dueDate = $payment->due_date ? (string) $payment->due_date : null;
+
+                // قاعدة المتأخرات المطلوبة:
+                // إجمالي المطلوب المستحق حتى اليوم - إجمالي المستلم، ثم تقسيم الناتج على قيمة الدفعة مع الجبر للأعلى.
                 if ($dueDate && $dueDate <= $today) {
-                    $overdueCount++;
-                    $overdueAmount += $remaining;
-                    continue;
+                    $requiredDueTotal += $amount;
+                    if ($installmentValue <= 0 && $amount > 0) {
+                        $installmentValue = $contractRegularPayment > 0 ? $contractRegularPayment : $amount;
+                    }
                 }
 
-                if ($dueDate && $dueDate > $today) {
+                $paidTotal += $paid;
+
+                if ($remaining > 0.009 && $dueDate && $dueDate > $today) {
                     if (!$upcoming || $dueDate < $upcoming['due_date']) {
                         $upcoming = [
                             'due_date' => $dueDate,
@@ -82,6 +90,15 @@ class TenantReportController extends Controller
                 }
             }
         }
+
+        if ($installmentValue <= 0 && $activeContract) {
+            $installmentValue = $this->number($activeContract->regular_payment_amount ?? 0);
+        }
+
+        $overdueAmount = max(0, $requiredDueTotal - $paidTotal);
+        $overdueCount = ($overdueAmount > 0.009 && $installmentValue > 0)
+            ? (int) ceil($overdueAmount / $installmentValue)
+            : 0;
 
         $openTicketsCount = 0;
         if (Schema::hasTable('chat_threads')) {
@@ -106,6 +123,9 @@ class TenantReportController extends Controller
                 'reports' => [
                     'overdue_payments_count' => $overdueCount,
                     'overdue_amount' => round($overdueAmount, 2),
+                    'required_due_total' => round($requiredDueTotal, 2),
+                    'paid_total' => round($paidTotal, 2),
+                    'installment_value' => round($installmentValue, 2),
                     'next_payment_date' => $upcoming['due_date'] ?? null,
                     'next_payment' => $upcoming,
                     'open_tickets_count' => $openTicketsCount,
