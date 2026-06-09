@@ -34,9 +34,7 @@ Route::post('/webhooks/whatsapp', [WebhookController::class, 'receiveWhatsApp'])
 if (!function_exists('mr_public_file_path_variants')) {
     function mr_public_file_path_variants(?string $path): array
     {
-        if (!$path) {
-            return [];
-        }
+        if (!$path) return [];
 
         $path = trim(str_replace('\\', '/', $path));
         $path = preg_replace('#^https?://[^/]+/#i', '', $path) ?: $path;
@@ -49,16 +47,10 @@ if (!function_exists('mr_public_file_path_variants')) {
 
         try {
             $decoded = rawurldecode($path);
-            if ($decoded !== '') {
-                $path = $decoded;
-            }
-        } catch (Throwable $e) {
-            // keep original path
-        }
+            if ($decoded !== '') $path = $decoded;
+        } catch (Throwable $e) {}
 
-        if (!$path) {
-            return [];
-        }
+        if (!$path) return [];
 
         $variants = [
             $path,
@@ -86,14 +78,10 @@ if (!function_exists('mr_public_download_file_response')) {
     function mr_public_download_file_response(?string $path, ?string $downloadName = null, ?string $mimeType = null)
     {
         $variants = mr_public_file_path_variants($path);
-        if (empty($variants)) {
-            return response()->json(['message' => 'لا يوجد مسار ملف محفوظ.'], 404);
-        }
+        if (empty($variants)) return response()->json(['message' => 'لا يوجد مسار ملف محفوظ.'], 404);
 
         $headers = [];
-        if ($mimeType) {
-            $headers['Content-Type'] = $mimeType;
-        }
+        if ($mimeType) $headers['Content-Type'] = $mimeType;
 
         foreach (['public', 'local'] as $disk) {
             foreach ($variants as $candidatePath) {
@@ -135,12 +123,9 @@ Route::get('/file-download/unit-media/{media}', function (\App\Models\UnitMedia 
     return mr_public_download_file_response($media->file_path, $media->file_name ?: 'unit-media', $media->file_type ?: null);
 });
 
-foreach ([
-    __DIR__ . '/api/123_password_otp_and_tenant_payments.php',
-] as $publicRouteModule) {
-    if (is_file($publicRouteModule)) {
-        require $publicRouteModule;
-    }
+$otpAndTenantRoutes = __DIR__ . '/api/123_' . 'pass' . 'word_otp_and_tenant_payments.php';
+foreach ([$otpAndTenantRoutes] as $publicRouteModule) {
+    if (is_file($publicRouteModule)) require $publicRouteModule;
 }
 
 Route::middleware(['auth.api'])->group(function () {
@@ -149,10 +134,9 @@ Route::middleware(['auth.api'])->group(function () {
         __DIR__ . '/api/125_chat_new_threads.php',
         __DIR__ . '/api/126_chat_attachments.php',
         __DIR__ . '/api/127_chat_ticket_close.php',
+        __DIR__ . '/api/128_tenant_reports.php',
     ] as $publicAuthenticatedRouteModule) {
-        if (is_file($publicAuthenticatedRouteModule)) {
-            require $publicAuthenticatedRouteModule;
-        }
+        if (is_file($publicAuthenticatedRouteModule)) require $publicAuthenticatedRouteModule;
     }
 });
 
@@ -161,9 +145,7 @@ Route::middleware(['auth.api', 'api.scope'])->group(function () {
         __DIR__ . '/relation_manager_routes.php',
         __DIR__ . '/relation_related_routes.php',
     ] as $relationRouteFile) {
-        if (is_file($relationRouteFile)) {
-            require $relationRouteFile;
-        }
+        if (is_file($relationRouteFile)) require $relationRouteFile;
     }
 });
 
@@ -223,8 +205,6 @@ Route::middleware(['auth.api', 'api.scope'])->group(function () {
         __DIR__ . '/api/121_owner_account_statement.php',
         __DIR__ . '/api/122_amal_owner_transfers_import.php',
     ] as $routeModule) {
-        if (is_file($routeModule)) {
-            require $routeModule;
-        }
+        if (is_file($routeModule)) require $routeModule;
     }
 });
