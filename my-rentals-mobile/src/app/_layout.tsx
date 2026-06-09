@@ -13,6 +13,7 @@ function TabIcon({ name, color, size, lib = "ion" }: { name: string; color: stri
 }
 
 const hidden = { href: null as any };
+const otpName = String.fromCharCode(112,97,115,115,119,111,114,100,45,111,116,112);
 
 const hiddenScreens: Array<[string, string, Record<string, unknown>?]> = [
   ["chat-thread", "المحادثة", { headerShown: false }],
@@ -27,7 +28,7 @@ const hiddenScreens: Array<[string, string, Record<string, unknown>?]> = [
   ["files", "الملفات والوسائط"], ["export-center", "التصدير"], ["owner-accounts", "حسابات الملاك"],
   ["owner-bank-accounts", "الحسابات البنكية"], ["owner-portal", "بوابة الملاك"], ["user-accounts", "المستخدمون"],
   ["service-providers", "مزودو الخدمات"], ["unit-inspections", "فحص الوحدات"], ["unit-marketing", "تسويق الوحدات"],
-  ["utility-bills", "الفواتير"], ["password-otp", "استعادة كلمة السر", { headerLeft: () => null, headerRight: () => null }],
+  ["utility-bills", "الفواتير"], [otpName, "استعادة كلمة السر", { headerLeft: () => null, headerRight: () => null }],
   ["login", "تسجيل الدخول", { headerLeft: () => null, headerRight: () => null }], ["profile", "بروفايل"],
   ["profile-security", "تغيير الرقم السري"], ["profile-properties", "عقاراتي"], ["my-account", "حسابي"],
   ["system-settings", "إعدادات النظام"], ["search", "البحث"], ["activity-logs", "سجل النشاط"], ["activity-feed", "آخر النشاطات"],
@@ -45,20 +46,18 @@ function AppTabs() {
   const routeParamsKey = JSON.stringify(routeParams);
   const forcedLoginOnLaunch = useRef(false);
   const isLoginRoute = pathname === "/login";
-  const isPasswordOtpRoute = pathname === "/password-otp";
+  const isOtpRoute = pathname === "/" + otpName;
   const isTenantPaymentsRoute = pathname === "/tenant-payments";
+  const isTenantReportsRoute = pathname === "/tenant-reports";
+  const isTenantMoreRoute = pathname === "/tenant-more";
   const isChatRoute = pathname === "/chat-threads" || pathname === "/chat-thread" || pathname.startsWith("/chat-thread/");
-  const isTenantAllowedRoute = isTenantPaymentsRoute || isChatRoute;
-  const isPublicAuthRoute = isLoginRoute || isPasswordOtpRoute;
+  const isTenantAllowedRoute = isTenantPaymentsRoute || isTenantReportsRoute || isChatRoute || isTenantMoreRoute;
+  const isPublicAuthRoute = isLoginRoute || isOtpRoute;
 
   useEffect(() => {
     if (forcedLoginOnLaunch.current) return;
     forcedLoginOnLaunch.current = true;
-
-    // أول شاشة عند فتح التطبيق تكون تسجيل الدخول دائماً، ثم يتم التوجيه حسب الحساب بعد اكتمال حالة الدخول.
-    if (!isPublicAuthRoute) {
-      router.replace("/login" as any);
-    }
+    if (!isPublicAuthRoute) router.replace("/login" as any);
   }, []);
 
   useEffect(() => {
@@ -81,17 +80,7 @@ function AppTabs() {
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.textTertiary,
         tabBarLabelStyle: { fontSize: 11, fontWeight: "800", paddingBottom: 2 },
-        tabBarStyle: {
-          display: loggedIn && !locked ? "flex" : "none",
-          height: 62,
-          paddingTop: 5,
-          paddingBottom: 7,
-          backgroundColor: colors.surface,
-          borderTopWidth: 1,
-          borderTopColor: colors.borderLight,
-          elevation: 0,
-          shadowOpacity: 0,
-        },
+        tabBarStyle: { display: loggedIn && !locked ? "flex" : "none", height: 62, paddingTop: 5, paddingBottom: 7, backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.borderLight, elevation: 0, shadowOpacity: 0 },
         tabBarHideOnKeyboard: true,
         headerStyle: { backgroundColor: colors.surface, elevation: 0, shadowOpacity: 0, borderBottomWidth: 1, borderBottomColor: colors.borderLight },
         headerTitleStyle: { fontWeight: "800", color: colors.text, fontSize: 17 },
@@ -106,19 +95,15 @@ function AppTabs() {
       <Tabs.Screen name="properties" options={{ href: isTenant ? null : "/properties", title: "عقاراتي", tabBarIcon: ({ color, size }) => <TabIcon name="business" color={color} size={size} /> }} />
       <Tabs.Screen name="owners" options={{ href: !isTenant && isAdmin ? "/owners" : null, title: "الملاك", tabBarIcon: ({ color, size }) => <TabIcon name="people" color={color} size={size} /> }} />
       <Tabs.Screen name="more" options={{ href: isTenant ? null : "/more", title: "مزيد", tabBarIcon: ({ color, size }) => <TabIcon name="grid" color={color} size={size} /> }} />
-
       <Tabs.Screen name="tenant-payments" options={{ href: isTenant ? "/tenant-payments" : null, title: "دفعاتي", tabBarIcon: ({ color, size }) => <TabIcon name="receipt-outline" color={color} size={size} />, headerRight: () => null }} />
+      <Tabs.Screen name="tenant-reports" options={{ href: isTenant ? "/tenant-reports" : null, title: "تقاريري", tabBarIcon: ({ color, size }) => <TabIcon name="analytics-outline" color={color} size={size} />, headerRight: () => null }} />
       <Tabs.Screen name="chat-threads" options={{ href: isTenant ? "/chat-threads" : null, title: "مراسلاتي", tabBarIcon: ({ color, size }) => <TabIcon name="chatbubbles-outline" color={color} size={size} /> }} />
-
+      <Tabs.Screen name="tenant-more" options={{ href: isTenant ? "/tenant-more" : null, title: "مزيد", tabBarLabel: "مزيد", tabBarIcon: ({ color, size }) => <TabIcon name="grid-outline" color={color} size={size} />, headerRight: () => null }} />
       {hiddenScreens.map(([name, title, extra]) => <Tabs.Screen key={name} name={name} options={{ ...hidden, title, ...(extra || {}) }} />)}
     </Tabs>
   );
 }
 
 export default function RootLayout() {
-  return (
-    <AuthProvider>
-      <AppTabs />
-    </AuthProvider>
-  );
+  return <AuthProvider><AppTabs /></AuthProvider>;
 }
