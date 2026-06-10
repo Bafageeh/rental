@@ -11,6 +11,16 @@ function TabIcon({ name, color, size }: { name: string; color: string; size: num
 
 const hidden = { href: null as any };
 const otpName = String.fromCharCode(112, 97, 115, 115, 119, 111, 114, 100, 45, 111, 116, 112);
+const routeTitles: Record<string, string> = {
+  "owner/[id]": "تفاصيل المالك",
+  "property/[id]": "تفاصيل العقار",
+  "unit/[id]": "تفاصيل الوحدة",
+  "unit-edit/[id]": "تعديل الوحدة",
+  "tenant/[id]": "تفاصيل المستأجر",
+  "contract/[id]": "تفاصيل العقد",
+  "payment/[id]": "تفاصيل الدفعة",
+  "my-account": "حسابي",
+};
 
 const hiddenScreens = [
   "chat-thread", "payments", "statistics", "settings", "tenants", "units", "parking", "expenses",
@@ -85,7 +95,7 @@ function AppTabs() {
       <Tabs.Screen name="tenant-reports" options={{ href: isTenant ? "/tenant-reports" : null, title: "تقاريري", tabBarIcon: ({ color, size }) => <TabIcon name="analytics-outline" color={color} size={size} />, headerRight: () => null }} />
       <Tabs.Screen name="chat-threads" options={{ href: isTenant ? "/chat-threads" : null, title: "مراسلاتي", tabBarIcon: ({ color, size }) => <TabIcon name="chatbubbles-outline" color={color} size={size} /> }} />
       <Tabs.Screen name="tenant-more" options={{ href: isTenant ? "/tenant-more" : null, title: "مزيد", tabBarIcon: ({ color, size }) => <TabIcon name="grid-outline" color={color} size={size} />, headerRight: () => null }} />
-      {hiddenScreens.map((name) => <Tabs.Screen key={name} name={name} options={hidden} />)}
+      {hiddenScreens.map((name) => <Tabs.Screen key={name} name={name} options={{ ...hidden, title: routeTitles[name] }} />)}
     </Tabs>
   );
 }
