@@ -2,13 +2,17 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\ScopedToManager;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Facades\Schema;
 
 class Payment extends Model
 {
+    use ScopedToManager;
+
     protected $fillable = [
+        'manager_id',
         'contract_id',
         'sequence',
         'due_date',
