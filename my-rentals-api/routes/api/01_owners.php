@@ -91,7 +91,12 @@ if (!function_exists('my_rentals_create_or_link_owner_account')) {
             return [null, 'لم يتم إنشاء حساب للمالك لأن رقم الهوية غير مدخل.'];
         }
 
+        $managerId = function_exists('mr_manager_scope_id') ? mr_manager_scope_id(request()) : null;
         $existingUser = User::query()->where('username', $username)->first();
+
+        if ($existingUser && $managerId && Schema::hasColumn('users', 'manager_id') && (int) ($existingUser->manager_id ?? 0) !== $managerId) {
+            return [null, 'رقم الهوية مستخدم في حساب آخر. لا يمكن ربط مالك خارج نطاق مدير العقارات الحالي.'];
+        }
 
         if ($existingUser) {
             $changed = false;
@@ -103,6 +108,11 @@ if (!function_exists('my_rentals_create_or_link_owner_account')) {
 
             if (Schema::hasColumn('users', 'role') && empty($existingUser->role)) {
                 $existingUser->role = 'owner';
+                $changed = true;
+            }
+
+            if (Schema::hasColumn('users', 'manager_id') && $managerId && empty($existingUser->manager_id)) {
+                $existingUser->manager_id = $managerId;
                 $changed = true;
             }
 
@@ -137,6 +147,10 @@ if (!function_exists('my_rentals_create_or_link_owner_account')) {
             $payload['owner_id'] = $owner->id;
         }
 
+        if (Schema::hasColumn('users', 'manager_id') && $managerId) {
+            $payload['manager_id'] = $managerId;
+        }
+
         if (Schema::hasColumn('users', 'status')) {
             $payload['status'] = 'active';
         }
@@ -147,8 +161,11 @@ if (!function_exists('my_rentals_create_or_link_owner_account')) {
     }
 }
 
-Route::get('/owners', function () {
-    return Owner::withCount('properties')
+Route::get('/owners', function (Request $request) {
+    $query = Owner::withCount('properties');
+    if (function_exists('mr_manager_scope_apply')) mr_manager_scope_apply($query, 'owners', $request);
+
+    return $query
         ->orderBy('type')
         ->orderBy('name')
         ->get()
@@ -188,6 +205,9 @@ Route::post('/owners', function (Request $request) {
         'notes' => $data['notes'] ?? null,
     ]);
 
+    if (function_exists('mr_manager_scope_set_record')) mr_manager_scope_set_record('owners', $owner->id, $request);
+    $owner = $owner->fresh();
+
     [$account, $accountMessage] = my_rentals_create_or_link_owner_account($owner);
 
     return response()->json([
@@ -201,6 +221,7 @@ Route::post('/owners', function (Request $request) {
             'email' => $account->email ?? null,
             'role' => $account->role ?? 'owner',
             'owner_id' => $account->owner_id ?? null,
+            'manager_id' => $account->manager_id ?? null,
             'status' => $account->status ?? 'active',
             'initial_password' => '123456',
         ] : null,
@@ -210,5 +231,8 @@ Route::post('/owners', function (Request $request) {
 
 
 
-Route::get('/owners/{owner}/dashboard', [OwnerDashboardController::class, 'show']);
+Route::get('/owners/{owner}/dashboard', function (Request $request, Owner $owner) {
+    if (function_exists('mr_manager_scope_abort_unless_record')) mr_manager_scope_abort_unless_record('owners', $owner->id, $request);
+    return app(OwnerDashboardController::class)->show($owner);
+});
 Route::get('/my/owners/{owner}/dashboard', [OwnerDashboardController::class, 'showScoped']);
