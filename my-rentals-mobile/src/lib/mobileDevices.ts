@@ -1,6 +1,5 @@
-const Notice = require('expo-notifications');
+import Constants from 'expo-constants';
 
 export function foo() {
-  Notice.setNotificationHandler({ handleNotification: () => Promise.resolve({ shouldPlaySound: true }) });
-  return 1;
+  return Constants;
 }
