@@ -7,6 +7,7 @@ import {
   shouldRequireBiometricUnlock,
   isAuthSessionUnlocked,
 } from '../lib/auth';
+import { syncMobileNoticeDevice } from '../lib/deviceSync';
 
 export type AuthUser = {
   id?: number;
@@ -98,6 +99,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       unsubscribe();
     };
   }, [refresh]);
+
+  useEffect(() => {
+    if (loading || !loggedIn || locked || !user?.id) return;
+    void syncMobileNoticeDevice(user.id);
+  }, [loading, loggedIn, locked, user?.id]);
 
   const role = String(user?.role ?? '').trim().toLowerCase();
   const ownerId = user?.owner_id ?? null;
