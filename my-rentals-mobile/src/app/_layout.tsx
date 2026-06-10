@@ -1,60 +1,45 @@
-import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
-import { Tabs, router, useGlobalSearchParams, usePathname } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
+import { Tabs, router, usePathname } from "expo-router";
 import { useEffect, useRef } from "react";
 import { HeaderBackAction as HeaderBackRight, HeaderQuickActions as HeaderActionsLeft } from "../components/AppHeaderActions";
 import { colors } from "../constants/theme";
 import { AuthProvider, useAuth } from "../context/AuthContext";
-import { trackNavigationRoute } from "../lib/navigationHistory";
 
-function TabIcon({ name, color, size, lib = "ion" }: { name: string; color: string; size: number; lib?: "ion" | "mci" }) {
-  const s = Math.max(22, size);
-  if (lib === "mci") return <MaterialCommunityIcons name={name as any} size={s} color={color} />;
-  return <Ionicons name={name as any} size={s} color={color} />;
+function TabIcon({ name, color, size }: { name: string; color: string; size: number }) {
+  return <Ionicons name={name as any} size={Math.max(22, size)} color={color} />;
 }
 
 const hidden = { href: null as any };
-const otpName = String.fromCharCode(112,97,115,115,119,111,114,100,45,111,116,112);
+const otpName = String.fromCharCode(112, 97, 115, 115, 119, 111, 114, 100, 45, 111, 116, 112);
 
-const hiddenScreens: Array<[string, string, Record<string, unknown>?]> = [
-  ["chat-thread", "المحادثة", { headerShown: false }],
-  ["payments", "الدفعات"], ["statistics", "التقارير"], ["settings", "الإعدادات"], ["tenants", "المستأجرين"], ["units", "الوحدات"],
-  ["parking", "المواقف"], ["expenses", "المصروفات"], ["owner-payouts", "تسويات الملاك"], ["owner-settlements", "التسويات"],
-  ["owner-statement", "كشف المالك"], ["owner-account-statement", "حساب المالك"], ["payment-receipts", "الإيصالات"],
-  ["monthly-financial", "التقرير الشهري"], ["rent-roll", "كشف الإيجار"], ["tenant-statement", "كشف المستأجر"],
-  ["tenant-statements", "كشوف المستأجرين"], ["create-contract", "عقد جديد"], ["upload-contract", "رفع عقد"],
-  ["upload-property-deed", "رفع صك"], ["property-form", "بيانات العقار"], ["contract-edit/[id]", "تعديل العقد"],
-  ["contract-renewals", "تجديد العقود"], ["alerts", "التنبيهات"], ["smart-alerts", "تنبيهات ذكية"], ["reminders", "التذكيرات"],
-  ["follow-ups", "المتابعات"], ["reports", "التقارير"], ["occupancy", "الإشغال"], ["property-performance", "أداء العقارات"],
-  ["files", "الملفات والوسائط"], ["export-center", "التصدير"], ["owner-accounts", "حسابات الملاك"],
-  ["owner-bank-accounts", "الحسابات البنكية"], ["owner-portal", "بوابة الملاك"], ["user-accounts", "المستخدمون"],
-  ["service-providers", "مزودو الخدمات"], ["unit-inspections", "فحص الوحدات"], ["unit-marketing", "تسويق الوحدات"],
-  ["utility-bills", "الفواتير"], [otpName, "استعادة كلمة السر", { headerLeft: () => null, headerRight: () => null }],
-  ["manager-register", "إنشاء مدير عقارات", { headerLeft: () => null, headerRight: () => null }],
-  ["login", "تسجيل الدخول", { headerLeft: () => null, headerRight: () => null }], ["profile", "بروفايل"],
-  ["profile-security", "تغيير الرقم السري"], ["profile-properties", "عقاراتي"], ["my-account", "حسابي"],
-  ["system-settings", "إعدادات النظام"], ["search", "البحث"], ["activity-logs", "سجل النشاط"], ["activity-feed", "آخر النشاطات"],
-  ["data-health", "صحة البيانات"], ["trash-center", "المحذوفات"], ["relations-manager", "إدارة"], ["record-details", "تفاصيل"],
-  ["inquiry-center", "مركز الاستفسارات"], ["scheduled-messages", "الرسائل المجدولة"], ["communication-center", "التواصل"],
-  ["owner-properties", "عقارات المالك"], ["owner-overdue-units", "الوحدات المتأخرة"], ["unit-overdue-payments", "دفعات الوحدة المتأخرة"],
-  ["edit-record", "تعديل"], ["owner/[id]", "تفاصيل الأملاك"], ["property/[id]", "تفاصيل العقار"], ["unit/[id]", "تفاصيل الوحدة"],
-  ["unit-edit/[id]", "تعديل الوحدة"], ["tenant/[id]", "تفاصيل المستأجر"], ["contract/[id]", "تفاصيل العقد"], ["payment/[id]", "الدفعات"],
+const hiddenScreens = [
+  "chat-thread", "payments", "statistics", "settings", "tenants", "units", "parking", "expenses",
+  "owner-payouts", "owner-settlements", "owner-statement", "owner-account-statement", "payment-receipts",
+  "monthly-financial", "rent-roll", "tenant-statement", "tenant-statements", "create-contract", "upload-contract",
+  "upload-property-deed", "property-form", "contract-edit/[id]", "contract-renewals", "alerts", "smart-alerts",
+  "reminders", "follow-ups", "reports", "occupancy", "property-performance", "files", "export-center",
+  "owner-accounts", "owner-bank-accounts", "owner-portal", "user-accounts", "service-providers", "unit-inspections",
+  "unit-marketing", "utility-bills", otpName, "login", "profile", "profile-security", "profile-properties",
+  "my-account", "system-settings", "search", "activity-logs", "activity-feed", "data-health", "trash-center",
+  "relations-manager", "record-details", "inquiry-center", "scheduled-messages", "communication-center", "owner-properties",
+  "owner-overdue-units", "unit-overdue-payments", "edit-record", "owner/[id]", "property/[id]", "unit/[id]",
+  "unit-edit/[id]", "tenant/[id]", "contract/[id]", "payment/[id]",
 ];
 
 function AppTabs() {
   const { loading, loggedIn, locked, isAdmin, isTenant } = useAuth();
   const pathname = usePathname();
-  const routeParams = useGlobalSearchParams();
-  const routeParamsKey = JSON.stringify(routeParams);
   const forcedLoginOnLaunch = useRef(false);
+
   const isLoginRoute = pathname === "/login";
   const isOtpRoute = pathname === "/" + otpName;
   const isManagerRegisterRoute = pathname === "/manager-register";
+  const isPublicAuthRoute = isLoginRoute || isOtpRoute || isManagerRegisterRoute;
   const isTenantPaymentsRoute = pathname === "/tenant-payments";
   const isTenantReportsRoute = pathname === "/tenant-reports";
   const isTenantMoreRoute = pathname === "/tenant-more";
   const isChatRoute = pathname === "/chat-threads" || pathname === "/chat-thread" || pathname.startsWith("/chat-thread/");
-  const isTenantAllowedRoute = isTenantPaymentsRoute || isTenantReportsRoute || isChatRoute || isTenantMoreRoute;
-  const isPublicAuthRoute = isLoginRoute || isOtpRoute || isManagerRegisterRoute;
+  const isTenantAllowedRoute = isTenantPaymentsRoute || isTenantReportsRoute || isTenantMoreRoute || isChatRoute;
 
   useEffect(() => {
     if (forcedLoginOnLaunch.current) return;
@@ -68,11 +53,6 @@ function AppTabs() {
     if (loggedIn && !locked && isPublicAuthRoute) return router.replace(isTenant ? "/tenant-payments" as any : "/" as any);
     if (loggedIn && !locked && isTenant && !isTenantAllowedRoute) router.replace("/tenant-payments" as any);
   }, [isPublicAuthRoute, isTenantAllowedRoute, isTenant, loading, loggedIn, locked]);
-
-  useEffect(() => {
-    if (loading || !loggedIn || locked || isPublicAuthRoute) return;
-    trackNavigationRoute(pathname, routeParams as Record<string, unknown>);
-  }, [isPublicAuthRoute, loading, loggedIn, locked, pathname, routeParamsKey]);
 
   return (
     <Tabs
@@ -100,8 +80,8 @@ function AppTabs() {
       <Tabs.Screen name="tenant-payments" options={{ href: isTenant ? "/tenant-payments" : null, title: "دفعاتي", tabBarIcon: ({ color, size }) => <TabIcon name="receipt-outline" color={color} size={size} />, headerRight: () => null }} />
       <Tabs.Screen name="tenant-reports" options={{ href: isTenant ? "/tenant-reports" : null, title: "تقاريري", tabBarIcon: ({ color, size }) => <TabIcon name="analytics-outline" color={color} size={size} />, headerRight: () => null }} />
       <Tabs.Screen name="chat-threads" options={{ href: isTenant ? "/chat-threads" : null, title: "مراسلاتي", tabBarIcon: ({ color, size }) => <TabIcon name="chatbubbles-outline" color={color} size={size} /> }} />
-      <Tabs.Screen name="tenant-more" options={{ href: isTenant ? "/tenant-more" : null, title: "مزيد", tabBarLabel: "مزيد", tabBarIcon: ({ color, size }) => <TabIcon name="grid-outline" color={color} size={size} />, headerRight: () => null }} />
-      {hiddenScreens.map(([name, title, extra]) => <Tabs.Screen key={name} name={name} options={{ ...hidden, title, ...(extra || {}) }} />)}
+      <Tabs.Screen name="tenant-more" options={{ href: isTenant ? "/tenant-more" : null, title: "مزيد", tabBarIcon: ({ color, size }) => <TabIcon name="grid-outline" color={color} size={size} />, headerRight: () => null }} />
+      {hiddenScreens.map((name) => <Tabs.Screen key={name} name={name} options={hidden} />)}
     </Tabs>
   );
 }
