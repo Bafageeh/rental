@@ -29,6 +29,7 @@ const hiddenScreens: Array<[string, string, Record<string, unknown>?]> = [
   ["owner-bank-accounts", "الحسابات البنكية"], ["owner-portal", "بوابة الملاك"], ["user-accounts", "المستخدمون"],
   ["service-providers", "مزودو الخدمات"], ["unit-inspections", "فحص الوحدات"], ["unit-marketing", "تسويق الوحدات"],
   ["utility-bills", "الفواتير"], [otpName, "استعادة كلمة السر", { headerLeft: () => null, headerRight: () => null }],
+  ["manager-register", "إنشاء مدير عقارات", { headerLeft: () => null, headerRight: () => null }],
   ["login", "تسجيل الدخول", { headerLeft: () => null, headerRight: () => null }], ["profile", "بروفايل"],
   ["profile-security", "تغيير الرقم السري"], ["profile-properties", "عقاراتي"], ["my-account", "حسابي"],
   ["system-settings", "إعدادات النظام"], ["search", "البحث"], ["activity-logs", "سجل النشاط"], ["activity-feed", "آخر النشاطات"],
@@ -47,12 +48,13 @@ function AppTabs() {
   const forcedLoginOnLaunch = useRef(false);
   const isLoginRoute = pathname === "/login";
   const isOtpRoute = pathname === "/" + otpName;
+  const isManagerRegisterRoute = pathname === "/manager-register";
   const isTenantPaymentsRoute = pathname === "/tenant-payments";
   const isTenantReportsRoute = pathname === "/tenant-reports";
   const isTenantMoreRoute = pathname === "/tenant-more";
   const isChatRoute = pathname === "/chat-threads" || pathname === "/chat-thread" || pathname.startsWith("/chat-thread/");
   const isTenantAllowedRoute = isTenantPaymentsRoute || isTenantReportsRoute || isChatRoute || isTenantMoreRoute;
-  const isPublicAuthRoute = isLoginRoute || isOtpRoute;
+  const isPublicAuthRoute = isLoginRoute || isOtpRoute || isManagerRegisterRoute;
 
   useEffect(() => {
     if (forcedLoginOnLaunch.current) return;
