@@ -6,7 +6,16 @@ import { getAuthToken } from './auth';
 let lastValue: string | null = null;
 let handlerReady = false;
 
+function isExpoGoRuntime(): boolean {
+  const ownership = String((Constants as any).appOwnership || '').toLowerCase();
+  const execution = String((Constants as any).executionEnvironment || '').toLowerCase();
+
+  return ownership === 'expo' || execution === 'storeclient' || execution === 'store_client';
+}
+
 function loadNotice(): any | null {
+  if (isExpoGoRuntime()) return null;
+
   try {
     return require('expo-notifications');
   } catch {
@@ -66,7 +75,7 @@ function androidChannel(Notice: any) {
 }
 
 export function getMobileNoticeValue(): Promise<string | null> {
-  if (Platform.OS === 'web' || !Device.isDevice) return Promise.resolve(null);
+  if (Platform.OS === 'web' || !Device.isDevice || isExpoGoRuntime()) return Promise.resolve(null);
 
   const Notice = loadNotice();
   if (!Notice) return Promise.resolve(null);
@@ -115,6 +124,8 @@ function sendValue(value: string) {
 }
 
 export function syncMobileNoticeDevice(userId?: number | string | null) {
+  if (isExpoGoRuntime()) return Promise.resolve(null);
+
   return getMobileNoticeValue()
     .then((value) => {
       if (!value) return null;
