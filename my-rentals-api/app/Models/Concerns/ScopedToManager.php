@@ -11,7 +11,7 @@ trait ScopedToManager
     protected static function bootScopedToManager(): void
     {
         static::addGlobalScope('manager_data_scope', function (Builder $builder) {
-            $user = Auth::user();
+            $user = request()?->user() ?: Auth::user();
             if (! $user) return;
 
             $role = method_exists($user, 'effectiveRole')
@@ -29,7 +29,7 @@ trait ScopedToManager
         });
 
         static::creating(function ($model) {
-            $user = Auth::user();
+            $user = request()?->user() ?: Auth::user();
             if (! $user) return;
 
             $role = method_exists($user, 'effectiveRole')
