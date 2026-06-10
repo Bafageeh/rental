@@ -2,13 +2,17 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\ScopedToManager;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Contract extends Model
 {
+    use ScopedToManager;
+
     protected $fillable = [
+        'manager_id',
         'unit_id',
         'tenant_id',
         'parking_spot_id',
