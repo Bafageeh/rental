@@ -1,0 +1,155 @@
+name: Build Rental AAB
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - 'my-rentals-mobile/**'
+      - '.github/workflows/build-rental-aab.yml'
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: my-rentals-mobile
+
+jobs:
+  build-android-aab:
+    name: Build signed Android AAB
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Check Android signing secrets
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.RENTAL_ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.RENTAL_ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.RENTAL_ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.RENTAL_ANDROID_KEY_PASSWORD }}
+        run: |
+          test -n "$ANDROID_KEYSTORE_BASE64" || (echo "Missing secret RENTAL_ANDROID_KEYSTORE_BASE64" && exit 1)
+          test -n "$ANDROID_KEYSTORE_PASSWORD" || (echo "Missing secret RENTAL_ANDROID_KEYSTORE_PASSWORD" && exit 1)
+          test -n "$ANDROID_KEY_ALIAS" || (echo "Missing secret RENTAL_ANDROID_KEY_ALIAS" && exit 1)
+          test -n "$ANDROID_KEY_PASSWORD" || (echo "Missing secret RENTAL_ANDROID_KEY_PASSWORD" && exit 1)
+
+      - name: Remove stale notifications dependency before install
+        run: |
+          node - <<'NODE'
+          const fs = require('fs');
+          const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+          if (pkg.dependencies && pkg.dependencies['expo-notifications']) {
+            delete pkg.dependencies['expo-notifications'];
+            fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+          }
+          NODE
+
+      - name: Install mobile dependencies
+        env:
+          NPM_CONFIG_LEGACY_PEER_DEPS: true
+        run: npm install --legacy-peer-deps --no-audit --no-fund
+
+      - name: Align Expo notifications version
+        env:
+          CI: 1
+          EXPO_NO_TELEMETRY: 1
+          NPM_CONFIG_LEGACY_PEER_DEPS: true
+        run: npx expo install expo-notifications
+
+      - name: Prebuild Android project
+        env:
+          EXPO_NO_TELEMETRY: 1
+          NPM_CONFIG_LEGACY_PEER_DEPS: true
+        run: npx expo prebuild --platform android --clean --no-install
+
+      - name: Decode upload keystore
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.RENTAL_ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          mkdir -p android/app/keystores
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 -d > android/app/keystores/rental-upload-key.jks
+          ls -lh android/app/keystores/rental-upload-key.jks
+
+      - name: Configure release signing
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.RENTAL_ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.RENTAL_ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.RENTAL_ANDROID_KEY_PASSWORD }}
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          p = Path('android/app/build.gradle')
+          text = p.read_text()
+
+          signing_config = '''        upload {
+              storeFile file("keystores/rental-upload-key.jks")
+              storePassword System.getenv("ANDROID_KEYSTORE_PASSWORD")
+              keyAlias System.getenv("ANDROID_KEY_ALIAS")
+              keyPassword System.getenv("ANDROID_KEY_PASSWORD")
+          }
+'''
+
+          if 'signingConfigs {' in text and 'upload {' not in text:
+              text = text.replace('signingConfigs {\n', 'signingConfigs {\n' + signing_config, 1)
+          elif 'signingConfigs {' not in text:
+              text = text.replace('buildTypes {', 'signingConfigs {\n' + signing_config + '    }\n    buildTypes {', 1)
+
+          if 'release {' in text:
+              before, after = text.split('release {', 1)
+              block, rest = after.split('\n        }', 1)
+              lines = [line for line in block.splitlines() if 'signingConfig signingConfigs.' not in line]
+              lines.append('            signingConfig signingConfigs.upload')
+              text = before + 'release {' + '\n'.join(lines) + '\n        }' + rest
+
+          p.write_text(text)
+          print('Configured signed release bundle')
+          PY
+
+      - name: Build signed release AAB
+        working-directory: my-rentals-mobile/android
+        env:
+          EXPO_NO_TELEMETRY: 1
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.RENTAL_ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.RENTAL_ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.RENTAL_ANDROID_KEY_PASSWORD }}
+        run: |
+          chmod +x ./gradlew
+          ./gradlew bundleRelease --no-daemon
+
+      - name: Prepare AAB artifact
+        run: |
+          mkdir -p artifacts
+          AAB_PATH="android/app/build/outputs/bundle/release/app-release.aab"
+          if [ ! -f "$AAB_PATH" ]; then
+            AAB_PATH="$(find android/app/build/outputs/bundle/release -name '*.aab' | head -n 1)"
+          fi
+          test -n "$AAB_PATH"
+          cp "$AAB_PATH" artifacts/my-rentals.aab
+          ls -lh artifacts/my-rentals.aab
+
+      - name: Upload AAB artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: my-rentals-aab
+          path: my-rentals-mobile/artifacts/my-rentals.aab
+          if-no-files-found: error
+          retention-days: 14
