@@ -9,3 +9,7 @@ export function getMobileNoticeValue(): Promise<string | null> {
   if (Platform.OS === 'web') return Promise.resolve(null);
   return Notice[noticeMethod]().then((result: any) => result?.data || null).catch(() => null);
 }
+
+export function syncMobileNoticeDevice() {
+  return getMobileNoticeValue().then(() => null).catch(() => null);
+}
