@@ -1,5 +1,6 @@
 const moduleName = 'expo' + '-' + 'noti' + 'fications';
 
 export function foo() {
-  return Promise.resolve(moduleName);
+  const mod = require(moduleName);
+  return mod;
 }
