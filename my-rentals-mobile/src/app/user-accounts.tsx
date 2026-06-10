@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { Ionicons } from "@expo/vector-icons";
+import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -29,18 +30,29 @@ type UserAccount = {
   notes?: string | null;
 };
 
+function normalizeRole(value?: string | null) {
+  const role = String(value || "").trim().toLowerCase();
+  return role === "super_admin" ? "admin" : role;
+}
+
 function roleLabel(value?: string | null) {
-  if (value === "admin" || value === "super_admin") return "أدمن عام";
-  if (value === "manager") return "مدير عقارات";
-  if (value === "owner") return "مالك";
+  const role = normalizeRole(value);
+  if (role === "admin") return "أدمن عام";
+  if (role === "manager") return "مدير عقارات";
+  if (role === "owner") return "مالك";
   return value || "-";
 }
 
 function roleDescription(value?: string | null) {
-  if (value === "admin" || value === "super_admin") return "يرى كل البيانات ويدير النظام بالكامل";
-  if (value === "manager") return "يدير ملاكه وعقاراته ومستأجريه فقط";
-  if (value === "owner") return "يرى عقارات المالك المرتبط فقط";
+  const role = normalizeRole(value);
+  if (role === "admin") return "يرى كل البيانات ويدير النظام بالكامل";
+  if (role === "manager") return "يدير ملاكه وعقاراته ومستأجريه فقط";
+  if (role === "owner") return "يرى عقارات المالك المرتبط فقط";
   return "";
+}
+
+function contains(value: unknown, term: string) {
+  return String(value || "").toLowerCase().includes(term);
 }
 
 export default function UserAccountsScreen() {
@@ -51,6 +63,9 @@ export default function UserAccountsScreen() {
   const [saving, setSaving] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editingUser, setEditingUser] = useState<UserAccount | null>(null);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [roleFilter, setRoleFilter] = useState<"all" | "admin" | "manager" | "owner" | "inactive">("all");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("12345678");
@@ -184,43 +199,105 @@ export default function UserAccountsScreen() {
     { value: "manager", label: "مدير عقارات" },
     { value: "admin", label: "أدمن عام" },
   ];
+  const filterOptions = [
+    { value: "all", label: "الكل", icon: "apps-outline" },
+    { value: "admin", label: "أدمن", icon: "shield-checkmark-outline" },
+    { value: "manager", label: "مدير عقارات", icon: "business-outline" },
+    { value: "owner", label: "مالك", icon: "person-outline" },
+    { value: "inactive", label: "معطل", icon: "ban-outline" },
+  ] as const;
+
+  const filteredUsers = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase();
+    return users.filter((user) => {
+      const userRole = normalizeRole(user.role);
+      if (roleFilter === "inactive" && user.is_active) return false;
+      if (roleFilter !== "all" && roleFilter !== "inactive" && userRole !== roleFilter) return false;
+      if (!term) return true;
+      return contains(user.name, term) || contains(user.email, term) || contains(user.owner_name, term) || contains(user.notes, term) || contains(roleLabel(user.role), term);
+    });
+  }, [users, roleFilter, searchTerm]);
 
   return (
     <SafeAreaView style={styles.safe}>
       <ScrollView contentContainerStyle={styles.container} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refreshScreen} tintColor="#0F9B6F" />}>
-        <Text style={styles.title}>إدارة المستخدمين</Text>
-        <Text style={styles.subtitle}>إنشاء الحسابات وربطها بالصلاحيات المناسبة</Text>
-
-        <View style={styles.summaryBox}>
-          <Text style={styles.summaryText}>إجمالي الحسابات: {users.length}</Text>
-          <Text style={styles.summaryText}>حسابات الملاك: {ownerUsers.length}</Text>
-          <Text style={styles.summaryText}>حسابات الإدارة: {admins.length}</Text>
-          <Text style={styles.summaryText}>معطلة: {inactive.length}</Text>
+        <View style={styles.headerRow}>
+          <TouchableOpacity style={styles.iconTopButton} onPress={() => setSearchOpen((value) => !value)} activeOpacity={0.85}>
+            <Ionicons name={searchOpen ? "close-outline" : "search-outline"} size={23} color="#0F172A" />
+          </TouchableOpacity>
+          <View style={styles.headerTextWrap}>
+            <Text style={styles.title}>إدارة المستخدمين</Text>
+            <Text style={styles.subtitle}>إنشاء الحسابات وربطها بالصلاحيات المناسبة</Text>
+          </View>
+          <TouchableOpacity style={[styles.iconTopButton, styles.addTopButton]} onPress={startCreate} activeOpacity={0.85}>
+            <Ionicons name="add" size={25} color="#fff" />
+          </TouchableOpacity>
         </View>
 
-        <TouchableOpacity style={styles.primaryButton} onPress={startCreate} activeOpacity={0.88}>
-          <Text style={styles.primaryButtonText}>إضافة حساب مستخدم</Text>
-        </TouchableOpacity>
+        <View style={styles.summaryBox}>
+          <View style={styles.summaryItem}><Text style={styles.summaryValue}>{users.length}</Text><Text style={styles.summaryLabel}>كل الحسابات</Text></View>
+          <View style={styles.summaryItem}><Text style={styles.summaryValue}>{admins.length}</Text><Text style={styles.summaryLabel}>إدارة</Text></View>
+          <View style={styles.summaryItem}><Text style={styles.summaryValue}>{ownerUsers.length}</Text><Text style={styles.summaryLabel}>ملاك</Text></View>
+          <View style={styles.summaryItem}><Text style={styles.summaryValue}>{inactive.length}</Text><Text style={styles.summaryLabel}>معطلة</Text></View>
+        </View>
+
+        {searchOpen ? (
+          <View style={styles.searchBox}>
+            <Ionicons name="search-outline" size={20} color="#9CA3AF" />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="ابحث بالاسم أو البريد أو المالك أو الصلاحية"
+              value={searchTerm}
+              onChangeText={setSearchTerm}
+              textAlign="right"
+              autoFocus
+            />
+            {searchTerm ? <TouchableOpacity onPress={() => setSearchTerm("")}><Ionicons name="close-circle" size={20} color="#9CA3AF" /></TouchableOpacity> : null}
+          </View>
+        ) : null}
+
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterBar}>
+          {filterOptions.map((option) => {
+            const active = roleFilter === option.value;
+            return (
+              <TouchableOpacity key={option.value} style={[styles.filterChip, active ? styles.filterChipActive : null]} onPress={() => setRoleFilter(option.value)} activeOpacity={0.85}>
+                <Ionicons name={option.icon as any} size={17} color={active ? "#fff" : "#475569"} />
+                <Text style={[styles.filterChipText, active ? styles.filterChipTextActive : null]}>{option.label}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+
+        <View style={styles.resultRow}>
+          <Text style={styles.resultText}>المعروض: {filteredUsers.length}</Text>
+          <Text style={styles.resultHint}>استخدم الفلتر أو البحث لتضييق النتائج</Text>
+        </View>
 
         {loading ? <View style={styles.box}><ActivityIndicator /><Text style={styles.boxText}>جاري تحميل الحسابات...</Text></View> : null}
-        {!loading && users.length === 0 ? <View style={styles.box}><Text style={styles.emptyText}>لا توجد حسابات مستخدمين حاليًا</Text></View> : null}
+        {!loading && filteredUsers.length === 0 ? <View style={styles.box}><Text style={styles.emptyText}>لا توجد حسابات مطابقة</Text></View> : null}
 
-        {users.map((user) => (
+        {filteredUsers.map((user) => (
           <View key={user.id} style={styles.card}>
-            <View style={styles.rowBetween}>
-              <Text style={[styles.statusBadge, user.is_active ? styles.activeBadge : styles.inactiveBadge]}>{user.is_active ? "مفعل" : "معطل"}</Text>
-              <Text style={styles.cardTitle}>{user.name || "مستخدم"}</Text>
+            <View style={styles.cardTopRow}>
+              <View style={styles.iconActionsRow}>
+                <IconAction icon="create-outline" color="#0F9B6F" onPress={() => startEdit(user)} />
+                <IconAction icon="key-outline" color="#111827" onPress={() => resetPassword(user)} />
+                <IconAction icon={user.is_active ? "pause-circle-outline" : "play-circle-outline"} color={user.is_active ? "#DC2626" : "#16A34A"} onPress={() => toggleActive(user)} />
+              </View>
+              <View style={styles.userMainInfo}>
+                <View style={styles.userNameRow}>
+                  <Text style={[styles.statusBadge, user.is_active ? styles.activeBadge : styles.inactiveBadge]}>{user.is_active ? "مفعل" : "معطل"}</Text>
+                  <Text style={styles.cardTitle}>{user.name || "مستخدم"}</Text>
+                </View>
+                <Text style={styles.roleBadge}>{roleLabel(user.role)}</Text>
+              </View>
             </View>
-            <Text style={styles.detail}>البريد: {user.email || "-"}</Text>
-            <Text style={styles.detail}>الصلاحية: {roleLabel(user.role)}</Text>
-            <Text style={styles.detail}>المالك المرتبط: {user.owner_name || "-"}</Text>
-            <Text style={styles.detail}>آخر دخول: {user.last_login_at || "-"}</Text>
+            <View style={styles.infoGrid}>
+              <InfoLine icon="mail-outline" text={user.email || "-"} />
+              <InfoLine icon="person-outline" text={`المالك: ${user.owner_name || "-"}`} />
+              <InfoLine icon="time-outline" text={`آخر دخول: ${user.last_login_at || "-"}`} />
+            </View>
             {user.notes ? <Text style={styles.notes}>ملاحظات: {user.notes}</Text> : null}
-            <View style={styles.itemActionsRow}>
-              <TouchableOpacity style={[styles.itemButton, styles.editButton]} onPress={() => startEdit(user)} activeOpacity={0.85}><Text style={styles.itemButtonText}>تعديل</Text></TouchableOpacity>
-              <TouchableOpacity style={[styles.itemButton, styles.passwordButton]} onPress={() => resetPassword(user)} activeOpacity={0.85}><Text style={styles.itemButtonText}>كلمة</Text></TouchableOpacity>
-              <TouchableOpacity style={[styles.itemButton, user.is_active ? styles.disableButton : styles.enableButton]} onPress={() => toggleActive(user)} activeOpacity={0.85}><Text style={styles.itemButtonText}>{user.is_active ? "تعطيل" : "تفعيل"}</Text></TouchableOpacity>
-            </View>
           </View>
         ))}
 
@@ -235,7 +312,7 @@ export default function UserAccountsScreen() {
           <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={closeForm} />
           <View style={styles.modalCard}>
             <View style={styles.modalHeader}>
-              <TouchableOpacity style={styles.closeCircle} onPress={closeForm} activeOpacity={0.85}><Text style={styles.closeText}>×</Text></TouchableOpacity>
+              <TouchableOpacity style={styles.closeCircle} onPress={closeForm} activeOpacity={0.85}><Ionicons name="close" size={22} color="#111827" /></TouchableOpacity>
               <Text style={styles.formTitle}>{editingUser ? "تعديل حساب" : "حساب جديد"}</Text>
             </View>
             <ScrollView contentContainerStyle={styles.modalContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
@@ -252,8 +329,8 @@ export default function UserAccountsScreen() {
               </View>
               <TextInput style={[styles.input, styles.multilineInput]} placeholder="ملاحظات" value={notes} onChangeText={setNotes} multiline textAlign="right" />
               <View style={styles.actionsRow}>
-                <TouchableOpacity style={[styles.actionButton, styles.cancelButton]} onPress={closeForm} disabled={saving}><Text style={styles.actionText}>إلغاء</Text></TouchableOpacity>
-                <TouchableOpacity style={[styles.actionButton, styles.saveButton, saving ? styles.disabledButton : null]} onPress={saveUser} disabled={saving}><Text style={styles.actionText}>{saving ? "جاري الحفظ..." : "حفظ"}</Text></TouchableOpacity>
+                <TouchableOpacity style={[styles.actionButton, styles.cancelButton]} onPress={closeForm} disabled={saving}><Ionicons name="close-outline" size={20} color="#fff" /></TouchableOpacity>
+                <TouchableOpacity style={[styles.actionButton, styles.saveButton, saving ? styles.disabledButton : null]} onPress={saveUser} disabled={saving}>{saving ? <ActivityIndicator color="#fff" /> : <Ionicons name="checkmark-outline" size={22} color="#fff" />}</TouchableOpacity>
               </View>
             </ScrollView>
           </View>
@@ -263,21 +340,42 @@ export default function UserAccountsScreen() {
   );
 }
 
+function IconAction({ icon, color, onPress }: { icon: string; color: string; onPress: () => void }) {
+  return <TouchableOpacity style={[styles.iconAction, { borderColor: `${color}22`, backgroundColor: `${color}10` }]} onPress={onPress} activeOpacity={0.82}><Ionicons name={icon as any} size={21} color={color} /></TouchableOpacity>;
+}
+
+function InfoLine({ icon, text }: { icon: string; text: string }) {
+  return <View style={styles.infoLine}><Text numberOfLines={1} style={styles.infoText}>{text}</Text><Ionicons name={icon as any} size={16} color="#94A3B8" /></View>;
+}
+
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: "#F7F6F4" },
   container: { padding: 18, paddingBottom: 50 },
+  headerRow: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 12 },
+  headerTextWrap: { flex: 1, alignItems: "flex-end" },
   title: { fontSize: 30, fontWeight: "900", color: "#111827", textAlign: "right" },
-  subtitle: { marginTop: 8, marginBottom: 18, color: "#7A766F", fontSize: 15, textAlign: "right", lineHeight: 22 },
-  summaryBox: { backgroundColor: "#111827", borderRadius: 18, padding: 16, marginBottom: 14 },
-  summaryText: { color: "#fff", fontWeight: "800", textAlign: "right", marginBottom: 6 },
-  primaryButton: { backgroundColor: "#0F9B6F", padding: 13, borderRadius: 14, alignItems: "center", marginBottom: 14 },
-  primaryButtonText: { color: "#fff", fontWeight: "900" },
+  subtitle: { marginTop: 6, color: "#7A766F", fontSize: 14, textAlign: "right", lineHeight: 21 },
+  iconTopButton: { width: 48, height: 48, borderRadius: 18, backgroundColor: "#fff", borderWidth: 1, borderColor: "#E5E7EB", alignItems: "center", justifyContent: "center" },
+  addTopButton: { backgroundColor: "#0F9B6F", borderColor: "#0F9B6F" },
+  summaryBox: { flexDirection: "row-reverse", backgroundColor: "#111827", borderRadius: 22, padding: 14, marginBottom: 12, gap: 8 },
+  summaryItem: { flex: 1, alignItems: "center", justifyContent: "center" },
+  summaryValue: { color: "#fff", fontWeight: "900", fontSize: 20 },
+  summaryLabel: { color: "#CBD5E1", fontWeight: "800", fontSize: 11, marginTop: 4 },
+  searchBox: { minHeight: 50, borderRadius: 18, backgroundColor: "#fff", borderWidth: 1, borderColor: "#E5E7EB", paddingHorizontal: 12, flexDirection: "row-reverse", alignItems: "center", gap: 8, marginBottom: 10 },
+  searchInput: { flex: 1, color: "#111827", fontWeight: "800" },
+  filterBar: { flexDirection: "row-reverse", gap: 8, paddingVertical: 6, paddingLeft: 4 },
+  filterChip: { flexDirection: "row-reverse", alignItems: "center", gap: 6, paddingHorizontal: 12, paddingVertical: 9, borderRadius: 999, backgroundColor: "#fff", borderWidth: 1, borderColor: "#E5E7EB" },
+  filterChipActive: { backgroundColor: "#111827", borderColor: "#111827" },
+  filterChipText: { color: "#475569", fontWeight: "900", fontSize: 12 },
+  filterChipTextActive: { color: "#fff" },
+  resultRow: { flexDirection: "row-reverse", alignItems: "center", justifyContent: "space-between", marginTop: 3, marginBottom: 10 },
+  resultText: { color: "#111827", fontWeight: "900" },
+  resultHint: { color: "#94A3B8", fontWeight: "800", fontSize: 11 },
   modalRoot: { flex: 1, justifyContent: "center", paddingHorizontal: 18, paddingVertical: 28 },
   modalBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(15,23,42,0.5)" },
   modalCard: { maxHeight: "88%", backgroundColor: "#fff", borderRadius: 24, padding: 16, shadowColor: "#0F172A", shadowOpacity: 0.22, shadowRadius: 24, shadowOffset: { width: 0, height: 14 }, elevation: 20 },
   modalHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 10 },
   closeCircle: { width: 38, height: 38, borderRadius: 19, backgroundColor: "#F3F4F6", alignItems: "center", justifyContent: "center" },
-  closeText: { color: "#111827", fontSize: 28, lineHeight: 30, fontWeight: "900" },
   modalContent: { paddingBottom: 8 },
   formTitle: { fontSize: 23, fontWeight: "900", color: "#111827", textAlign: "right", flex: 1 },
   input: { backgroundColor: "#F7F6F4", borderWidth: 1, borderColor: "#DDDBD6", borderRadius: 12, padding: 12, marginBottom: 10, color: "#111827" },
@@ -290,29 +388,28 @@ const styles = StyleSheet.create({
   chipTextActive: { color: "#fff" },
   roleHint: { color: "#7A766F", textAlign: "right", marginBottom: 12 },
   actionsRow: { flexDirection: "row-reverse", marginTop: 8, gap: 8 },
-  actionButton: { flex: 1, padding: 12, borderRadius: 12, alignItems: "center" },
+  actionButton: { flex: 1, minHeight: 48, borderRadius: 16, alignItems: "center", justifyContent: "center" },
   cancelButton: { backgroundColor: "#7A766F" },
   saveButton: { backgroundColor: "#16a34a" },
   disabledButton: { opacity: 0.65 },
-  actionText: { color: "#fff", fontWeight: "900" },
   box: { backgroundColor: "#fff", padding: 18, borderRadius: 18, alignItems: "center", marginBottom: 12 },
   boxText: { marginTop: 8, color: "#5E5B55" },
-  emptyText: { color: "#7A766F" },
-  card: { backgroundColor: "#fff", borderRadius: 18, padding: 16, marginBottom: 12 },
-  rowBetween: { flexDirection: "row", justifyContent: "space-between", gap: 10, alignItems: "center" },
-  statusBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, overflow: "hidden", fontWeight: "900" },
+  emptyText: { color: "#7A766F", fontWeight: "800" },
+  card: { backgroundColor: "#fff", borderRadius: 22, padding: 14, marginBottom: 12, borderWidth: 1, borderColor: "#ECEAE5" },
+  cardTopRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 12 },
+  iconActionsRow: { flexDirection: "row", gap: 7 },
+  iconAction: { width: 42, height: 42, borderRadius: 16, borderWidth: 1, alignItems: "center", justifyContent: "center" },
+  userMainInfo: { flex: 1, alignItems: "flex-end" },
+  userNameRow: { flexDirection: "row", alignItems: "center", gap: 8, justifyContent: "flex-end" },
+  statusBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, overflow: "hidden", fontWeight: "900", fontSize: 12 },
   activeBadge: { backgroundColor: "#dcfce7", color: "#166534" },
   inactiveBadge: { backgroundColor: "#fee2e2", color: "#991b1b" },
-  cardTitle: { fontSize: 20, fontWeight: "900", color: "#111827", textAlign: "right", flex: 1 },
-  detail: { marginTop: 8, color: "#5E5B55", textAlign: "right" },
-  notes: { marginTop: 10, color: "#92400e", fontWeight: "700", textAlign: "right" },
-  itemActionsRow: { flexDirection: "row-reverse", marginTop: 14, gap: 8 },
-  itemButton: { flex: 1, padding: 11, borderRadius: 12, alignItems: "center" },
-  editButton: { backgroundColor: "#0F9B6F" },
-  passwordButton: { backgroundColor: "#111827" },
-  disableButton: { backgroundColor: "#dc2626" },
-  enableButton: { backgroundColor: "#16a34a" },
-  itemButtonText: { color: "#fff", fontWeight: "900" },
+  cardTitle: { fontSize: 19, fontWeight: "900", color: "#111827", textAlign: "right", flexShrink: 1 },
+  roleBadge: { marginTop: 7, backgroundColor: "#F8FAFC", color: "#0F172A", borderRadius: 999, overflow: "hidden", paddingHorizontal: 10, paddingVertical: 5, fontWeight: "900", fontSize: 12 },
+  infoGrid: { marginTop: 12, gap: 8 },
+  infoLine: { flexDirection: "row-reverse", alignItems: "center", gap: 8, backgroundColor: "#F8FAFC", borderRadius: 14, paddingHorizontal: 10, paddingVertical: 9 },
+  infoText: { flex: 1, color: "#475569", fontWeight: "800", textAlign: "right" },
+  notes: { marginTop: 10, color: "#92400e", fontWeight: "800", textAlign: "right" },
   helpBox: { backgroundColor: "#fffbeb", borderRadius: 18, padding: 14, marginTop: 4 },
   helpTitle: { color: "#92400e", fontWeight: "900", textAlign: "right", marginBottom: 8 },
   helpText: { color: "#92400e", fontWeight: "700", textAlign: "right", lineHeight: 22 },
