@@ -15,7 +15,9 @@ import {
 } from '../components/ui/phase3';
 
 export default function MoreScreen() {
-  const { loggedIn, isAdmin, logout } = useAuth();
+  const { loggedIn, isAdmin, user, logout } = useAuth();
+  const role = String(user?.role ?? '').trim().toLowerCase();
+  const showAdminOnly = isAdmin && (role === 'admin' || role === 'super_admin');
 
   function requireLogin(path: string, title: string) {
     if (!loggedIn) {
@@ -38,7 +40,7 @@ export default function MoreScreen() {
       return;
     }
 
-    if (!isAdmin) {
+    if (!showAdminOnly) {
       Alert.alert('غير مصرح', 'هذه الشاشة مخصصة للإدارة فقط.');
       return;
     }
@@ -94,7 +96,7 @@ export default function MoreScreen() {
           />
         </View>
 
-        {isAdmin ? (
+        {showAdminOnly ? (
           <>
             <View style={styles.card}>
               <ActionTile
