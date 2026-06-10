@@ -100,13 +100,15 @@ jobs:
           p = Path('android/app/build.gradle')
           text = p.read_text()
 
-          signing_config = '''        upload {
-              storeFile file("keystores/rental-upload-key.jks")
-              storePassword System.getenv("ANDROID_KEYSTORE_PASSWORD")
-              keyAlias System.getenv("ANDROID_KEY_ALIAS")
-              keyPassword System.getenv("ANDROID_KEY_PASSWORD")
-          }
-'''
+          signing_config = "\n".join([
+              '        upload {',
+              '            storeFile file("keystores/rental-upload-key.jks")',
+              '            storePassword System.getenv("ANDROID_KEYSTORE_PASSWORD")',
+              '            keyAlias System.getenv("ANDROID_KEY_ALIAS")',
+              '            keyPassword System.getenv("ANDROID_KEY_PASSWORD")',
+              '        }',
+              ''
+          ])
 
           if 'signingConfigs {' in text and 'upload {' not in text:
               text = text.replace('signingConfigs {\n', 'signingConfigs {\n' + signing_config, 1)
