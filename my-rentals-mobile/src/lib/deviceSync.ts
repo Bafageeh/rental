@@ -32,7 +32,7 @@ function androidChannel() {
   if (Platform.OS !== 'android') return Promise.resolve();
 
   return Notice.setNotificationChannelAsync('tickets', {
-    name: 'تنبيهات التكاق' ,
+    name: 'تنبيهات التذاكر' ,
     importance: Notice.AndroidImportance.MAX,
     vibrationPattern: [0, 250, 250, 250],
     sound: 'default',
@@ -56,7 +56,7 @@ export function getMobileNoticeValue(): Promise<string | null> {
     .then((permission: any) => {
       if (!permission || permission.status !== 'granted') return null;
       const id = projectId();
-      return Notice[noticeMethod](id ? { projectId: } : undefined);
+      return Notice[noticeMethod](id ? { projectId: id } : undefined);
     })
     .then((result: any) => result?.data || null)
     .catch(() => null);
