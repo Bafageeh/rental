@@ -27,14 +27,17 @@ const hiddenScreens = [
 ];
 
 function AppTabs() {
-  const { loading, loggedIn, locked, isAdmin, isTenant } = useAuth();
+  const { loading, loggedIn, locked, isAdmin, isTenant, user } = useAuth();
   const pathname = usePathname();
   const forcedLoginOnLaunch = useRef(false);
+  const role = String(user?.role ?? '').trim().toLowerCase();
+  const isSystemAdmin = isAdmin && (role === 'admin' || role === 'super_admin');
 
   const isLoginRoute = pathname === "/login";
   const isOtpRoute = pathname === "/" + otpName;
   const isManagerRegisterRoute = pathname === "/manager-register";
   const isPublicAuthRoute = isLoginRoute || isOtpRoute || isManagerRegisterRoute;
+  const isAdminOnlyRoute = pathname === "/inquiry-center" || pathname === "/scheduled-messages" || pathname === "/user-accounts";
   const isTenantPaymentsRoute = pathname === "/tenant-payments";
   const isTenantReportsRoute = pathname === "/tenant-reports";
   const isTenantMoreRoute = pathname === "/tenant-more";
@@ -51,8 +54,9 @@ function AppTabs() {
     if (loading) return;
     if ((!loggedIn || locked) && !isPublicAuthRoute) return router.replace("/login" as any);
     if (loggedIn && !locked && isPublicAuthRoute) return router.replace(isTenant ? "/tenant-payments" as any : "/" as any);
+    if (loggedIn && !locked && isAdminOnlyRoute && !isSystemAdmin) return router.replace("/more" as any);
     if (loggedIn && !locked && isTenant && !isTenantAllowedRoute) router.replace("/tenant-payments" as any);
-  }, [isPublicAuthRoute, isTenantAllowedRoute, isTenant, loading, loggedIn, locked]);
+  }, [isPublicAuthRoute, isAdminOnlyRoute, isSystemAdmin, isTenantAllowedRoute, isTenant, loading, loggedIn, locked]);
 
   return (
     <Tabs
