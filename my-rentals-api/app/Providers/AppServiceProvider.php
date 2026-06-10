@@ -37,7 +37,7 @@ class AppServiceProvider extends ServiceProvider
     {
         foreach ([Owner::class, Property::class, Unit::class, Tenant::class, Contract::class, Payment::class] as $modelClass) {
             $modelClass::addGlobalScope('manager_data_scope', function (Builder $builder) {
-                $user = Auth::user();
+                $user = request()?->user() ?: Auth::user();
                 if (!$user) return;
 
                 $role = method_exists($user, 'effectiveRole')
@@ -53,7 +53,7 @@ class AppServiceProvider extends ServiceProvider
             });
 
             $modelClass::creating(function ($model) {
-                $user = Auth::user();
+                $user = request()?->user() ?: Auth::user();
                 if (!$user) return;
 
                 $role = method_exists($user, 'effectiveRole')
