@@ -25,6 +25,10 @@ export default function LoginScreen() {
     router.push({ pathname: '/password-otp' as any, params: { identifier: username.trim() } });
   }
 
+  function goToManagerRegister() {
+    router.push('/manager-register' as any);
+  }
+
   async function login() {
     const name = username.trim();
     if (!name) {
@@ -87,6 +91,10 @@ export default function LoginScreen() {
           <View style={styles.card}>
             <Text style={styles.formTitle}>تسجيل الدخول</Text>
 
+            <View style={styles.tenantHint}>
+              <Text style={styles.tenantHintText}>المستأجر يدخل مباشرة برقم الهوية أو رقم الجوال، ولا يحتاج إلى إنشاء حساب جديد.</Text>
+            </View>
+
             <Text style={styles.label}>اسم المستخدم</Text>
             <TextInput
               style={styles.input}
@@ -132,6 +140,10 @@ export default function LoginScreen() {
             <TouchableOpacity style={styles.secondaryBtn} onPress={goToOtp} disabled={loading} activeOpacity={0.85}>
               <Text style={styles.secondaryBtnText}>نسيت كلمة السر / أول دخول</Text>
             </TouchableOpacity>
+
+            <TouchableOpacity style={styles.managerBtn} onPress={goToManagerRegister} disabled={loading} activeOpacity={0.85}>
+              <Text style={styles.managerBtnText}>إنشاء مستخدم جديد كمدير عقارات</Text>
+            </TouchableOpacity>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -142,13 +154,15 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   scrollView: { flex: 1 },
-  scroll: { flexGrow: 1, justifyContent: 'flex-start', paddingHorizontal: spacing['2xl'], paddingTop: spacing['2xl'], paddingBottom: 380 },
+  scroll: { flexGrow: 1, justifyContent: 'flex-start', paddingHorizontal: spacing['2xl'], paddingTop: spacing['2xl'], paddingBottom: 420 },
   logoWrap: { alignItems: 'center', marginBottom: spacing.xl, paddingTop: spacing.lg },
   logoCircle: { width: 88, height: 88, borderRadius: 44, backgroundColor: colors.primaryLight, alignItems: 'center', justifyContent: 'center', marginBottom: spacing.md + 2, ...shadows.md, shadowColor: colors.primary, shadowOpacity: 0.15 },
   appName: { fontSize: 26, fontWeight: '800', color: colors.primary, marginBottom: 4 },
   appSub: { ...typography.caption, color: colors.textSecondary },
   card: { backgroundColor: colors.surface, borderRadius: radii.xl, padding: spacing['2xl'], borderWidth: 1, borderColor: colors.borderLight, ...shadows.md },
-  formTitle: { ...typography.h3, color: colors.text, textAlign: 'center', marginBottom: spacing.xl },
+  formTitle: { ...typography.h3, color: colors.text, textAlign: 'center', marginBottom: spacing.md },
+  tenantHint: { backgroundColor: colors.primaryLight, borderRadius: radii.md, borderWidth: 1, borderColor: colors.borderLight, padding: spacing.md, marginBottom: spacing.md },
+  tenantHintText: { ...typography.caption, color: colors.textSecondary, textAlign: 'center', lineHeight: 21, fontWeight: '700' },
   label: { ...typography.captionBold, color: colors.textSecondary, textAlign: 'right', marginBottom: 6, marginTop: spacing.xs },
   input: { height: 48, backgroundColor: colors.background, borderRadius: radii.md, borderWidth: 1, borderColor: colors.border, paddingHorizontal: spacing.md + 2, fontSize: 15, color: colors.text, marginBottom: 6 },
   passwordRow: { position: 'relative', justifyContent: 'center' },
@@ -158,4 +172,6 @@ const styles = StyleSheet.create({
   btnText: { fontSize: 16, fontWeight: '700', color: colors.textInverse },
   secondaryBtn: { height: 46, borderRadius: radii.md, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center', marginTop: spacing.sm, backgroundColor: colors.background },
   secondaryBtnText: { fontSize: 15, fontWeight: '700', color: colors.textSecondary },
+  managerBtn: { height: 46, borderRadius: radii.md, borderWidth: 1, borderColor: colors.primary, alignItems: 'center', justifyContent: 'center', marginTop: spacing.sm, backgroundColor: colors.surface },
+  managerBtnText: { fontSize: 15, fontWeight: '800', color: colors.primary },
 });
