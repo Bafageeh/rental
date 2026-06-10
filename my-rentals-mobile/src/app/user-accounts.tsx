@@ -17,7 +17,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { apiGetScoped, apiPost } from "../lib/api";
 
-type Owner = { id: number; name?: string | null; phone?: string | null; email?: string | null };
+type Owner = { id: number; manager_id?: number | null; name?: string | null; phone?: string | null; email?: string | null; properties_count?: number | null };
 type UserAccount = {
   id: number;
   name?: string | null;
@@ -135,7 +135,7 @@ export default function UserAccountsScreen() {
         name: name.trim(),
         email: email.trim(),
         role,
-        owner_id: role === "owner" ? ownerId : ownerId || null,
+        owner_id: role === "owner" ? ownerId : null,
         is_active: true,
         notes: notes.trim() || null,
       };
@@ -217,6 +217,11 @@ export default function UserAccountsScreen() {
       return contains(user.name, term) || contains(user.email, term) || contains(user.owner_name, term) || contains(user.notes, term) || contains(roleLabel(user.role), term);
     });
   }, [users, roleFilter, searchTerm]);
+
+  const linkedManagerOwners = useMemo(() => {
+    if (role !== "manager" || !editingUser?.id) return [];
+    return owners.filter((owner) => Number(owner.manager_id || 0) === Number(editingUser.id));
+  }, [owners, role, editingUser?.id]);
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -320,13 +325,47 @@ export default function UserAccountsScreen() {
               <TextInput style={styles.input} placeholder="البريد الإلكتروني" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" textAlign="right" />
               <TextInput style={styles.input} placeholder={editingUser ? "كلمة مرور جديدة اختياري" : "كلمة المرور"} value={password} onChangeText={setPassword} secureTextEntry textAlign="right" />
               <Text style={styles.label}>الدور / الصلاحية</Text>
-              <View style={styles.chips}>{roleOptions.map((option) => <TouchableOpacity key={option.value} style={[styles.chip, role === option.value ? styles.chipActive : null]} onPress={() => setRole(option.value)}><Text style={[styles.chipText, role === option.value ? styles.chipTextActive : null]}>{option.label}</Text></TouchableOpacity>)}</View>
+              <View style={styles.chips}>{roleOptions.map((option) => <TouchableOpacity key={option.value} style={[styles.chip, role === option.value ? styles.chipActive : null]} onPress={() => { setRole(option.value); if (option.value !== "owner") setOwnerId(null); }}><Text style={[styles.chipText, role === option.value ? styles.chipTextActive : null]}>{option.label}</Text></TouchableOpacity>)}</View>
               <Text style={styles.roleHint}>{roleDescription(role)}</Text>
-              <Text style={styles.label}>ربط الحساب بمالك</Text>
-              <View style={styles.chips}>
-                <TouchableOpacity style={[styles.chip, ownerId === null ? styles.chipActive : null]} onPress={() => setOwnerId(null)}><Text style={[styles.chipText, ownerId === null ? styles.chipTextActive : null]}>بدون مالك</Text></TouchableOpacity>
-                {owners.map((owner) => <TouchableOpacity key={owner.id} style={[styles.chip, ownerId === owner.id ? styles.chipActive : null]} onPress={() => setOwnerId(owner.id)}><Text style={[styles.chipText, ownerId === owner.id ? styles.chipTextActive : null]}>{owner.name || `مالك #${owner.id}`}</Text></TouchableOpacity>)}
-              </View>
+
+              {role === "manager" ? (
+                <View style={styles.linkedOwnersSection}>
+                  <View style={styles.linkedOwnersHeader}>
+                    <Text style={styles.linkedOwnersCount}>{linkedManagerOwners.length}</Text>
+                    <View style={styles.linkedOwnersTitleWrap}>
+                      <Text style={styles.linkedOwnersTitle}>الملاك المرتبطون بهذا المدير</Text>
+                      <Text style={styles.linkedOwnersSubtitle}>عرض فقط، ويتم الربط من بيانات الملاك والعقارات.</Text>
+                    </View>
+                  </View>
+                  {linkedManagerOwners.length ? linkedManagerOwners.map((owner) => (
+                    <View key={owner.id} style={styles.linkedOwnerCard}>
+                      <View style={styles.ownerAvatar}><Text style={styles.ownerAvatarText}>{String(owner.name || "م").trim()[0] || "م"}</Text></View>
+                      <View style={styles.linkedOwnerTextWrap}>
+                        <Text numberOfLines={1} style={styles.linkedOwnerName}>{owner.name || `مالك #${owner.id}`}</Text>
+                        <Text numberOfLines={1} style={styles.linkedOwnerMeta}>{owner.phone || owner.email || `رقم المالك: ${owner.id}`}</Text>
+                      </View>
+                    </View>
+                  )) : (
+                    <View style={styles.emptyOwnersBox}>
+                      <Ionicons name="people-outline" size={24} color="#94A3B8" />
+                      <Text style={styles.emptyOwnersText}>{editingUser ? "لا يوجد ملاك مرتبطون بهذا المدير حاليًا." : "بعد إنشاء مدير العقارات ستظهر هنا قائمة ملاكه المرتبطين."}</Text>
+                    </View>
+                  )}
+                </View>
+              ) : role === "owner" ? (
+                <>
+                  <Text style={styles.label}>ربط الحساب بمالك</Text>
+                  <View style={styles.chips}>
+                    {owners.map((owner) => <TouchableOpacity key={owner.id} style={[styles.chip, ownerId === owner.id ? styles.chipActive : null]} onPress={() => setOwnerId(owner.id)}><Text style={[styles.chipText, ownerId === owner.id ? styles.chipTextActive : null]}>{owner.name || `مالك #${owner.id}`}</Text></TouchableOpacity>)}
+                  </View>
+                </>
+              ) : (
+                <View style={styles.ownerLinkInfo}>
+                  <Ionicons name="information-circle-outline" size={20} color="#0F766E" />
+                  <Text style={styles.ownerLinkInfoText}>الأدمن العام لا يحتاج إلى ربط بمالك محدد.</Text>
+                </View>
+              )}
+
               <TextInput style={[styles.input, styles.multilineInput]} placeholder="ملاحظات" value={notes} onChangeText={setNotes} multiline textAlign="right" />
               <View style={styles.actionsRow}>
                 <TouchableOpacity style={[styles.actionButton, styles.cancelButton]} onPress={closeForm} disabled={saving}><Ionicons name="close-outline" size={20} color="#fff" /></TouchableOpacity>
@@ -387,6 +426,22 @@ const styles = StyleSheet.create({
   chipText: { color: "#374151", fontWeight: "800" },
   chipTextActive: { color: "#fff" },
   roleHint: { color: "#7A766F", textAlign: "right", marginBottom: 12 },
+  linkedOwnersSection: { backgroundColor: "#F8FAFC", borderWidth: 1, borderColor: "#E2E8F0", borderRadius: 18, padding: 12, marginBottom: 12 },
+  linkedOwnersHeader: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 10 },
+  linkedOwnersCount: { minWidth: 36, height: 36, borderRadius: 18, backgroundColor: "#111827", color: "#fff", textAlign: "center", textAlignVertical: "center", fontWeight: "900", overflow: "hidden", paddingTop: 8 },
+  linkedOwnersTitleWrap: { flex: 1, alignItems: "flex-end" },
+  linkedOwnersTitle: { color: "#111827", fontWeight: "900", fontSize: 15, textAlign: "right" },
+  linkedOwnersSubtitle: { color: "#64748B", fontWeight: "700", fontSize: 12, marginTop: 3, textAlign: "right" },
+  linkedOwnerCard: { flexDirection: "row-reverse", alignItems: "center", gap: 10, backgroundColor: "#fff", borderRadius: 15, borderWidth: 1, borderColor: "#E5E7EB", padding: 10, marginTop: 8 },
+  ownerAvatar: { width: 38, height: 38, borderRadius: 19, backgroundColor: "#ECFDF5", alignItems: "center", justifyContent: "center" },
+  ownerAvatarText: { color: "#0F766E", fontWeight: "900", fontSize: 17 },
+  linkedOwnerTextWrap: { flex: 1, alignItems: "flex-end" },
+  linkedOwnerName: { color: "#111827", fontWeight: "900", fontSize: 14, textAlign: "right" },
+  linkedOwnerMeta: { color: "#64748B", fontWeight: "700", fontSize: 12, marginTop: 3, textAlign: "right" },
+  emptyOwnersBox: { alignItems: "center", justifyContent: "center", backgroundColor: "#fff", borderRadius: 15, padding: 14, borderWidth: 1, borderColor: "#E5E7EB", marginTop: 8 },
+  emptyOwnersText: { color: "#64748B", fontWeight: "800", textAlign: "center", lineHeight: 20, marginTop: 6 },
+  ownerLinkInfo: { flexDirection: "row-reverse", alignItems: "center", gap: 8, backgroundColor: "#ECFDF5", borderRadius: 14, padding: 11, marginBottom: 12 },
+  ownerLinkInfoText: { color: "#0F766E", fontWeight: "800", textAlign: "right", flex: 1 },
   actionsRow: { flexDirection: "row-reverse", marginTop: 8, gap: 8 },
   actionButton: { flex: 1, minHeight: 48, borderRadius: 16, alignItems: "center", justifyContent: "center" },
   cancelButton: { backgroundColor: "#7A766F" },
