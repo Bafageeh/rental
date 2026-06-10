@@ -40,6 +40,17 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
+      - name: Remove stale notifications dependency before install
+        run: |
+          node - <<'NODE'
+          const fs = require('fs');
+          const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+          if (pkg.dependencies && pkg.dependencies['expo-notifications']) {
+            delete pkg.dependencies['expo-notifications'];
+            fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+          }
+          NODE
+
       - name: Install mobile dependencies
         env:
           NPM_CONFIG_LEGACY_PEER_DEPS: true
