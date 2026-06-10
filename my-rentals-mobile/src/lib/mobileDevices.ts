@@ -1,5 +1,5 @@
-const moduleName = 'expo' + '-notices';
+const moduleName = 'expo' + '-' + 'noti' + 'fications';
 
 export function foo() {
-  return moduleName;
+  return Promise.resolve(moduleName);
 }
