@@ -42,9 +42,10 @@ jobs:
 
       - name: Align Expo notifications version
         env:
+          CI: 1
           EXPO_NO_TELEMETRY: 1
           NPM_CONFIG_LEGACY_PEER_DEPS: true
-        run: npx expo install expo-notifications --non-interactive
+        run: npx expo install expo-notifications
 
       - name: Prebuild Android project
         env:
