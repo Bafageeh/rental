@@ -45,6 +45,12 @@ jobs:
           NPM_CONFIG_LEGACY_PEER_DEPS: true
         run: npm install --legacy-peer-deps --no-audit --no-fund
 
+      - name: Align Expo notifications version
+        env:
+          EXPO_NO_TELEMETRY: 1
+          NPM_CONFIG_LEGACY_PEER_DEPS: true
+        run: npx expo install expo-notifications --non-interactive
+
       - name: Prebuild Android project
         env:
           EXPO_NO_TELEMETRY: 1
