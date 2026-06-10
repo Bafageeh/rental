@@ -2,13 +2,17 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\ScopedToManager;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Property extends Model
 {
+    use ScopedToManager;
+
     protected $fillable = [
+        'manager_id',
         'owner_id',
         'name',
         'deed_number',
