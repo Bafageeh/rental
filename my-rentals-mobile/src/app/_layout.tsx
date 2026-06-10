@@ -19,7 +19,7 @@ const hiddenScreens = [
   "upload-property-deed", "property-form", "contract-edit/[id]", "contract-renewals", "alerts", "smart-alerts",
   "reminders", "follow-ups", "reports", "occupancy", "property-performance", "files", "export-center",
   "owner-accounts", "owner-bank-accounts", "owner-portal", "user-accounts", "service-providers", "unit-inspections",
-  "unit-marketing", "utility-bills", otpName, "login", "profile", "profile-security", "profile-properties",
+  "unit-marketing", "utility-bills", otpName, "login", "manager-register", "profile", "profile-security", "profile-properties",
   "my-account", "system-settings", "search", "activity-logs", "activity-feed", "data-health", "trash-center",
   "relations-manager", "record-details", "inquiry-center", "scheduled-messages", "communication-center", "owner-properties",
   "owner-overdue-units", "unit-overdue-payments", "edit-record", "owner/[id]", "property/[id]", "unit/[id]",
