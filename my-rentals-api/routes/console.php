@@ -5,6 +5,9 @@ use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
 
 require_once __DIR__ . '/console_overdue_table_report.php';
+if (is_file(__DIR__ . '/console_assign_admin_data_to_manager.php')) {
+    require_once __DIR__ . '/console_assign_admin_data_to_manager.php';
+}
 
 Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
