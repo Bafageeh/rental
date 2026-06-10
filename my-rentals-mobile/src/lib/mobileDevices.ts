@@ -1,5 +1,5 @@
-import Constants from 'expo-constants';
+import { getAuthToken } from './auth';
 
 export function foo() {
-  return Constants;
+  return getAuthToken();
 }
