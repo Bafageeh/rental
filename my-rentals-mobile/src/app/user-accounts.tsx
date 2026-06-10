@@ -17,7 +17,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { apiGetScoped, apiPost } from "../lib/api";
 
-type Owner = { id: number; manager_id?: number | null; name?: string | null; phone?: string | null; email?: string | null; properties_count?: number | null };
+type Owner = { id: number; manager_id?: number | null; name?: string | null; phone?: string | null; email?: string | null; properties_count?: number | null; units_count?: number | null; contracts_count?: number | null };
 type UserAccount = {
   id: number;
   name?: string | null;
@@ -55,6 +55,11 @@ function contains(value: unknown, term: string) {
   return String(value || "").toLowerCase().includes(term);
 }
 
+function firstLetter(value?: string | null) {
+  const text = String(value || "م").trim();
+  return text ? text[0] : "م";
+}
+
 export default function UserAccountsScreen() {
   const [users, setUsers] = useState<UserAccount[]>([]);
   const [owners, setOwners] = useState<Owner[]>([]);
@@ -66,6 +71,7 @@ export default function UserAccountsScreen() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [roleFilter, setRoleFilter] = useState<"all" | "admin" | "manager" | "owner" | "inactive">("all");
+  const [expandedManagers, setExpandedManagers] = useState<Record<number, boolean>>({});
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("12345678");
@@ -189,6 +195,14 @@ export default function UserAccountsScreen() {
     }
   }
 
+  function managerOwners(user: UserAccount) {
+    return owners.filter((owner) => Number(owner.manager_id || 0) === Number(user.id));
+  }
+
+  function toggleManagerOwners(userId: number) {
+    setExpandedManagers((current) => ({ ...current, [userId]: !current[userId] }));
+  }
+
   useEffect(() => { load(); }, []);
 
   const admins = users.filter((user) => ["admin", "super_admin", "manager"].includes(String(user.role || "")));
@@ -217,11 +231,6 @@ export default function UserAccountsScreen() {
       return contains(user.name, term) || contains(user.email, term) || contains(user.owner_name, term) || contains(user.notes, term) || contains(roleLabel(user.role), term);
     });
   }, [users, roleFilter, searchTerm]);
-
-  const linkedManagerOwners = useMemo(() => {
-    if (role !== "manager" || !editingUser?.id) return [];
-    return owners.filter((owner) => Number(owner.manager_id || 0) === Number(editingUser.id));
-  }, [owners, role, editingUser?.id]);
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -281,30 +290,66 @@ export default function UserAccountsScreen() {
         {loading ? <View style={styles.box}><ActivityIndicator /><Text style={styles.boxText}>جاري تحميل الحسابات...</Text></View> : null}
         {!loading && filteredUsers.length === 0 ? <View style={styles.box}><Text style={styles.emptyText}>لا توجد حسابات مطابقة</Text></View> : null}
 
-        {filteredUsers.map((user) => (
-          <View key={user.id} style={styles.card}>
-            <View style={styles.cardTopRow}>
-              <View style={styles.iconActionsRow}>
-                <IconAction icon="create-outline" color="#0F9B6F" onPress={() => startEdit(user)} />
-                <IconAction icon="key-outline" color="#111827" onPress={() => resetPassword(user)} />
-                <IconAction icon={user.is_active ? "pause-circle-outline" : "play-circle-outline"} color={user.is_active ? "#DC2626" : "#16A34A"} onPress={() => toggleActive(user)} />
-              </View>
-              <View style={styles.userMainInfo}>
-                <View style={styles.userNameRow}>
-                  <Text style={[styles.statusBadge, user.is_active ? styles.activeBadge : styles.inactiveBadge]}>{user.is_active ? "مفعل" : "معطل"}</Text>
-                  <Text style={styles.cardTitle}>{user.name || "مستخدم"}</Text>
+        {filteredUsers.map((user) => {
+          const isManager = normalizeRole(user.role) === "manager";
+          const linkedOwners = isManager ? managerOwners(user) : [];
+          const ownersExpanded = !!expandedManagers[user.id];
+
+          return (
+            <View key={user.id} style={styles.card}>
+              <View style={styles.cardTopRow}>
+                <View style={styles.iconActionsRow}>
+                  <IconAction icon="create-outline" color="#0F9B6F" onPress={() => startEdit(user)} />
+                  <IconAction icon="key-outline" color="#111827" onPress={() => resetPassword(user)} />
+                  <IconAction icon={user.is_active ? "pause-circle-outline" : "play-circle-outline"} color={user.is_active ? "#DC2626" : "#16A34A"} onPress={() => toggleActive(user)} />
                 </View>
-                <Text style={styles.roleBadge}>{roleLabel(user.role)}</Text>
+                <View style={styles.userMainInfo}>
+                  <View style={styles.userNameRow}>
+                    <Text style={[styles.statusBadge, user.is_active ? styles.activeBadge : styles.inactiveBadge]}>{user.is_active ? "مفعل" : "معطل"}</Text>
+                    <Text style={styles.cardTitle}>{user.name || "مستخدم"}</Text>
+                  </View>
+                  <Text style={styles.roleBadge}>{roleLabel(user.role)}</Text>
+                </View>
               </View>
+              <View style={styles.infoGrid}>
+                <InfoLine icon="mail-outline" text={user.email || "-"} />
+                {!isManager ? <InfoLine icon="person-outline" text={`المالك: ${user.owner_name || "-"}`} /> : null}
+                <InfoLine icon="time-outline" text={`آخر دخول: ${user.last_login_at || "-"}`} />
+              </View>
+
+              {isManager ? (
+                <View style={styles.cardOwnersWrap}>
+                  <TouchableOpacity style={styles.managerOwnersToggle} activeOpacity={0.86} onPress={() => toggleManagerOwners(user.id)}>
+                    <Ionicons name={ownersExpanded ? "chevron-up" : "chevron-down"} size={18} color="#0F766E" />
+                    <Text style={styles.managerOwnersCount}>{linkedOwners.length}</Text>
+                    <View style={styles.managerOwnersTextWrap}>
+                      <Text style={styles.managerOwnersTitle}>الملاك التابعون لهذا المدير</Text>
+                      <Text style={styles.managerOwnersSubtitle}>{ownersExpanded ? "اضغط للإغلاق" : "اضغط لعرض القائمة"}</Text>
+                    </View>
+                  </TouchableOpacity>
+                  {ownersExpanded ? (
+                    linkedOwners.length ? linkedOwners.map((owner) => (
+                      <View key={owner.id} style={styles.cardOwnerItem}>
+                        <View style={styles.ownerAvatar}><Text style={styles.ownerAvatarText}>{firstLetter(owner.name)}</Text></View>
+                        <View style={styles.linkedOwnerTextWrap}>
+                          <Text numberOfLines={1} style={styles.linkedOwnerName}>{owner.name || `مالك #${owner.id}`}</Text>
+                          <Text numberOfLines={1} style={styles.linkedOwnerMeta}>{owner.phone || owner.email || `رقم المالك: ${owner.id}`}</Text>
+                        </View>
+                        <View style={styles.ownerMiniStats}>
+                          <Text style={styles.ownerMiniStatText}>{Number(owner.properties_count || 0)} عقار</Text>
+                        </View>
+                      </View>
+                    )) : (
+                      <View style={styles.emptyOwnersBox}><Text style={styles.emptyOwnersText}>لا يوجد ملاك مرتبطون بهذا المدير حاليًا.</Text></View>
+                    )
+                  ) : null}
+                </View>
+              ) : null}
+
+              {user.notes ? <Text style={styles.notes}>ملاحظات: {user.notes}</Text> : null}
             </View>
-            <View style={styles.infoGrid}>
-              <InfoLine icon="mail-outline" text={user.email || "-"} />
-              <InfoLine icon="person-outline" text={`المالك: ${user.owner_name || "-"}`} />
-              <InfoLine icon="time-outline" text={`آخر دخول: ${user.last_login_at || "-"}`} />
-            </View>
-            {user.notes ? <Text style={styles.notes}>ملاحظات: {user.notes}</Text> : null}
-          </View>
-        ))}
+          );
+        })}
 
         <View style={styles.helpBox}>
           <Text style={styles.helpTitle}>ملاحظة مهمة</Text>
@@ -328,37 +373,18 @@ export default function UserAccountsScreen() {
               <View style={styles.chips}>{roleOptions.map((option) => <TouchableOpacity key={option.value} style={[styles.chip, role === option.value ? styles.chipActive : null]} onPress={() => { setRole(option.value); if (option.value !== "owner") setOwnerId(null); }}><Text style={[styles.chipText, role === option.value ? styles.chipTextActive : null]}>{option.label}</Text></TouchableOpacity>)}</View>
               <Text style={styles.roleHint}>{roleDescription(role)}</Text>
 
-              {role === "manager" ? (
-                <View style={styles.linkedOwnersSection}>
-                  <View style={styles.linkedOwnersHeader}>
-                    <Text style={styles.linkedOwnersCount}>{linkedManagerOwners.length}</Text>
-                    <View style={styles.linkedOwnersTitleWrap}>
-                      <Text style={styles.linkedOwnersTitle}>الملاك المرتبطون بهذا المدير</Text>
-                      <Text style={styles.linkedOwnersSubtitle}>عرض فقط، ويتم الربط من بيانات الملاك والعقارات.</Text>
-                    </View>
-                  </View>
-                  {linkedManagerOwners.length ? linkedManagerOwners.map((owner) => (
-                    <View key={owner.id} style={styles.linkedOwnerCard}>
-                      <View style={styles.ownerAvatar}><Text style={styles.ownerAvatarText}>{String(owner.name || "م").trim()[0] || "م"}</Text></View>
-                      <View style={styles.linkedOwnerTextWrap}>
-                        <Text numberOfLines={1} style={styles.linkedOwnerName}>{owner.name || `مالك #${owner.id}`}</Text>
-                        <Text numberOfLines={1} style={styles.linkedOwnerMeta}>{owner.phone || owner.email || `رقم المالك: ${owner.id}`}</Text>
-                      </View>
-                    </View>
-                  )) : (
-                    <View style={styles.emptyOwnersBox}>
-                      <Ionicons name="people-outline" size={24} color="#94A3B8" />
-                      <Text style={styles.emptyOwnersText}>{editingUser ? "لا يوجد ملاك مرتبطون بهذا المدير حاليًا." : "بعد إنشاء مدير العقارات ستظهر هنا قائمة ملاكه المرتبطين."}</Text>
-                    </View>
-                  )}
-                </View>
-              ) : role === "owner" ? (
+              {role === "owner" ? (
                 <>
                   <Text style={styles.label}>ربط الحساب بمالك</Text>
                   <View style={styles.chips}>
                     {owners.map((owner) => <TouchableOpacity key={owner.id} style={[styles.chip, ownerId === owner.id ? styles.chipActive : null]} onPress={() => setOwnerId(owner.id)}><Text style={[styles.chipText, ownerId === owner.id ? styles.chipTextActive : null]}>{owner.name || `مالك #${owner.id}`}</Text></TouchableOpacity>)}
                   </View>
                 </>
+              ) : role === "manager" ? (
+                <View style={styles.ownerLinkInfo}>
+                  <Ionicons name="people-outline" size={20} color="#0F766E" />
+                  <Text style={styles.ownerLinkInfoText}>الملاك المرتبطون بهذا المدير يظهرون في بطاقته فقط كقائمة منسدلة، ولا يتم تعديلهم من هنا.</Text>
+                </View>
               ) : (
                 <View style={styles.ownerLinkInfo}>
                   <Ionicons name="information-circle-outline" size={20} color="#0F766E" />
@@ -426,22 +452,8 @@ const styles = StyleSheet.create({
   chipText: { color: "#374151", fontWeight: "800" },
   chipTextActive: { color: "#fff" },
   roleHint: { color: "#7A766F", textAlign: "right", marginBottom: 12 },
-  linkedOwnersSection: { backgroundColor: "#F8FAFC", borderWidth: 1, borderColor: "#E2E8F0", borderRadius: 18, padding: 12, marginBottom: 12 },
-  linkedOwnersHeader: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 10 },
-  linkedOwnersCount: { minWidth: 36, height: 36, borderRadius: 18, backgroundColor: "#111827", color: "#fff", textAlign: "center", textAlignVertical: "center", fontWeight: "900", overflow: "hidden", paddingTop: 8 },
-  linkedOwnersTitleWrap: { flex: 1, alignItems: "flex-end" },
-  linkedOwnersTitle: { color: "#111827", fontWeight: "900", fontSize: 15, textAlign: "right" },
-  linkedOwnersSubtitle: { color: "#64748B", fontWeight: "700", fontSize: 12, marginTop: 3, textAlign: "right" },
-  linkedOwnerCard: { flexDirection: "row-reverse", alignItems: "center", gap: 10, backgroundColor: "#fff", borderRadius: 15, borderWidth: 1, borderColor: "#E5E7EB", padding: 10, marginTop: 8 },
-  ownerAvatar: { width: 38, height: 38, borderRadius: 19, backgroundColor: "#ECFDF5", alignItems: "center", justifyContent: "center" },
-  ownerAvatarText: { color: "#0F766E", fontWeight: "900", fontSize: 17 },
-  linkedOwnerTextWrap: { flex: 1, alignItems: "flex-end" },
-  linkedOwnerName: { color: "#111827", fontWeight: "900", fontSize: 14, textAlign: "right" },
-  linkedOwnerMeta: { color: "#64748B", fontWeight: "700", fontSize: 12, marginTop: 3, textAlign: "right" },
-  emptyOwnersBox: { alignItems: "center", justifyContent: "center", backgroundColor: "#fff", borderRadius: 15, padding: 14, borderWidth: 1, borderColor: "#E5E7EB", marginTop: 8 },
-  emptyOwnersText: { color: "#64748B", fontWeight: "800", textAlign: "center", lineHeight: 20, marginTop: 6 },
   ownerLinkInfo: { flexDirection: "row-reverse", alignItems: "center", gap: 8, backgroundColor: "#ECFDF5", borderRadius: 14, padding: 11, marginBottom: 12 },
-  ownerLinkInfoText: { color: "#0F766E", fontWeight: "800", textAlign: "right", flex: 1 },
+  ownerLinkInfoText: { color: "#0F766E", fontWeight: "800", textAlign: "right", flex: 1, lineHeight: 20 },
   actionsRow: { flexDirection: "row-reverse", marginTop: 8, gap: 8 },
   actionButton: { flex: 1, minHeight: 48, borderRadius: 16, alignItems: "center", justifyContent: "center" },
   cancelButton: { backgroundColor: "#7A766F" },
@@ -464,6 +476,22 @@ const styles = StyleSheet.create({
   infoGrid: { marginTop: 12, gap: 8 },
   infoLine: { flexDirection: "row-reverse", alignItems: "center", gap: 8, backgroundColor: "#F8FAFC", borderRadius: 14, paddingHorizontal: 10, paddingVertical: 9 },
   infoText: { flex: 1, color: "#475569", fontWeight: "800", textAlign: "right" },
+  cardOwnersWrap: { marginTop: 12, backgroundColor: "#F8FAFC", borderRadius: 18, borderWidth: 1, borderColor: "#E2E8F0", padding: 10 },
+  managerOwnersToggle: { flexDirection: "row", alignItems: "center", gap: 8 },
+  managerOwnersCount: { minWidth: 30, height: 30, borderRadius: 15, backgroundColor: "#ECFDF5", color: "#0F766E", textAlign: "center", textAlignVertical: "center", fontWeight: "900", overflow: "hidden", paddingTop: 6 },
+  managerOwnersTextWrap: { flex: 1, alignItems: "flex-end" },
+  managerOwnersTitle: { color: "#111827", fontWeight: "900", textAlign: "right", fontSize: 13 },
+  managerOwnersSubtitle: { color: "#64748B", fontWeight: "700", textAlign: "right", fontSize: 11, marginTop: 2 },
+  cardOwnerItem: { flexDirection: "row-reverse", alignItems: "center", gap: 10, backgroundColor: "#fff", borderRadius: 15, borderWidth: 1, borderColor: "#E5E7EB", padding: 10, marginTop: 8 },
+  ownerAvatar: { width: 38, height: 38, borderRadius: 19, backgroundColor: "#ECFDF5", alignItems: "center", justifyContent: "center" },
+  ownerAvatarText: { color: "#0F766E", fontWeight: "900", fontSize: 17 },
+  linkedOwnerTextWrap: { flex: 1, alignItems: "flex-end" },
+  linkedOwnerName: { color: "#111827", fontWeight: "900", fontSize: 14, textAlign: "right" },
+  linkedOwnerMeta: { color: "#64748B", fontWeight: "700", fontSize: 12, marginTop: 3, textAlign: "right" },
+  ownerMiniStats: { backgroundColor: "#F1F5F9", borderRadius: 999, paddingHorizontal: 8, paddingVertical: 5 },
+  ownerMiniStatText: { color: "#475569", fontWeight: "900", fontSize: 11 },
+  emptyOwnersBox: { alignItems: "center", justifyContent: "center", backgroundColor: "#fff", borderRadius: 15, padding: 14, borderWidth: 1, borderColor: "#E5E7EB", marginTop: 8 },
+  emptyOwnersText: { color: "#64748B", fontWeight: "800", textAlign: "center", lineHeight: 20, marginTop: 6 },
   notes: { marginTop: 10, color: "#92400e", fontWeight: "800", textAlign: "right" },
   helpBox: { backgroundColor: "#fffbeb", borderRadius: 18, padding: 14, marginTop: 4 },
   helpTitle: { color: "#92400e", fontWeight: "900", textAlign: "right", marginBottom: 8 },
