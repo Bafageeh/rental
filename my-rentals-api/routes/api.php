@@ -130,6 +130,8 @@ foreach ([$otpAndTenantRoutes] as $publicRouteModule) {
 
 Route::middleware(['auth.api'])->group(function () {
     foreach ([
+        __DIR__ . '/api/130_manager_data_scope.php',
+        __DIR__ . '/api/129_push_notifications.php',
         __DIR__ . '/api/124_chat_threads.php',
         __DIR__ . '/api/125_chat_new_threads.php',
         __DIR__ . '/api/126_chat_attachments.php',
@@ -142,6 +144,7 @@ Route::middleware(['auth.api'])->group(function () {
 
 Route::middleware(['auth.api', 'api.scope'])->group(function () {
     foreach ([
+        __DIR__ . '/api/130_manager_data_scope.php',
         __DIR__ . '/relation_manager_routes.php',
         __DIR__ . '/relation_related_routes.php',
     ] as $relationRouteFile) {
@@ -150,6 +153,8 @@ Route::middleware(['auth.api', 'api.scope'])->group(function () {
 });
 
 Route::middleware(['auth.api', 'api.scope'])->group(function () {
+    if (is_file(__DIR__ . '/api/130_manager_data_scope.php')) require_once __DIR__ . '/api/130_manager_data_scope.php';
+
     Route::get('/webhook-events', [SafeWebhookEventController::class, 'index']);
     Route::get('/scheduled-messages', [ScheduledMessageController::class, 'index']);
     Route::post('/scheduled-messages/{key}', [ScheduledMessageController::class, 'update']);
