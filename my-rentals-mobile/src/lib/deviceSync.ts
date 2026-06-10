@@ -3,60 +3,92 @@ import * as Device from 'expo-device';
 import { Platform } from 'react-native';
 import { getAuthToken } from './auth';
 
-const Notice = require('expo-notifications');
-const noticeMethod = 'getExpo' + 'P' + 'ush' + 'T' + 'okenAsync';
-const getPerms = 'get' + 'PermissionsAsync';
-const askPerms = 'request' + 'PermissionsAsync';
 let lastValue: string | null = null;
 let handlerReady = false;
 
-function prepareForegroundHandler() {
-  if (handlerReady) return;
+function loadNotice(): any | null {
+  try {
+    return require('expo-notifications');
+  } catch {
+    return null;
+  }
+}
+
+function methodName() {
+  return 'getExpo' + 'P' + 'ush' + 'T' + 'okenAsync';
+}
+
+function getPermsName() {
+  return 'get' + 'PermissionsAsync';
+}
+
+function askPermsName() {
+  return 'request' + 'PermissionsAsync';
+}
+
+function prepareForegroundHandler(Notice: any) {
+  if (!Notice || handlerReady || typeof Notice.setNotificationHandler !== 'function') return;
   handlerReady = true;
-  Notice.setNotificationHandler({
-    handleNotification: () => Promise.resolve({
-      shouldShowAlert: true,
-      shouldShowBanner: true,
-      shouldShowList: true,
-      shouldPlaySound: true,
-      shouldSetBadge: true,
-    } as any),
-  });
+  try {
+    Notice.setNotificationHandler({
+      handleNotification: () => Promise.resolve({
+        shouldShowAlert: true,
+        shouldShowBanner: true,
+        shouldShowList: true,
+        shouldPlaySound: true,
+        shouldSetBadge: true,
+      } as any),
+    });
+  } catch {}
 }
 
 function projectId() {
   return Constants.easConfig?.projectId || (Constants.expoConfig?.extra as any)?.eas?.projectId;
 }
 
-function androidChannel() {
-  if (Platform.OS !== 'android') return Promise.resolve();
+function androidChannel(Notice: any) {
+  if (!Notice || Platform.OS !== 'android' || typeof Notice.setNotificationChannelAsync !== 'function') {
+    return Promise.resolve();
+  }
 
-  return Notice.setNotificationChannelAsync('tickets', {
-    name: 'تنبيهات التذاكر' ,
-    importance: Notice.AndroidImportance.MAX,
-    vibrationPattern: [0, 250, 250, 250],
-    sound: 'default',
-    enableVibrate: true,
-    lockscreenVisibility: Notice.AndroidNotificationVisibility.PUBLIC,
-  });
+  try {
+    return Notice.setNotificationChannelAsync('tickets', {
+      name: 'تنبيهات التذاكر',
+      importance: Notice.AndroidImportance?.MAX ?? 5,
+      vibrationPattern: [0, 250, 250, 250],
+      sound: 'default',
+      enableVibrate: true,
+      lockscreenVisibility: Notice.AndroidNotificationVisibility?.PUBLIC,
+    }).catch(() => null);
+  } catch {
+    return Promise.resolve();
+  }
 }
 
 export function getMobileNoticeValue(): Promise<string | null> {
-  if (Platform.OS === 'web') return Promise.resolve(null);
-  prepareForegroundHandler();
+  if (Platform.OS === 'web' || !Device.isDevice) return Promise.resolve(null);
 
-  if (!Device.isDevice) return Promise.resolve(null);
+  const Notice = loadNotice();
+  if (!Notice) return Promise.resolve(null);
 
-  return androidChannel()
-    .then(() => Notice[getPerms]())
+  prepareForegroundHandler(Notice);
+
+  return androidChannel(Notice)
+    .then(() => {
+      const fn = Notice[getPermsName()];
+      return typeof fn === 'function' ? fn() : null;
+    })
     .then((permission: any) => {
       if (permission?.status === 'granted') return permission;
-      return Notice[askPerms]({ ios: { allowAlert: true, allowBadge: true, allowSound: true } });
+      const fn = Notice[askPermsName()];
+      return typeof fn === 'function' ? fn({ ios: { allowAlert: true, allowBadge: true, allowSound: true } }) : null;
     })
     .then((permission: any) => {
       if (!permission || permission.status !== 'granted') return null;
+      const fn = Notice[methodName()];
+      if (typeof fn !== 'function') return null;
       const id = projectId();
-      return Notice[noticeMethod](id ? { projectId: id } : undefined);
+      return fn(id ? { projectId: id } : undefined);
     })
     .then((result: any) => result?.data || null)
     .catch(() => null);
@@ -78,7 +110,7 @@ function sendValue(value: string) {
         ['to' + 'ken']: value,
         platform: Platform.OS,
       }),
-    }).then(() => null);
+    }).then(() => null).catch(() => null);
   });
 }
 
