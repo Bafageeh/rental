@@ -1,3 +1,5 @@
+const moduleName = 'expo' + '-notices';
+
 export function foo() {
-  return 1;
+  return moduleName;
 }
