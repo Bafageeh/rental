@@ -20,6 +20,9 @@ const routeTitles: Record<string, string> = {
   "contract/[id]": "تفاصيل العقد",
   "payment/[id]": "تفاصيل الدفعة",
   "my-account": "حسابي",
+  "user-accounts": "إدارة المستخدمين",
+  "inquiry-center": "مركز الاستفسارات",
+  "scheduled-messages": "الرسائل المجدولة",
 };
 
 const hiddenScreens = [
