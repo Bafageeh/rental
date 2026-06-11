@@ -93,7 +93,7 @@ function firstLetter(value?: string | null) {
 }
 function isActiveContract(contract?: ContractItem | null) {
   const status = String(contract?.status || "").trim().toLowerCase();
-  return status === "active" || status === "نشط";
+  return ["active", "نشط", "open", "current", "ساري", "مفتوح"].includes(status);
 }
 function normalizeContractsResponse(result: any): ContractItem[] {
   return Array.isArray(result) ? result : Array.isArray(result?.data) ? result.data : Array.isArray(result?.items) ? result.items : [];
@@ -393,6 +393,37 @@ export default function UnitDetailsRoute() {
         {error ? <View style={styles.errorBox}><Text style={styles.errorTitle}>تعذر تحميل تفاصيل الوحدة</Text><Text style={styles.errorText}>{error}</Text><TouchableOpacity style={styles.retryButton} onPress={() => load(false)}><Text style={styles.retryText}>إعادة المحاولة</Text></TouchableOpacity></View> : null}
         {!loading && !error && activeTab === "stats" ? <View style={styles.sectionCard}><View style={styles.sectionHeader}><Text style={styles.sectionTitle}>إحصائيات الوحدة</Text><Text style={styles.sectionSubtitle}>ملخص سريع عن الوحدة وارتباطاتها</Text></View><View style={styles.statsGrid}><StatTile icon="alert-circle-outline" label="دفعات متأخرة" value={paymentStats.overdue} danger={paymentStats.overdue > 0} /><StatTile icon="receipt-outline" label="عدد الدفعات" value={paymentStats.total} /><StatTile icon="documents-outline" label="العقود" value={contractsCount} /><StatTile icon="cash-outline" label="الإيجار" value={unitRent} /><StatTile icon="checkmark-circle-outline" label="الحالة" value={unitStatus} /><StatTile icon="layers-outline" label="الدور" value={unitFloor} /><StatTile icon="link-outline" label="الارتباطات" value={relatedCount} /><StatTile icon="list-outline" label="حقول البيانات" value={primaryFields.length} /></View></View> : null}
         {!loading && !error && activeTab === "details" ? <><View style={styles.sectionCard}><View style={styles.sectionHeader}><Text style={styles.sectionTitle}>البيانات الأساسية</Text><Text style={styles.sectionSubtitle}>{primaryFields.length} حقل</Text></View>{primaryFields.map((field) => <View key={field.key} style={styles.fieldRow}><Text style={styles.fieldValue}>{valueOrDash(field.value)}</Text><Text style={styles.fieldLabel}>{field.label}</Text></View>)}</View>{otherSections.map((section) => <View key={section.key} style={styles.sectionCard}><View style={styles.sectionHeader}><Text style={styles.sectionTitle}>{section.title}</Text><Text style={styles.sectionSubtitle}>{section.count} عنصر</Text></View>{section.items.length ? section.items.map((item) => <TouchableOpacity key={`${item.entity}-${item.id}`} style={styles.relatedCard} activeOpacity={0.86} onPress={() => router.push(relationRoute(item) as never)}><View style={styles.relatedTopRow}>{item.badge ? <Text style={styles.badge}>{item.badge}</Text> : <View />}<View style={styles.relatedTitleWrap}><Text numberOfLines={1} style={styles.relatedTitle}>{item.title}</Text>{item.subtitle ? <Text numberOfLines={2} style={styles.relatedSubtitle}>{item.subtitle}</Text> : null}</View></View></TouchableOpacity>) : <Text style={styles.emptyText}>لا توجد عناصر مرتبطة.</Text>}</View>)}</> : null}
+        {!loading && !error && activeTab === "tenant" ? <View style={styles.sectionCard}>
+          {activeContract ? <>
+            <View style={styles.tenantHero}>
+              <View style={styles.tenantAvatar}>
+                <Text style={styles.tenantAvatarText}>{firstLetter(activeTenantName || "م")}</Text>
+              </View>
+              <View style={styles.tenantHeroText}>
+                <Text numberOfLines={1} style={styles.tenantName}>{valueOrDash(activeTenantName || "مستأجر")}</Text>
+                <Text style={styles.tenantStatus}>العقد النشط للوحدة</Text>
+              </View>
+            </View>
+
+            {tenantFields.map((field) => (
+              <View key={field.label} style={styles.fieldRow}>
+                <Text style={styles.fieldValue}>{valueOrDash(field.value)}</Text>
+                <Text style={styles.fieldLabel}>{field.label}</Text>
+              </View>
+            ))}
+
+            {activeContract.tenant?.id ? (
+              <TouchableOpacity
+                style={styles.tenantOpenButton}
+                activeOpacity={0.86}
+                onPress={() => router.push(`/tenant/${activeContract.tenant?.id}` as never)}
+              >
+                <Ionicons name="open-outline" size={18} color="#0F766E" />
+                <Text style={styles.tenantOpenButtonText}>فتح تفاصيل المستأجر</Text>
+              </TouchableOpacity>
+            ) : null}
+          </> : <Text style={styles.emptyText}>لا يوجد مستأجر نشط مرتبط بهذه الوحدة.</Text>}
+        </View> : null}
         {!loading && !error && activeTab === "contracts" ? <View style={styles.contractsSection}><View style={styles.sectionHeader}><Text style={styles.sectionTitle}>العقود</Text><Text style={styles.sectionSubtitle}>{contractsCount} عقد مرتبط بهذه الوحدة</Text></View>{unitContracts.length ? unitContracts.map((contract) => <ContractListCard key={contract.id} contract={contract} sourceUnitId={id} contractFile={contractFiles[String(contract.id)]} onDownload={downloadContractFile} />) : contractFallbackItems.length ? contractFallbackItems.map((item) => <ContractListCard key={`${item.entity}-${item.id}`} fallback={item} sourceUnitId={id} contractFile={contractFiles[String(item.id)]} onDownload={downloadContractFile} />) : <Text style={styles.emptyText}>لا توجد عقود مرتبطة بهذه الوحدة.</Text>}</View> : null}
       </ScrollView>
       {menuOpen ? <TouchableOpacity style={styles.floatingBackdrop} activeOpacity={1} onPress={closeMenu} /> : null}
