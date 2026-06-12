@@ -1,6 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
-import { Tabs, router, usePathname } from "expo-router";
+import { Tabs, router, useLocalSearchParams, usePathname } from "expo-router";
 import { useEffect, useRef } from "react";
+import { BackHandler } from "react-native";
 import { HeaderBackAction as HeaderBackRight, HeaderQuickActions as HeaderActionsLeft } from "../components/AppHeaderActions";
 import { colors } from "../constants/theme";
 import { AuthProvider, useAuth } from "../context/AuthContext";
@@ -39,12 +40,23 @@ const hiddenScreens = [
   "unit-edit/[id]", "tenant/[id]", "contract/[id]", "payment/[id]",
 ];
 
+function firstParam(value: unknown) {
+  if (Array.isArray(value)) return value[0] ? String(value[0]) : "";
+  return value === undefined || value === null ? "" : String(value);
+}
+
+function expensesBackRoute(propertyId: string) {
+  return propertyId ? `/property/${propertyId}` : "/properties";
+}
+
 function AppTabs() {
   const { loading, loggedIn, locked, isAdmin, isTenant, user } = useAuth();
   const pathname = usePathname();
+  const params = useLocalSearchParams();
   const forcedLoginOnLaunch = useRef(false);
   const role = String(user?.role ?? '').trim().toLowerCase();
   const isSystemAdmin = isAdmin && (role === 'admin' || role === 'super_admin');
+  const expensesPropertyId = firstParam((params as Record<string, unknown>).property_id).trim();
 
   const isLoginRoute = pathname === "/login";
   const isOtpRoute = pathname === "/" + otpName;
@@ -62,6 +74,17 @@ function AppTabs() {
     forcedLoginOnLaunch.current = true;
     if (!isPublicAuthRoute) router.replace("/login" as any);
   }, []);
+
+  useEffect(() => {
+    if (pathname !== "/expenses") return;
+
+    const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
+      router.replace(expensesBackRoute(expensesPropertyId) as any);
+      return true;
+    });
+
+    return () => subscription.remove();
+  }, [pathname, expensesPropertyId]);
 
   useEffect(() => {
     if (loading) return;
