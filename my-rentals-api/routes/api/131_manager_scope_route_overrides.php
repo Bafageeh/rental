@@ -241,3 +241,5 @@ Route::get('/payments', function (Request $request) {
     mr_manager_scope_apply($query, 'payments', $request);
     return $query->orderBy('due_date')->get();
 });
+
+if (is_file(__DIR__ . '/132_edit_delete_center_compact_expenses.php')) require __DIR__ . '/132_edit_delete_center_compact_expenses.php';
