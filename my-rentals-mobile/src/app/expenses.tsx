@@ -40,6 +40,7 @@ type Expense = {
   expense_date?: string | null;
   title?: string | null;
   description?: string | null;
+  notes?: string | null;
   property?: Property | null;
   unit?: Unit | null;
   category?: ExpenseCategory | null;
@@ -69,12 +70,20 @@ function decodeParam(value: string) {
 
 function dateOnly(value?: string | null) {
   const text = String(value || "");
-  const match = text.match(/^(\d{4}-\d{2}-\d{2})/);
-  return match ? match[1] : text || "-";
+  const iso = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+  const dmy = text.match(/(\d{2})-(\d{2})-(\d{4})/);
+  if (dmy) return `${dmy[3]}-${dmy[2]}-${dmy[1]}`;
+  return text || "-";
 }
 
 function expenseTitle(expense: Expense) {
   return expense.title || expense.category?.name || "مصروف";
+}
+
+function expenseUnitLabel(expense: Expense, fallbackProperty = "") {
+  if (expense.unit?.unit_number) return `شقة ${expense.unit.unit_number}`;
+  return expense.property?.name || fallbackProperty || "عقار";
 }
 
 export default function ExpensesScreen() {
@@ -102,6 +111,7 @@ export default function ExpensesScreen() {
   const [error, setError] = useState("");
 
   const [showForm, setShowForm] = useState(false);
+  const [selectedExpense, setSelectedExpense] = useState<Expense | null>(null);
   const [propertyId, setPropertyId] = useState<number | null>(scopedPropertyId);
   const [categoryId, setCategoryId] = useState<number | null>(null);
   const [amount, setAmount] = useState("");
@@ -280,7 +290,10 @@ export default function ExpensesScreen() {
           <View key={expense.id} style={styles.card}>
             <View style={styles.cardTopRow}>
               <View style={styles.cardActions}>
-                <InlineEditDeleteActions resource="property_expenses" id={expense.id} onChanged={load} compact iconOnly />
+                <TouchableOpacity style={[styles.miniIconButton, styles.detailsMiniButton]} onPress={() => setSelectedExpense(expense)} activeOpacity={0.88}>
+                  <Text style={styles.miniIconText}>👁️</Text>
+                </TouchableOpacity>
+                <InlineEditDeleteActions resource="property_expenses" id={expense.id} onChanged={load} hideDetails compact iconOnly />
               </View>
               <View style={styles.cardTitleBox}>
                 <Text style={styles.cardTitle}>{expenseTitle(expense)}</Text>
@@ -291,7 +304,7 @@ export default function ExpensesScreen() {
 
             <View style={styles.metaRow}>
               <View style={styles.metaChip}><Text style={styles.metaText}>📅 {dateOnly(expense.expense_date)}</Text></View>
-              <View style={styles.metaChip}><Text style={styles.metaText}>🏢 {expense.unit?.unit_number ? `شقة ${expense.unit.unit_number}` : expense.property?.name || selectedPropertyLabel || "عقار"}</Text></View>
+              <View style={styles.metaChip}><Text style={styles.metaText}>🏢 {expenseUnitLabel(expense, selectedPropertyLabel)}</Text></View>
               <View style={styles.metaChip}><Text style={styles.metaText}>🏷️ {expense.category?.name || "مصروف"}</Text></View>
             </View>
           </View>
@@ -356,6 +369,43 @@ export default function ExpensesScreen() {
           </View>
         </View>
       </Modal>
+
+      <Modal visible={!!selectedExpense} transparent animationType="fade" onRequestClose={() => setSelectedExpense(null)}>
+        <View style={styles.modalOverlay}>
+          <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={() => setSelectedExpense(null)} />
+          <View style={styles.detailsSheet}>
+            <View style={styles.sheetHeader}>
+              <TouchableOpacity style={styles.closeButton} onPress={() => setSelectedExpense(null)}>
+                <Text style={styles.closeText}>×</Text>
+              </TouchableOpacity>
+              <View style={styles.detailTitleBox}>
+                <Text style={styles.detailTitle}>{selectedExpense ? expenseTitle(selectedExpense) : "تفاصيل المصروف"}</Text>
+                <Text style={styles.detailSubtitle}>تفاصيل مختصرة للمصروف</Text>
+              </View>
+            </View>
+
+            {selectedExpense ? (
+              <View>
+                <View style={styles.detailAmountCard}>
+                  <Text style={styles.detailAmountLabel}>المبلغ</Text>
+                  <Text style={styles.detailAmount}>{money(selectedExpense.amount)}</Text>
+                </View>
+                <View style={styles.detailGrid}>
+                  <View style={styles.detailInfoCard}><Text style={styles.detailInfoLabel}>التاريخ</Text><Text style={styles.detailInfoValue}>{dateOnly(selectedExpense.expense_date)}</Text></View>
+                  <View style={styles.detailInfoCard}><Text style={styles.detailInfoLabel}>الموقع</Text><Text style={styles.detailInfoValue}>{expenseUnitLabel(selectedExpense, selectedPropertyLabel)}</Text></View>
+                  <View style={styles.detailInfoCard}><Text style={styles.detailInfoLabel}>النوع</Text><Text style={styles.detailInfoValue}>{selectedExpense.category?.name || "مصروف"}</Text></View>
+                </View>
+                {selectedExpense.description || selectedExpense.notes ? (
+                  <View style={styles.detailNotesCard}>
+                    <Text style={styles.detailInfoLabel}>ملاحظات</Text>
+                    <Text style={styles.detailNotes}>{selectedExpense.description || selectedExpense.notes}</Text>
+                  </View>
+                ) : null}
+              </View>
+            ) : null}
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -385,7 +435,10 @@ const styles = StyleSheet.create({
   buttonText: { color: "#fff", fontWeight: "800" },
   card: { backgroundColor: "#fff", borderRadius: 24, padding: 12, marginBottom: 10, borderWidth: 1, borderColor: "#EDF1F2", shadowColor: "#000", shadowOpacity: 0.04, shadowRadius: 10, elevation: 1 },
   cardTopRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  cardActions: { width: 112, alignItems: "flex-start" },
+  cardActions: { width: 112, alignItems: "flex-start", flexDirection: "row", gap: 7 },
+  miniIconButton: { width: 34, height: 34, borderRadius: 17, alignItems: "center", justifyContent: "center" },
+  detailsMiniButton: { backgroundColor: "#E0F2FE" },
+  miniIconText: { fontSize: 15, lineHeight: 20 },
   cardTitleBox: { flex: 1, alignItems: "flex-end" },
   cardTitle: { color: "#111827", fontSize: 18, fontWeight: "900", textAlign: "right" },
   amount: { color: "#DC2626", fontSize: 19, fontWeight: "900", minWidth: 84, textAlign: "right" },
@@ -409,7 +462,20 @@ const styles = StyleSheet.create({
   modalOverlay: { flex: 1, justifyContent: "center", padding: 14 },
   modalBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(15,23,42,0.35)" },
   formSheet: { maxHeight: "88%", backgroundColor: "#fff", borderRadius: 24, padding: 14, borderWidth: 1, borderColor: "#E5E7EB" },
+  detailsSheet: { maxHeight: "76%", backgroundColor: "#fff", borderRadius: 28, padding: 16, borderWidth: 1, borderColor: "#E5E7EB", shadowColor: "#000", shadowOpacity: 0.12, shadowRadius: 20, elevation: 8 },
   sheetHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 },
   closeButton: { width: 38, height: 38, borderRadius: 19, backgroundColor: "#F8FAFC", alignItems: "center", justifyContent: "center" },
   closeText: { color: "#111827", fontSize: 24, fontWeight: "900", lineHeight: 28 },
+  detailTitleBox: { flex: 1, alignItems: "flex-end", marginLeft: 12 },
+  detailTitle: { color: "#111827", fontSize: 22, fontWeight: "900", textAlign: "right" },
+  detailSubtitle: { color: "#0F766E", fontWeight: "800", fontSize: 13, textAlign: "right", marginTop: 4 },
+  detailAmountCard: { backgroundColor: "#FEF2F2", borderWidth: 1, borderColor: "#FECACA", borderRadius: 20, padding: 14, alignItems: "flex-end", marginBottom: 10 },
+  detailAmountLabel: { color: "#991B1B", fontWeight: "900" },
+  detailAmount: { color: "#DC2626", fontWeight: "900", fontSize: 26, marginTop: 4 },
+  detailGrid: { gap: 8 },
+  detailInfoCard: { backgroundColor: "#F8FAFC", borderRadius: 16, padding: 12, alignItems: "flex-end", borderWidth: 1, borderColor: "#EEF2F4" },
+  detailInfoLabel: { color: "#6B7280", fontWeight: "800", fontSize: 12 },
+  detailInfoValue: { color: "#111827", fontWeight: "900", fontSize: 16, textAlign: "right", marginTop: 4 },
+  detailNotesCard: { backgroundColor: "#FFFBEB", borderRadius: 16, padding: 12, alignItems: "flex-end", marginTop: 8, borderWidth: 1, borderColor: "#FDE68A" },
+  detailNotes: { color: "#92400E", fontWeight: "800", textAlign: "right", marginTop: 4 },
 });
