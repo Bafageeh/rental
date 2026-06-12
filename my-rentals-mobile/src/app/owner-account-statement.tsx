@@ -1,5 +1,5 @@
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
-import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
+import { router, Stack, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useCallback, useMemo, useState } from "react";
 import { ActivityIndicator, Alert, Modal, RefreshControl, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { apiGet, apiPost } from "../lib/api";
@@ -68,12 +68,16 @@ export default function OwnerAccountStatementScreen() {
 
   useFocusEffect(useCallback(() => { void load(false); }, [load]));
 
+  function openOwnerExpenses() {
+    router.push(`/expenses?owner_id=${ownerId}&owner_name=${encodeURIComponent(ownerName)}` as never);
+  }
+
   const totals = useMemo(() => [
     { label: "الرصيد المبدئي", value: summary.initial_balance, icon: "wallet-outline" as const, onPress: () => setSheet("initial"), hint: "اضغط للتعديل" },
     { label: "الإيجارات المحصلة", value: summary.collected_rents, icon: "cash-check" as const },
-    { label: "المصروفات", value: summary.expenses, icon: "cash-minus" as const, danger: true },
+    { label: "المصروفات", value: summary.expenses, icon: "cash-minus" as const, danger: true, onPress: openOwnerExpenses, hint: "اضغط للعرض" },
     { label: "المحول للمالك", value: summary.transfers, icon: "bank-transfer-out" as const, danger: true, onPress: () => setSheet("transfer"), hint: "اضغط للتسجيل" },
-  ], [summary]);
+  ], [summary, ownerId, ownerName]);
 
   async function saveInitial() {
     try {
@@ -112,6 +116,7 @@ export default function OwnerAccountStatementScreen() {
 
   return (
     <SafeAreaView style={styles.safe}>
+      <Stack.Screen options={{ title: "حسابات المالك" }} />
       <ScrollView contentContainerStyle={styles.container} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor="#0F766E" />}>
         <View style={styles.hero}>
           <TouchableOpacity style={styles.backButton} onPress={() => router.back()}><Ionicons name="chevron-forward" size={22} color="#fff" /></TouchableOpacity>
