@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { useLocalSearchParams } from "expo-router";
+import { Stack, useLocalSearchParams } from "expo-router";
 import {
   ActivityIndicator,
   Alert,
+  Modal,
   ScrollView,
   RefreshControl,
   StyleSheet,
@@ -14,9 +15,8 @@ import {
 import { apiGet, apiGetScoped, apiPost } from "../lib/api";
 import InlineEditDeleteActions from "../components/InlineEditDeleteActions";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { smartBack } from "@/lib/navigationHistory";
 
-type Property = {
+ type Property = {
   id: number;
   name?: string | null;
   owner?: { name?: string | null } | null;
@@ -67,17 +67,28 @@ function decodeParam(value: string) {
   }
 }
 
+function dateOnly(value?: string | null) {
+  const text = String(value || "");
+  const match = text.match(/^(\d{4}-\d{2}-\d{2})/);
+  return match ? match[1] : text || "-";
+}
+
 export default function ExpensesScreen() {
   const params = useLocalSearchParams();
   const propertyIdParam = firstParam(params.property_id as string | string[] | undefined);
   const propertyNameParam = firstParam(params.property_name as string | string[] | undefined);
   const unitIdParam = firstParam(params.unit_id as string | string[] | undefined);
   const unitNameParam = firstParam(params.unit_name as string | string[] | undefined);
+  const ownerIdParam = firstParam(params.owner_id as string | string[] | undefined);
+  const ownerNameParam = firstParam(params.owner_name as string | string[] | undefined);
   const scopedPropertyId = propertyIdParam ? Number(propertyIdParam) : null;
   const scopedPropertyName = decodeParam(propertyNameParam);
   const scopedUnitId = unitIdParam ? Number(unitIdParam) : null;
   const scopedUnitName = decodeParam(unitNameParam);
+  const scopedOwnerId = ownerIdParam ? Number(ownerIdParam) : null;
+  const scopedOwnerName = decodeParam(ownerNameParam);
   const isUnitScoped = !!scopedUnitId;
+  const isOwnerScoped = !!scopedOwnerId;
 
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [properties, setProperties] = useState<Property[]>([]);
@@ -104,8 +115,14 @@ export default function ExpensesScreen() {
         ? `?unit_id=${scopedUnitId}`
         : scopedPropertyId
           ? `?property_id=${scopedPropertyId}`
+          : scopedOwnerId
+            ? `?owner_id=${scopedOwnerId}`
+            : "";
+      const propertyFilter = scopedPropertyId
+        ? `?property_id=${scopedPropertyId}`
+        : scopedOwnerId
+          ? `?owner_id=${scopedOwnerId}`
           : "";
-      const propertyFilter = scopedPropertyId ? `?property_id=${scopedPropertyId}` : "";
 
       const [expensesResult, propertiesResult, categoriesResult] = await Promise.all([
         apiGetScoped(`/expenses${expenseFilter}`, `/my/expenses${expenseFilter}`),
@@ -195,7 +212,7 @@ export default function ExpensesScreen() {
 
   useEffect(() => {
     load();
-  }, [propertyIdParam, unitIdParam]);
+  }, [propertyIdParam, unitIdParam, ownerIdParam]);
 
   const total = expenses.reduce((sum, item) => sum + Number(item.amount || 0), 0);
   const selectedPropertyLabel = scopedPropertyName || properties.find((property) => property.id === propertyId)?.name || (scopedPropertyId ? `عقار #${scopedPropertyId}` : "");
@@ -203,15 +220,17 @@ export default function ExpensesScreen() {
     ? `مصروفات الوحدة: ${scopedUnitName || `#${scopedUnitId}`}`
     : scopedPropertyId
       ? `مصروفات العقار المباشرة فقط: ${selectedPropertyLabel}`
-      : "مصروفات الخدمات والصيانة لكل عقار";
+      : scopedOwnerId
+        ? `مصروفات المالك: ${scopedOwnerName || `#${scopedOwnerId}`}`
+        : "مصروفات الخدمات والصيانة لكل عقار";
 
   return (
     <SafeAreaView style={styles.safe}>
+      <Stack.Screen options={{ title: "المصاريف" }} />
       <ScrollView
         contentContainerStyle={styles.container}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refreshScreen} tintColor="#0F9B6F" />}
       >
-        
         <Text style={styles.title}>المصاريف</Text>
         <Text style={styles.subtitle}>{subtitle}</Text>
 
@@ -220,59 +239,9 @@ export default function ExpensesScreen() {
           <Text style={styles.summaryValue}>{money(total)}</Text>
         </View>
 
-        <TouchableOpacity style={styles.primaryButton} onPress={() => setShowForm(!showForm)}>
-          <Text style={styles.primaryButtonText}>{showForm ? "إغلاق نموذج الإضافة" : isUnitScoped ? "إضافة مصروف للوحدة" : "إضافة مصروف"}</Text>
+        <TouchableOpacity style={styles.primaryButton} onPress={() => setShowForm(true)}>
+          <Text style={styles.primaryButtonText}>{isUnitScoped ? "إضافة مصروف للوحدة" : "إضافة مصروف"}</Text>
         </TouchableOpacity>
-
-        {showForm ? (
-          <View style={styles.formCard}>
-            <Text style={styles.formTitle}>بيانات المصروف</Text>
-
-            {isUnitScoped ? (
-              <>
-                <Text style={styles.label}>الوحدة</Text>
-                <View style={styles.scopedPropertyBox}>
-                  <Text style={styles.scopedPropertyText}>{scopedUnitName || `وحدة #${scopedUnitId}`}</Text>
-                </View>
-              </>
-            ) : (
-              <>
-                <Text style={styles.label}>العقار</Text>
-                {scopedPropertyId ? (
-                  <View style={styles.scopedPropertyBox}>
-                    <Text style={styles.scopedPropertyText}>{selectedPropertyLabel}</Text>
-                  </View>
-                ) : (
-                  <View style={styles.chips}>
-                    {properties.map((property) => (
-                      <TouchableOpacity key={property.id} style={[styles.chip, propertyId === property.id ? styles.chipActive : null]} onPress={() => setPropertyId(property.id)}>
-                        <Text style={[styles.chipText, propertyId === property.id ? styles.chipTextActive : null]}>{property.name || "عقار"}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                )}
-              </>
-            )}
-
-            <Text style={styles.label}>نوع المصروف</Text>
-            <View style={styles.chips}>
-              {categories.map((category) => (
-                <TouchableOpacity key={category.id} style={[styles.chip, categoryId === category.id ? styles.chipActive : null]} onPress={() => setCategoryId(category.id)}>
-                  <Text style={[styles.chipText, categoryId === category.id ? styles.chipTextActive : null]}>{category.name || "تصنيف"}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            <TextInput style={styles.input} placeholder="المبلغ" value={amount} onChangeText={setAmount} keyboardType="number-pad" textAlign="right" />
-            <TextInput style={styles.input} placeholder="تاريخ المصروف YYYY-MM-DD" value={expenseDate} onChangeText={setExpenseDate} textAlign="right" />
-            <TextInput style={styles.input} placeholder="عنوان المصروف" value={title} onChangeText={setTitle} textAlign="right" />
-            <TextInput style={[styles.input, styles.multilineInput]} placeholder="وصف أو ملاحظات" value={description} onChangeText={setDescription} multiline textAlign="right" />
-
-            <TouchableOpacity style={styles.saveButton} onPress={saveExpense} disabled={saving}>
-              <Text style={styles.saveButtonText}>{saving ? "جاري الحفظ..." : "حفظ المصروف"}</Text>
-            </TouchableOpacity>
-          </View>
-        ) : null}
 
         {loading ? (
           <View style={styles.box}>
@@ -301,7 +270,7 @@ export default function ExpensesScreen() {
           <View key={expense.id} style={styles.card}>
             <InlineEditDeleteActions resource="property_expenses" id={expense.id} onChanged={load} />
             <Text style={styles.amount}>{money(expense.amount)}</Text>
-            <Text style={styles.detail}>التاريخ: {expense.expense_date || "-"}</Text>
+            <Text style={styles.detail}>التاريخ: {dateOnly(expense.expense_date)}</Text>
             <Text style={styles.detail}>العقار: {expense.property?.name || "-"}</Text>
             <Text style={styles.detail}>الوحدة: {expense.unit?.unit_number || (expense.unit?.id ? `#${expense.unit.id}` : "مصروف عام للعقار")}</Text>
             <Text style={styles.detail}>المالك: {expense.property?.owner?.name || "-"}</Text>
@@ -311,6 +280,65 @@ export default function ExpensesScreen() {
           </View>
         ))}
       </ScrollView>
+
+      <Modal visible={showForm} transparent animationType="fade" onRequestClose={() => setShowForm(false)}>
+        <View style={styles.modalOverlay}>
+          <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={() => setShowForm(false)} />
+          <View style={styles.formSheet}>
+            <View style={styles.sheetHeader}>
+              <TouchableOpacity style={styles.closeButton} onPress={() => setShowForm(false)}>
+                <Text style={styles.closeText}>×</Text>
+              </TouchableOpacity>
+              <Text style={styles.formTitle}>إضافة مصروف</Text>
+            </View>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              {isUnitScoped ? (
+                <>
+                  <Text style={styles.label}>الوحدة</Text>
+                  <View style={styles.scopedPropertyBox}>
+                    <Text style={styles.scopedPropertyText}>{scopedUnitName || `وحدة #${scopedUnitId}`}</Text>
+                  </View>
+                </>
+              ) : (
+                <>
+                  <Text style={styles.label}>العقار</Text>
+                  {scopedPropertyId ? (
+                    <View style={styles.scopedPropertyBox}>
+                      <Text style={styles.scopedPropertyText}>{selectedPropertyLabel}</Text>
+                    </View>
+                  ) : (
+                    <View style={styles.chips}>
+                      {properties.map((property) => (
+                        <TouchableOpacity key={property.id} style={[styles.chip, propertyId === property.id ? styles.chipActive : null]} onPress={() => setPropertyId(property.id)}>
+                          <Text style={[styles.chipText, propertyId === property.id ? styles.chipTextActive : null]}>{property.name || "عقار"}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  )}
+                </>
+              )}
+
+              <Text style={styles.label}>نوع المصروف</Text>
+              <View style={styles.chips}>
+                {categories.map((category) => (
+                  <TouchableOpacity key={category.id} style={[styles.chip, categoryId === category.id ? styles.chipActive : null]} onPress={() => setCategoryId(category.id)}>
+                    <Text style={[styles.chipText, categoryId === category.id ? styles.chipTextActive : null]}>{category.name || "تصنيف"}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <TextInput style={styles.input} placeholder="المبلغ" value={amount} onChangeText={setAmount} keyboardType="decimal-pad" textAlign="right" />
+              <TextInput style={styles.input} placeholder="تاريخ المصروف YYYY-MM-DD" value={expenseDate} onChangeText={setExpenseDate} textAlign="right" />
+              <TextInput style={styles.input} placeholder="عنوان المصروف" value={title} onChangeText={setTitle} textAlign="right" />
+              <TextInput style={[styles.input, styles.multilineInput]} placeholder="وصف أو ملاحظات" value={description} onChangeText={setDescription} multiline textAlign="right" />
+
+              <TouchableOpacity style={styles.saveButton} onPress={saveExpense} disabled={saving}>
+                <Text style={styles.saveButtonText}>{saving ? "جاري الحفظ..." : "حفظ المصروف"}</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -318,8 +346,6 @@ export default function ExpensesScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: "#F7F6F4" },
   container: { padding: 12, paddingBottom: 40 },
-  backButton: { alignSelf: "flex-start", paddingVertical: 6, paddingHorizontal: 4, marginBottom: 4 },
-  backText: { color: "#111827", fontWeight: "800" },
   title: { fontSize: 30, fontWeight: "800", color: "#111827", textAlign: "right" },
   subtitle: { marginTop: 8, marginBottom: 18, fontSize: 15, color: "#7A766F", textAlign: "right", lineHeight: 22 },
   summaryBox: { backgroundColor: "#111827", borderRadius: 14, padding: 12, marginBottom: 9 },
@@ -327,8 +353,7 @@ const styles = StyleSheet.create({
   summaryValue: { color: "#ffffff", textAlign: "right", marginTop: 8, fontSize: 24, fontWeight: "800" },
   primaryButton: { backgroundColor: "#111827", padding: 13, borderRadius: 14, alignItems: "center", marginBottom: 9 },
   primaryButtonText: { color: "#ffffff", fontWeight: "800" },
-  formCard: { backgroundColor: "#ffffff", borderRadius: 14, padding: 12, marginBottom: 9 },
-  formTitle: { fontSize: 17, fontWeight: "800", color: "#111827", textAlign: "right", marginBottom: 8 },
+  formTitle: { fontSize: 20, fontWeight: "900", color: "#111827", textAlign: "right" },
   label: { color: "#374151", fontWeight: "800", textAlign: "right", marginBottom: 8 },
   chips: { flexDirection: "row-reverse", flexWrap: "wrap", marginBottom: 8 },
   scopedPropertyBox: { backgroundColor: "#ecfeff", borderWidth: 1, borderColor: "#99f6e4", borderRadius: 12, padding: 12, marginBottom: 10 },
@@ -339,7 +364,7 @@ const styles = StyleSheet.create({
   chipTextActive: { color: "#fff" },
   input: { backgroundColor: "#F7F6F4", borderWidth: 1, borderColor: "#DDDBD6", borderRadius: 12, padding: 12, marginBottom: 10, color: "#111827" },
   multilineInput: { minHeight: 70, textAlignVertical: "top" },
-  saveButton: { backgroundColor: "#16a34a", padding: 13, borderRadius: 12, alignItems: "center" },
+  saveButton: { backgroundColor: "#16a34a", padding: 13, borderRadius: 12, alignItems: "center", marginTop: 4 },
   saveButtonText: { color: "#fff", fontWeight: "800" },
   box: { backgroundColor: "#fff", padding: 12, borderRadius: 14, alignItems: "center", marginBottom: 8 },
   boxText: { marginTop: 8, color: "#5E5B55" },
@@ -353,4 +378,10 @@ const styles = StyleSheet.create({
   amount: { color: "#b91c1c", fontSize: 16, fontWeight: "800", textAlign: "right" },
   detail: { marginTop: 8, color: "#5E5B55", textAlign: "right" },
   notes: { marginTop: 10, color: "#92400e", fontWeight: "700", textAlign: "right" },
+  modalOverlay: { flex: 1, justifyContent: "center", padding: 14 },
+  modalBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(15,23,42,0.45)" },
+  formSheet: { maxHeight: "88%", backgroundColor: "#fff", borderRadius: 24, padding: 14, borderWidth: 1, borderColor: "#E5E7EB" },
+  sheetHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 },
+  closeButton: { width: 38, height: 38, borderRadius: 19, backgroundColor: "#F8FAFC", alignItems: "center", justifyContent: "center" },
+  closeText: { color: "#111827", fontSize: 24, fontWeight: "900", lineHeight: 28 },
 });
