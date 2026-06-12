@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import { router, usePathname } from "expo-router";
+import { router, useLocalSearchParams, usePathname } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { colors } from "../constants/theme";
@@ -64,6 +64,17 @@ function fallbackScreenCode(pathname: string) {
   return `S-${String(hash + 100).padStart(3, "0")}`;
 }
 
+function firstParam(value: unknown) {
+  if (Array.isArray(value)) return value[0] ? String(value[0]) : "";
+  return value === undefined || value === null ? "" : String(value);
+}
+
+function expensesBackTarget(params: Record<string, unknown>) {
+  const propertyId = firstParam(params.property_id).trim();
+  if (propertyId) return `/property/${propertyId}`;
+  return "/properties";
+}
+
 function useScreenCode() {
   const pathname = usePathname();
   const normalized = normalizePathname(pathname);
@@ -73,14 +84,24 @@ function useScreenCode() {
 export function HeaderBackAction() {
   const { loggedIn } = useAuth();
   const pathname = usePathname();
+  const params = useLocalSearchParams();
   const showBack = loggedIn && !mainRoutes.includes(pathname);
 
   if (!showBack) return null;
 
+  function handleBack() {
+    if (pathname === "/expenses") {
+      router.replace(expensesBackTarget(params as Record<string, unknown>) as never);
+      return;
+    }
+
+    smartBack();
+  }
+
   return (
     <TouchableOpacity
       style={styles.headerActionButton}
-      onPress={() => smartBack()}
+      onPress={handleBack}
       activeOpacity={0.75}
       accessibilityRole="button"
       accessibilityLabel="رجوع"
