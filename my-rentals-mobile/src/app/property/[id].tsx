@@ -5,6 +5,10 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import PropertyDetailScreen from "../../components/PropertyDetailWithContractAccess";
 import { apiGet } from "../../lib/api";
 
+function responseData(payload: any) {
+  return payload?.data && !Array.isArray(payload.data) ? payload.data : payload;
+}
+
 function responseList(payload: any) {
   return Array.isArray(payload?.data) ? payload.data : Array.isArray(payload) ? payload : [];
 }
@@ -15,6 +19,11 @@ function firstUnitId(payload: any) {
   return unit?.id ? String(unit.id) : "";
 }
 
+function isApartmentProperty(value: unknown) {
+  const type = String(value || "").trim().toLowerCase();
+  return type === "apartment" || type === "شقة";
+}
+
 export default function PropertyRouteRedirectToUnit() {
   const params = useLocalSearchParams<{ id: string; return_to?: string }>();
   const propertyId = String(params.id || "");
@@ -23,13 +32,24 @@ export default function PropertyRouteRedirectToUnit() {
   useEffect(() => {
     let cancelled = false;
 
-    async function openUnitInsteadOfProperty() {
+    async function openCorrectDetailsScreen() {
       if (!propertyId) {
         setFallbackToProperty(true);
         return;
       }
 
       try {
+        const propertyResponse = await apiGet(`/properties/${encodeURIComponent(propertyId)}`).catch(() => apiGet(`/my/properties/${encodeURIComponent(propertyId)}`));
+        const property = responseData(propertyResponse);
+        const propertyType = property?.property_type ?? property?.type;
+
+        // العمارات والعقارات التي تحتوي وحدات لا تفتح وحدة عشوائية؛ تعرض تفاصيل العقار نفسه.
+        if (!isApartmentProperty(propertyType)) {
+          if (!cancelled) setFallbackToProperty(true);
+          return;
+        }
+
+        // الشقة المستقلة فقط تفتح شاشة تفاصيل الوحدة المرتبطة بها.
         const result = await apiGet(`/my/units?property_id=${encodeURIComponent(propertyId)}`).catch(() => apiGet(`/units?property_id=${encodeURIComponent(propertyId)}`));
         const unitId = firstUnitId(result);
 
@@ -39,7 +59,7 @@ export default function PropertyRouteRedirectToUnit() {
           return;
         }
       } catch {
-        // عند عدم وجود وحدة مرتبطة، نعرض شاشة العقار كحل احتياطي فقط.
+        // عند تعذر تحديد النوع أو عدم وجود وحدة مرتبطة، نعرض شاشة العقار كحل احتياطي.
       }
 
       if (!cancelled) {
@@ -47,7 +67,7 @@ export default function PropertyRouteRedirectToUnit() {
       }
     }
 
-    void openUnitInsteadOfProperty();
+    void openCorrectDetailsScreen();
 
     return () => {
       cancelled = true;
@@ -60,7 +80,7 @@ export default function PropertyRouteRedirectToUnit() {
     <SafeAreaView style={styles.safe}>
       <View style={styles.center}>
         <ActivityIndicator />
-        <Text style={styles.text}>جاري فتح تفاصيل الوحدة...</Text>
+        <Text style={styles.text}>جاري فتح التفاصيل...</Text>
       </View>
     </SafeAreaView>
   );
