@@ -75,6 +75,10 @@ function expensesBackTarget(params: Record<string, unknown>) {
   return "/properties";
 }
 
+function isOwnerDetailsPath(pathname: string) {
+  return /^\/owner\/[^/]+$/.test(pathname || "");
+}
+
 function useScreenCode() {
   const pathname = usePathname();
   const normalized = normalizePathname(pathname);
@@ -90,6 +94,11 @@ export function HeaderBackAction() {
   if (!showBack) return null;
 
   function handleBack() {
+    if (isOwnerDetailsPath(pathname)) {
+      router.replace("/owners" as never);
+      return;
+    }
+
     if (pathname === "/expenses") {
       router.replace(expensesBackTarget(params as Record<string, unknown>) as never);
       return;
