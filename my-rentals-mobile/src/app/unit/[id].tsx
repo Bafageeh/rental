@@ -215,6 +215,7 @@ export default function UnitDetailsRoute() {
   const unitRent = money(fieldValue(fields, "rent_amount"));
   const unitFloor = valueOrDash(fieldValue(fields, "floor"));
   const propertyName = fieldAny(fields, ["property_name", "property", "property_id", "parent_property_name"]) || contracts.find((contract) => hasValue(contract.property_name || contract.unit?.property?.name))?.property_name || "";
+  const propertyIdValue = fieldAny(fields, ["property_id"]);
   const ownerName = fieldAny(fields, ["owner_name", "owner", "owner_id", "property_owner_name"]) || contracts.find((contract) => hasValue(contract.owner_name || contract.unit?.property?.owner?.name))?.owner_name || "";
   const activeContract = useMemo(() => contracts.find(isActiveContract) || null, [contracts]);
   const activeTenantName = activeContract?.tenant?.name || activeContract?.tenant_name || "";
@@ -271,6 +272,13 @@ export default function UnitDetailsRoute() {
       { text: "إلغاء", style: "cancel" },
     ]);
   }
+  function openUnitMedia() {
+    setMenuOpen(false);
+    const unitName = encodeURIComponent(title || `وحدة ${id}`);
+    const propertyQuery = propertyIdValue ? `&property_id=${encodeURIComponent(propertyIdValue)}` : "";
+    const propertyNameQuery = propertyName ? `&property_name=${encodeURIComponent(propertyName)}` : "";
+    router.push(`/files?unit_id=${encodeURIComponent(id)}&unit_name=${unitName}&mode=media${propertyQuery}${propertyNameQuery}` as never);
+  }
   async function performUnitRemove() {
     try { await apiPost(`/edit-delete-center/units/${id}/delete`, {}); router.replace(safeReturnTo as never); }
     catch (e) { Alert.alert("تعذر التنفيذ", e instanceof Error ? e.message : "تعذر تنفيذ العملية"); }
@@ -319,7 +327,7 @@ export default function UnitDetailsRoute() {
       </ScrollView>
 
       {menuOpen ? <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={() => setMenuOpen(false)} /> : null}
-      {menuOpen ? <View style={styles.menu}><MenuAction icon="create-outline" label="تعديل" onPress={openEditScreen} /><MenuAction icon="documents-outline" label="إنشاء / رفع عقد" onPress={openCreateContractOptions} /><MenuAction icon="trash-outline" label="حذف" danger onPress={removeUnit} /></View> : null}
+      {menuOpen ? <View style={styles.menu}><MenuAction icon="create-outline" label="تعديل" onPress={openEditScreen} /><MenuAction icon="images-outline" label="صور وفيديو" onPress={openUnitMedia} /><MenuAction icon="documents-outline" label="إنشاء / رفع عقد" onPress={openCreateContractOptions} /><MenuAction icon="trash-outline" label="حذف" danger onPress={removeUnit} /></View> : null}
       <TouchableOpacity style={styles.floatingButton} activeOpacity={0.88} onPress={() => setMenuOpen((v) => !v)}><Ionicons name={menuOpen ? "close" : "ellipsis-vertical"} size={24} color="#fff" /></TouchableOpacity>
     </SafeAreaView>
   );
