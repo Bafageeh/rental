@@ -22,6 +22,15 @@ function valueOrDash(value?: string | null) {
   return value && String(value).trim() ? value : "-";
 }
 
+function compact(value?: string | null, max = 24) {
+  const text = valueOrDash(value);
+  return text.length > max ? `${text.slice(0, max)}...` : text;
+}
+
+function countValue(value?: number) {
+  return Number(value || 0).toLocaleString("ar-SA");
+}
+
 function normalize(value?: string | number | null) {
   return String(value ?? "").trim().toLowerCase().replace(/[أإآ]/g, "ا").replace(/ى/g, "ي");
 }
@@ -43,6 +52,29 @@ function isAdminLikeOwner(owner: Owner, user: any) {
     ownerName.includes("ahmed") ||
     ownerName.includes("الادمن") ||
     ownerName.includes("admin")
+  );
+}
+
+function OwnerMetric({ icon, value, label }: { icon: keyof typeof Ionicons.glyphMap; value?: number; label: string }) {
+  return (
+    <View style={styles.metricPill}>
+      <View style={styles.metricIconBox}>
+        <Ionicons name={icon} size={17} color="#0F766E" />
+      </View>
+      <Text style={styles.metricValue}>{countValue(value)}</Text>
+      <Text style={styles.metricLabel}>{label}</Text>
+    </View>
+  );
+}
+
+function InfoChip({ icon, text, wide = false }: { icon: keyof typeof Ionicons.glyphMap; text: string; wide?: boolean }) {
+  return (
+    <View style={[styles.infoChip, wide ? styles.infoChipWide : null]}>
+      <View style={styles.infoIconBox}>
+        <Ionicons name={icon} size={15} color="#0F766E" />
+      </View>
+      <Text numberOfLines={1} style={styles.infoChipText}>{text}</Text>
+    </View>
   );
 }
 
@@ -190,10 +222,12 @@ export default function OwnersScreen() {
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
       <ScrollView contentContainerStyle={styles.container} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refreshScreen} tintColor="#0F9B6F" />} showsVerticalScrollIndicator={false}>
-        <View style={styles.hero}>
-          <Text style={styles.heroTitle}>الملاك</Text>
-          <Text style={styles.heroSubtitle}>قائمة ملاك العملاء فقط. لا يظهر حساب المدير هنا كمالك.</Text>
-          <Text style={styles.heroBadge}>{visibleOwners.length.toLocaleString("ar-SA")} مالك</Text>
+        <View style={styles.listHeader}>
+          <View style={styles.countBadge}><Text style={styles.countBadgeText}>{visibleOwners.length.toLocaleString("ar-SA")}</Text></View>
+          <View style={styles.listHeaderText}>
+            <Text style={styles.screenTitle}>قائمة الملاك</Text>
+            <Text style={styles.screenSubtitle}>اختر مالكًا لعرض عقاراته ووحداته أو افتح حسابه من رمز المحفظة</Text>
+          </View>
         </View>
 
         {error ? <View style={styles.errorBox}><Text style={styles.errorTitle}>تعذر تحميل الملاك</Text><Text style={styles.errorText}>{error}</Text><TouchableOpacity style={styles.button} onPress={load} activeOpacity={0.85}><Text style={styles.buttonText}>إعادة المحاولة</Text></TouchableOpacity></View> : null}
@@ -201,10 +235,12 @@ export default function OwnersScreen() {
 
         {visibleOwners.map((owner) => (
           <View key={owner.id} style={styles.card}>
-            <TouchableOpacity style={styles.ownerMenuButton} activeOpacity={0.85} onPress={() => setOpenMenuOwnerId(openMenuOwnerId === owner.id ? null : owner.id)}><Ionicons name="ellipsis-vertical" size={20} color="#0F172A" /></TouchableOpacity>
-            <TouchableOpacity style={styles.accountButton} activeOpacity={0.85} onPress={() => openOwnerAccount(owner)}>
-              <Ionicons name="wallet-outline" size={19} color="#0F766E" />
-            </TouchableOpacity>
+            <View style={styles.cardActions}>
+              <TouchableOpacity style={styles.ownerMenuButton} activeOpacity={0.85} onPress={() => setOpenMenuOwnerId(openMenuOwnerId === owner.id ? null : owner.id)}><Ionicons name="ellipsis-vertical" size={20} color="#0F172A" /></TouchableOpacity>
+              <TouchableOpacity style={styles.accountButton} activeOpacity={0.85} onPress={() => openOwnerAccount(owner)}>
+                <Ionicons name="wallet-outline" size={19} color="#0F766E" />
+              </TouchableOpacity>
+            </View>
             {openMenuOwnerId === owner.id ? <View style={styles.ownerMenu}>
               <TouchableOpacity style={styles.ownerMenuItem} activeOpacity={0.85} onPress={() => openOwnerDetails(owner)}><Ionicons name="eye-outline" size={18} color="#0F766E" /><Text style={styles.ownerMenuText}>تفاصيل</Text></TouchableOpacity>
               <TouchableOpacity style={styles.ownerMenuItem} activeOpacity={0.85} onPress={() => openOwnerAccount(owner)}><Ionicons name="wallet-outline" size={18} color="#0F766E" /><Text style={styles.ownerMenuText}>حساب المالك</Text></TouchableOpacity>
@@ -213,21 +249,22 @@ export default function OwnersScreen() {
             </View> : null}
             <TouchableOpacity activeOpacity={0.9} onPress={() => openOwnerDetails(owner)}>
               <View style={styles.cardTopRow}>
+                <View style={styles.ownerIconCircle}><Ionicons name="person-outline" size={22} color="#0F766E" /></View>
                 <View style={styles.titleWrap}>
                   <Text numberOfLines={2} style={styles.cardTitle}>{owner.name || "مالك بدون اسم"}</Text>
-                  <Text style={styles.cardSub}>اضغط لفتح عقارات ووحدات هذا المالك</Text>
-                  <Text style={styles.accountHint}>رمز المحفظة يفتح حساب المالك والحوالات</Text>
                 </View>
               </View>
               <View style={styles.metricsRow}>
-                <View style={styles.metricPill}><Text style={styles.metricValue}>{owner.properties_count ?? 0}</Text><Text style={styles.metricLabel}>عقار</Text></View>
-                <View style={styles.metricPill}><Text style={styles.metricValue}>{owner.units_count ?? 0}</Text><Text style={styles.metricLabel}>وحدة</Text></View>
-                <View style={styles.metricPill}><Text style={styles.metricValue}>{owner.contracts_count ?? 0}</Text><Text style={styles.metricLabel}>عقد</Text></View>
+                <OwnerMetric icon="home-outline" value={owner.properties_count} label="عقار" />
+                <OwnerMetric icon="business-outline" value={owner.units_count} label="وحدة" />
+                <OwnerMetric icon="document-text-outline" value={owner.contracts_count} label="عقد" />
               </View>
               <View style={styles.infoBox}>
-                <Text style={styles.detail}>الجوال: {valueOrDash(owner.phone)}</Text>
-                <Text style={styles.detail}>البريد: {valueOrDash(owner.email)}</Text>
-                <Text style={styles.detail}>رقم الهوية: {valueOrDash(owner.national_id)}</Text>
+                <View style={styles.primaryInfoRow}>
+                  <InfoChip icon="call-outline" text={`الجوال: ${valueOrDash(owner.phone)}`} />
+                  <InfoChip icon="id-card-outline" text={`الهوية: ${valueOrDash(owner.national_id)}`} />
+                </View>
+                <InfoChip icon="mail-outline" text={`البريد: ${compact(owner.email, 34)}`} wide />
               </View>
             </TouchableOpacity>
           </View>
@@ -243,14 +280,16 @@ export default function OwnersScreen() {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: "#F7F6F4" },
-  container: { padding: 14, paddingBottom: 44 },
+  safe: { flex: 1, backgroundColor: "#F7F8F6" },
+  container: { padding: 12, paddingTop: 2, paddingBottom: 44 },
   centerBox: { flex: 1, alignItems: "center", justifyContent: "center", padding: 20 },
   boxText: { marginTop: 8, color: "#5E5B55", fontWeight: "700", textAlign: "center" },
-  hero: { backgroundColor: "#111827", borderRadius: 28, padding: 18, marginBottom: 12, alignItems: "flex-end" },
-  heroTitle: { color: "#fff", fontSize: 30, fontWeight: "900", textAlign: "right" },
-  heroSubtitle: { color: "#CBD5E1", marginTop: 8, fontWeight: "800", textAlign: "right", lineHeight: 22 },
-  heroBadge: { marginTop: 12, backgroundColor: "#D1FAE5", color: "#064E3B", borderRadius: 999, overflow: "hidden", paddingHorizontal: 12, paddingVertical: 6, fontWeight: "900" },
+  listHeader: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 8, paddingHorizontal: 2 },
+  listHeaderText: { flex: 1, alignItems: "flex-end" },
+  screenTitle: { color: "#111827", fontSize: 22, fontWeight: "900", textAlign: "right" },
+  screenSubtitle: { color: "#6B7280", fontSize: 12, fontWeight: "800", textAlign: "right", marginTop: 2, lineHeight: 18 },
+  countBadge: { minWidth: 44, height: 44, borderRadius: 18, backgroundColor: "#ECFDF5", borderWidth: 1, borderColor: "#A7F3D0", alignItems: "center", justifyContent: "center" },
+  countBadgeText: { color: "#0F766E", fontWeight: "900", fontSize: 18 },
   floatingAddButton: { position: "absolute", left: 18, bottom: 22, width: 58, height: 58, borderRadius: 29, backgroundColor: "#0F766E", alignItems: "center", justifyContent: "center", shadowColor: "#0F172A", shadowOpacity: 0.22, shadowRadius: 16, shadowOffset: { width: 0, height: 9 }, elevation: 10, zIndex: 60 },
   floatingCloseButton: { backgroundColor: "#7f1d1d" },
   modalOverlay: { position: "absolute", left: 0, right: 0, top: 0, bottom: 0, zIndex: 50, justifyContent: "center", paddingHorizontal: 18 },
@@ -269,21 +308,26 @@ const styles = StyleSheet.create({
   errorText: { color: "#7f1d1d", marginTop: 8, textAlign: "right" },
   button: { marginTop: 14, backgroundColor: "#111827", padding: 12, borderRadius: 12, alignItems: "center" },
   buttonText: { color: "#fff", fontWeight: "900" },
-  card: { backgroundColor: "#fff", borderRadius: 24, padding: 14, marginBottom: 12, borderWidth: 1, borderColor: "#EDECE9", shadowColor: "#000", shadowOpacity: 0.05, shadowRadius: 10, elevation: 1, position: "relative" },
-  ownerMenuButton: { position: "absolute", left: 12, top: 12, width: 36, height: 36, borderRadius: 18, backgroundColor: "#F8FAFC", borderWidth: 1, borderColor: "#E5E7EB", alignItems: "center", justifyContent: "center", zIndex: 12 },
-  accountButton: { position: "absolute", left: 56, top: 12, width: 36, height: 36, borderRadius: 18, backgroundColor: "#ECFDF5", borderWidth: 1, borderColor: "#A7F3D0", alignItems: "center", justifyContent: "center", zIndex: 12 },
-  ownerMenu: { position: "absolute", left: 12, top: 52, width: 148, backgroundColor: "#fff", borderRadius: 16, borderWidth: 1, borderColor: "#E5E7EB", paddingVertical: 5, zIndex: 20, shadowColor: "#0F172A", shadowOpacity: 0.16, shadowRadius: 14, shadowOffset: { width: 0, height: 7 }, elevation: 8 },
+  card: { backgroundColor: "#fff", borderRadius: 24, padding: 12, marginBottom: 10, borderWidth: 1, borderColor: "#E6EEE9", shadowColor: "#000", shadowOpacity: 0.05, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 1, position: "relative" },
+  cardActions: { flexDirection: "row", gap: 8, alignSelf: "flex-start", marginBottom: 4 },
+  ownerMenuButton: { width: 38, height: 38, borderRadius: 19, backgroundColor: "#F8FAFC", borderWidth: 1, borderColor: "#E5E7EB", alignItems: "center", justifyContent: "center", zIndex: 12 },
+  accountButton: { width: 38, height: 38, borderRadius: 19, backgroundColor: "#ECFDF5", borderWidth: 1, borderColor: "#A7F3D0", alignItems: "center", justifyContent: "center", zIndex: 12 },
+  ownerMenu: { position: "absolute", left: 12, top: 54, width: 150, backgroundColor: "#fff", borderRadius: 16, borderWidth: 1, borderColor: "#E5E7EB", paddingVertical: 5, zIndex: 20, shadowColor: "#0F172A", shadowOpacity: 0.16, shadowRadius: 14, shadowOffset: { width: 0, height: 7 }, elevation: 8 },
   ownerMenuItem: { minHeight: 39, flexDirection: "row-reverse", alignItems: "center", justifyContent: "flex-start", gap: 8, paddingHorizontal: 12 },
   ownerMenuText: { color: "#0F172A", fontWeight: "900", fontSize: 12, textAlign: "right" },
-  cardTopRow: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 10, paddingLeft: 82 },
+  cardTopRow: { flexDirection: "row-reverse", alignItems: "center", gap: 10, marginBottom: 10 },
+  ownerIconCircle: { width: 42, height: 42, borderRadius: 18, backgroundColor: "#ECFDF5", borderWidth: 1, borderColor: "#A7F3D0", alignItems: "center", justifyContent: "center" },
   titleWrap: { flex: 1, alignItems: "flex-end" },
-  cardTitle: { fontSize: 19, fontWeight: "900", color: "#111827", textAlign: "right" },
-  cardSub: { color: "#64748B", fontWeight: "800", fontSize: 12, marginTop: 4, textAlign: "right" },
-  accountHint: { color: "#0F766E", fontWeight: "900", fontSize: 11, marginTop: 4, textAlign: "right" },
-  metricsRow: { flexDirection: "row-reverse", gap: 8, marginBottom: 10 },
-  metricPill: { flex: 1, backgroundColor: "#F7F6F4", borderWidth: 1, borderColor: "#EDECE9", borderRadius: 18, paddingVertical: 10, alignItems: "center" },
-  metricValue: { color: "#111827", fontWeight: "900", fontSize: 19 },
-  metricLabel: { color: "#6B7280", fontWeight: "800", fontSize: 12, marginTop: 2 },
-  infoBox: { backgroundColor: "#FAFAF9", borderRadius: 16, padding: 10, gap: 4 },
-  detail: { color: "#5E5B55", textAlign: "right", fontWeight: "700", lineHeight: 21 },
+  cardTitle: { fontSize: 21, lineHeight: 29, fontWeight: "900", color: "#111827", textAlign: "right" },
+  metricsRow: { flexDirection: "row-reverse", gap: 7, marginBottom: 9 },
+  metricPill: { flex: 1, backgroundColor: "#FBFCFC", borderWidth: 1, borderColor: "#E6EEE9", borderRadius: 17, paddingVertical: 9, paddingHorizontal: 6, alignItems: "center", minHeight: 76 },
+  metricIconBox: { width: 28, height: 28, borderRadius: 12, backgroundColor: "#ECFDF5", alignItems: "center", justifyContent: "center", marginBottom: 3 },
+  metricValue: { color: "#111827", fontWeight: "900", fontSize: 17, lineHeight: 22 },
+  metricLabel: { color: "#6B7280", fontWeight: "800", fontSize: 11, marginTop: 1 },
+  infoBox: { backgroundColor: "#FAFAF9", borderRadius: 17, padding: 9, gap: 7, borderWidth: 1, borderColor: "#EEF2F4" },
+  primaryInfoRow: { flexDirection: "row-reverse", gap: 7 },
+  infoChip: { flex: 1, minHeight: 38, backgroundColor: "#fff", borderRadius: 14, borderWidth: 1, borderColor: "#E6EEE9", paddingHorizontal: 8, flexDirection: "row-reverse", alignItems: "center", gap: 6 },
+  infoChipWide: { width: "100%", flex: 0 },
+  infoIconBox: { width: 27, height: 27, borderRadius: 12, backgroundColor: "#ECFDF5", alignItems: "center", justifyContent: "center" },
+  infoChipText: { flex: 1, color: "#374151", textAlign: "right", fontWeight: "800", fontSize: 12 },
 });
