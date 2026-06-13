@@ -212,15 +212,15 @@ export default function OwnersScreen() {
   }, [authLoading, canAccess]);
 
   if (authLoading || loading) {
-    return <SafeAreaView style={styles.safe}><View style={styles.centerBox}><ActivityIndicator /><Text style={styles.boxText}>جاري تحميل الملاك...</Text></View></SafeAreaView>;
+    return <SafeAreaView style={styles.safe} edges={["left", "right"]}><View style={styles.centerBox}><ActivityIndicator /><Text style={styles.boxText}>جاري تحميل الملاك...</Text></View></SafeAreaView>;
   }
 
   if (!canAccess) {
-    return <SafeAreaView style={styles.safe}><View style={styles.centerBox}><Text style={styles.errorTitle}>غير مصرح</Text><Text style={styles.boxText}>تبويب الملاك متاح للمدير فقط.</Text></View></SafeAreaView>;
+    return <SafeAreaView style={styles.safe} edges={["left", "right"]}><View style={styles.centerBox}><Text style={styles.errorTitle}>غير مصرح</Text><Text style={styles.boxText}>تبويب الملاك متاح للمدير فقط.</Text></View></SafeAreaView>;
   }
 
   return (
-    <SafeAreaView style={styles.safe} edges={["top"]}>
+    <SafeAreaView style={styles.safe} edges={["left", "right"]}>
       <ScrollView contentContainerStyle={styles.container} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refreshScreen} tintColor="#0F9B6F" />} showsVerticalScrollIndicator={false}>
         <View style={styles.listHeader}>
           <View style={styles.countBadge}><Text style={styles.countBadgeText}>{visibleOwners.length.toLocaleString("ar-SA")}</Text></View>
@@ -281,10 +281,10 @@ export default function OwnersScreen() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: "#F7F8F6" },
-  container: { padding: 12, paddingTop: 2, paddingBottom: 44 },
+  container: { paddingHorizontal: 12, paddingTop: 0, paddingBottom: 44 },
   centerBox: { flex: 1, alignItems: "center", justifyContent: "center", padding: 20 },
   boxText: { marginTop: 8, color: "#5E5B55", fontWeight: "700", textAlign: "center" },
-  listHeader: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 8, paddingHorizontal: 2 },
+  listHeader: { flexDirection: "row", alignItems: "center", gap: 10, marginTop: 0, marginBottom: 8, paddingHorizontal: 2, paddingTop: 0 },
   listHeaderText: { flex: 1, alignItems: "flex-end" },
   screenTitle: { color: "#111827", fontSize: 22, fontWeight: "900", textAlign: "right" },
   screenSubtitle: { color: "#6B7280", fontSize: 12, fontWeight: "800", textAlign: "right", marginTop: 2, lineHeight: 18 },
