@@ -18,7 +18,6 @@ function firstUnitId(payload: any) {
 export default function PropertyRouteRedirectToUnit() {
   const params = useLocalSearchParams<{ id: string; return_to?: string }>();
   const propertyId = String(params.id || "");
-  const [checking, setChecking] = useState(true);
   const [fallbackToProperty, setFallbackToProperty] = useState(false);
 
   useEffect(() => {
@@ -26,7 +25,6 @@ export default function PropertyRouteRedirectToUnit() {
 
     async function openUnitInsteadOfProperty() {
       if (!propertyId) {
-        setChecking(false);
         setFallbackToProperty(true);
         return;
       }
@@ -46,7 +44,6 @@ export default function PropertyRouteRedirectToUnit() {
 
       if (!cancelled) {
         setFallbackToProperty(true);
-        setChecking(false);
       }
     }
 
