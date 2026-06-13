@@ -2,13 +2,19 @@
 
 use App\Services\RelationRecordService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Schema;
 
 if (!function_exists('mr_unit_details_ar_label')) {
     function mr_unit_details_ar_label(string $key, string $fallback): string
     {
         $map = [
             'property_id' => 'العقار',
+            'property_name' => 'اسم العقار',
+            'property_city' => 'مدينة العقار',
+            'property_district' => 'حي العقار',
+            'property_address' => 'عنوان العقار',
             'owner_id' => 'المالك',
             'parent_unit_id' => 'الوحدة الأصلية',
             'unit_scope' => 'نطاق الوحدة',
@@ -66,13 +72,64 @@ if (!function_exists('mr_unit_details_clean_value')) {
     }
 }
 
+if (!function_exists('mr_unit_details_has_field')) {
+    function mr_unit_details_has_field(array $fields, string $key): bool
+    {
+        foreach ($fields as $field) {
+            if ((string) ($field['key'] ?? '') === $key) return true;
+        }
+        return false;
+    }
+}
+
+if (!function_exists('mr_unit_details_property_fields')) {
+    function mr_unit_details_property_fields(array $fields): array
+    {
+        if (!Schema::hasTable('properties') || !Schema::hasTable('units') || !Schema::hasColumn('units', 'property_id')) {
+            return $fields;
+        }
+
+        $propertyId = null;
+        foreach ($fields as $field) {
+            if ((string) ($field['key'] ?? '') === 'property_id') {
+                $propertyId = (int) ($field['raw_value'] ?? $field['value'] ?? 0);
+                break;
+            }
+        }
+
+        if (!$propertyId) return $fields;
+
+        $property = DB::table('properties')->where('id', $propertyId)->first();
+        if (!$property) return $fields;
+
+        $locationFields = [
+            'property_name' => $property->name ?? null,
+            'property_city' => $property->city ?? null,
+            'property_district' => $property->district ?? null,
+            'property_address' => $property->address ?? null,
+        ];
+
+        foreach ($locationFields as $key => $value) {
+            $text = trim((string) ($value ?? ''));
+            if ($text === '' || mr_unit_details_has_field($fields, $key)) continue;
+            $fields[] = [
+                'key' => $key,
+                'label' => mr_unit_details_ar_label($key, $key),
+                'value' => $text,
+            ];
+        }
+
+        return $fields;
+    }
+}
+
 if (!function_exists('mr_unit_details_postprocess')) {
     function mr_unit_details_postprocess(array $payload): array
     {
         $skipKeys = ['manager_id', 'deleted_at', 'created_at', 'updated_at'];
-        $preferred = ['property_id', 'unit_number', 'floor', 'type', 'rent_amount', 'status'];
+        $preferred = ['property_id', 'property_name', 'property_city', 'property_district', 'property_address', 'unit_number', 'floor', 'type', 'rent_amount', 'status'];
 
-        $fields = collect($payload['fields'] ?? [])
+        $fields = collect(mr_unit_details_property_fields($payload['fields'] ?? []))
             ->filter(fn ($field) => !in_array((string) ($field['key'] ?? ''), $skipKeys, true))
             ->map(function ($field) {
                 $key = (string) ($field['key'] ?? '');
