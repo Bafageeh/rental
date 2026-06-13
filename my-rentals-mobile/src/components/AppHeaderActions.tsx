@@ -19,7 +19,7 @@ const screenCodes: Record<string, string> = {
   "/profile": "S-007",
   "/profile-security": "S-008",
   "/profile-properties": "S-009",
-  "/property/:id": "S-010",
+  "/property/:id": "S-011",
   "/unit/:id": "S-011",
   "/owner/:id": "S-012",
   "/tenant/:id": "S-013",
