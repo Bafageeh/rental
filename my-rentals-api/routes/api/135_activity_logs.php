@@ -65,6 +65,86 @@ if (!function_exists('mr_activity_logs_json')) {
     }
 }
 
+if (!function_exists('mr_activity_logs_role')) {
+    function mr_activity_logs_role($user): string
+    {
+        if (!$user) return '';
+        return function_exists('mr_manager_scope_role')
+            ? mr_manager_scope_role($user)
+            : strtolower(trim((string) ($user->role ?? '')));
+    }
+}
+
+if (!function_exists('mr_activity_logs_is_admin')) {
+    function mr_activity_logs_is_admin($user): bool
+    {
+        $role = mr_activity_logs_role($user);
+        return in_array($role, ['admin', 'super_admin'], true) || (bool) ($user->is_admin ?? false);
+    }
+}
+
+if (!function_exists('mr_activity_logs_user_manager_id')) {
+    function mr_activity_logs_user_manager_id($user): ?int
+    {
+        if (!$user) return null;
+        $role = mr_activity_logs_role($user);
+        if ($role === 'manager') {
+            $id = (int) ($user->id ?? 0);
+            return $id > 0 ? $id : null;
+        }
+
+        if (Schema::hasTable('users') && Schema::hasColumn('users', 'manager_id') && !empty($user->manager_id)) {
+            return (int) $user->manager_id;
+        }
+
+        if (!empty($user->owner_id) && Schema::hasTable('owners') && Schema::hasColumn('owners', 'manager_id')) {
+            $managerId = DB::table('owners')->where('id', (int) $user->owner_id)->value('manager_id');
+            return $managerId ? (int) $managerId : null;
+        }
+
+        return null;
+    }
+}
+
+if (!function_exists('mr_activity_logs_scoped_user_ids')) {
+    function mr_activity_logs_scoped_user_ids($user): array
+    {
+        $ids = [];
+        if (!empty($user?->id)) $ids[] = (int) $user->id;
+
+        $managerId = mr_activity_logs_user_manager_id($user);
+        $role = mr_activity_logs_role($user);
+        if ($role === 'manager' && $managerId && Schema::hasTable('users') && Schema::hasColumn('users', 'manager_id')) {
+            $children = DB::table('users')->where('manager_id', $managerId)->pluck('id')->map(fn ($id) => (int) $id)->all();
+            $ids = array_merge($ids, $children);
+        }
+
+        return array_values(array_unique(array_filter($ids)));
+    }
+}
+
+if (!function_exists('mr_activity_logs_scoped_owner_ids')) {
+    function mr_activity_logs_scoped_owner_ids(?Request $request): array
+    {
+        $user = $request?->user();
+        $role = mr_activity_logs_role($user);
+
+        if ($role === 'owner' && !empty($user->owner_id)) {
+            return [(int) $user->owner_id];
+        }
+
+        if ($role === 'manager' && function_exists('mr_manager_scope_owner_ids')) {
+            return mr_manager_scope_owner_ids($request);
+        }
+
+        if (!empty($user?->owner_id)) {
+            return [(int) $user->owner_id];
+        }
+
+        return [];
+    }
+}
+
 if (!function_exists('mr_activity_logs_payload')) {
     function mr_activity_logs_payload($row): array
     {
@@ -76,6 +156,7 @@ if (!function_exists('mr_activity_logs_payload')) {
             'record_id' => $row->record_id ? (int) $row->record_id : null,
             'record_title' => $row->record_title ?? null,
             'owner_id' => $row->owner_id ? (int) $row->owner_id : null,
+            'manager_id' => $row->manager_id ? (int) $row->manager_id : null,
             'user_id' => $row->user_id ? (int) $row->user_id : null,
             'user_name' => $row->user_name ?? null,
             'user_email' => $row->user_email ?? null,
@@ -112,12 +193,28 @@ if (!function_exists('mr_activity_logs_query')) {
         mr_activity_logs_ensure_schema();
         $query = DB::table('activity_logs')->orderByDesc('id');
         $user = $request->user();
-        $role = function_exists('mr_manager_scope_role') ? mr_manager_scope_role($user) : strtolower((string) ($user->role ?? ''));
+        $role = mr_activity_logs_role($user);
 
-        if ($role === 'manager') {
-            $query->where('manager_id', (int) $user->id);
-        } elseif ($role === 'owner' && !empty($user->owner_id)) {
-            $query->where('owner_id', (int) $user->owner_id);
+        // الإدارة فقط ترى كل السجلات بلا استثناء.
+        if (!mr_activity_logs_is_admin($user)) {
+            if ($role === 'manager') {
+                $managerId = mr_activity_logs_user_manager_id($user);
+                $userIds = mr_activity_logs_scoped_user_ids($user);
+                $ownerIds = mr_activity_logs_scoped_owner_ids($request);
+
+                $query->where(function ($q) use ($managerId, $userIds, $ownerIds) {
+                    if ($managerId) $q->orWhere('manager_id', $managerId);
+                    if (!empty($userIds)) $q->orWhereIn('user_id', $userIds);
+                    if (!empty($ownerIds)) $q->orWhereIn('owner_id', $ownerIds);
+                });
+            } elseif ($role === 'owner' && !empty($user->owner_id)) {
+                $query->where(function ($q) use ($user) {
+                    $q->where('owner_id', (int) $user->owner_id)
+                      ->orWhere('user_id', (int) $user->id);
+                });
+            } else {
+                $query->where('user_id', (int) ($user->id ?? 0));
+            }
         }
 
         $action = trim((string) $request->query('action', ''));
@@ -134,8 +231,19 @@ if (!function_exists('mr_activity_logs_store')) {
     {
         mr_activity_logs_ensure_schema();
         $user = $request->user();
+        $role = mr_activity_logs_role($user);
+        $managerId = $payload['manager_id'] ?? null;
+
+        if (!$managerId && !mr_activity_logs_is_admin($user)) {
+            $managerId = mr_activity_logs_user_manager_id($user);
+        }
+
+        if (!$managerId && !empty($payload['owner_id']) && Schema::hasTable('owners') && Schema::hasColumn('owners', 'manager_id')) {
+            $managerId = DB::table('owners')->where('id', (int) $payload['owner_id'])->value('manager_id') ?: null;
+        }
+
         DB::table('activity_logs')->insert([
-            'manager_id' => function_exists('mr_manager_scope_id') ? mr_manager_scope_id($request) : null,
+            'manager_id' => $managerId ? (int) $managerId : null,
             'owner_id' => $payload['owner_id'] ?? ($user->owner_id ?? null),
             'user_id' => $user->id ?? null,
             'user_name' => $user->name ?? null,
@@ -207,6 +315,7 @@ Route::post('/activity-logs/{id}/rollback', function (Request $request, int $id)
         'record_id' => $log->record_id,
         'record_title' => $log->record_title,
         'owner_id' => $log->owner_id,
+        'manager_id' => $log->manager_id,
         'old_payload' => mr_activity_logs_json($log->new_payload ?? null),
         'new_payload' => $updates,
         'metadata' => ['source_log_id' => $log->id],
