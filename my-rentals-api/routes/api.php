@@ -219,6 +219,7 @@ Route::middleware(['auth.api', 'api.scope'])->group(function () {
         __DIR__ . '/api/137_communication_center.php',
         __DIR__ . '/api/138_smart_alerts.php',
         __DIR__ . '/api/139_follow_up_tasks.php',
+        __DIR__ . '/api/140_monthly_financial_summary.php',
     ] as $routeModule) {
         if (is_file($routeModule)) require $routeModule;
     }
