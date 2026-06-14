@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class ServiceProvider extends Model
 {
     protected $fillable = [
+        'manager_id',
         'name',
         'provider_type',
         'phone',
@@ -24,6 +25,7 @@ class ServiceProvider extends Model
     ];
 
     protected $casts = [
+        'manager_id' => 'integer',
         'default_visit_fee' => 'decimal:2',
         'rating' => 'integer',
         'is_preferred' => 'boolean',
