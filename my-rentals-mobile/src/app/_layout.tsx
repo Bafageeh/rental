@@ -33,6 +33,7 @@ const routeTitles: Record<string, string> = {
   "communication-center": "مركز المراسلات",
   "smart-alerts": "التنبيهات الذكية",
   "follow-ups": "المتابعات والمهام",
+  "monthly-financial": "التقرير المالي الشهري",
   "user-accounts": "إدارة المستخدمين",
   "inquiry-center": "مركز الاستفسارات",
   "scheduled-messages": "الرسائل المجدولة",
