@@ -31,6 +31,7 @@ const routeTitles: Record<string, string> = {
 };
 
 const hiddenScreens = [
+  "+not-found",
   "chat-thread", "payments", "statistics", "settings", "tenants", "parking", "expenses",
   "owner-payouts", "owner-settlements", "owner-statement", "owner-account-statement",
   "monthly-financial", "rent-roll", "tenant-statement", "tenant-statements", "create-contract", "upload-contract",
