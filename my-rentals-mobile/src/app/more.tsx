@@ -100,7 +100,7 @@ export default function MoreScreen() {
           <ActionTile
             icon="person-circle-outline"
             title="بروفايل"
-            subtitle="تغيير الرقم السري، عقاراتي، وروابط الحساب حسب الصلاحية."
+            subtitle="بيانات الحساب، عقاراتي، وروابط المستخدم حسب الصلاحية."
             onPress={() => requireLogin('/profile', 'البروفايل')}
           />
         </View>
@@ -131,7 +131,7 @@ export default function MoreScreen() {
               <ActionTile
                 icon="people-circle-outline"
                 title="إدارة المستخدمين"
-                subtitle="إنشاء وتعديل المستخدمين، ربط الملاك، تفعيل وتعطيل الحسابات، وإعادة تعيين الرقم السري."
+                subtitle="إنشاء وتعديل المستخدمين، ربط الملاك، وتفعيل أو تعطيل الحسابات."
                 onPress={() => requireAdmin('/user-accounts', 'إدارة المستخدمين')}
                 adminOnly
               />
@@ -155,6 +155,15 @@ export default function MoreScreen() {
             title="التقارير"
             subtitle="التقرير الشهري، كشف الإيجار، وتقارير أداء المحفظة العقارية."
             onPress={() => requireLogin('/statistics', 'التقارير')}
+          />
+        </View>
+
+        <View style={styles.card}>
+          <ActionTile
+            icon="shield-checkmark-outline"
+            title="الخصوصية والدعم"
+            subtitle="سياسة الخصوصية، الدعم الفني، وطلب حذف الحساب والبيانات."
+            onPress={() => router.push('/privacy' as any)}
           />
         </View>
 
