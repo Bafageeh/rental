@@ -33,6 +33,7 @@ type ProfileAction = {
   subtitle: string;
   path?: string;
   adminOnly?: boolean;
+  managerOnly?: boolean;
   danger?: boolean;
   action?: "logout";
 };
@@ -84,7 +85,6 @@ const sections: ProfileSection[] = [
     title: "التشغيل والمتابعة",
     subtitle: "الإجراءات اليومية والملفات والتنبيهات.",
     items: [
-      { icon: "☁️", title: "رفع عقد PDF", subtitle: "استخراج بيانات عقد إيجار", path: "/upload-contract" },
       { icon: "➕", title: "إنشاء عقد", subtitle: "إضافة عقد جديد يدويًا", path: "/create-contract" },
       { icon: "🔄", title: "تجديد العقود", subtitle: "العقود القريبة من الانتهاء", path: "/contract-renewals" },
       { icon: "⏰", title: "التذكيرات", subtitle: "المواعيد والمهام", path: "/reminders" },
@@ -94,7 +94,7 @@ const sections: ProfileSection[] = [
       { icon: "📣", title: "تسويق الوحدات", subtitle: "تجهيز الوحدة للتسويق", path: "/unit-marketing" },
       { icon: "🧰", title: "فحص الوحدات", subtitle: "توثيق الفحص والملاحظات", path: "/unit-inspections" },
       { icon: "💬", title: "مركز التواصل", subtitle: "رسائل وتواصل المستأجرين والملاك", path: "/communication-center" },
-      { icon: "🛠️", title: "مزودو الخدمات", subtitle: "الفنيون وشركات الصيانة", path: "/service-providers" },
+      { icon: "🛠️", title: "مقدمو الخدمة", subtitle: "الفنيون وشركات الصيانة", path: "/service-providers", managerOnly: true },
     ],
   },
   {
@@ -136,6 +136,7 @@ function ProfileButton({ item, onPress }: { item: ProfileAction; onPress: () => 
 export default function ProfileScreen() {
   const auth = useAuth();
   const displayUser = auth.user;
+  const role = String(displayUser?.role ?? "").trim().toLowerCase();
 
   const initials = useMemo(() => {
     const name = String(displayUser?.name || displayUser?.email || "م").trim();
@@ -169,7 +170,11 @@ export default function ProfileScreen() {
   const visibleSections = sections
     .map((section) => ({
       ...section,
-      items: section.items.filter((item) => !item.adminOnly || auth.isAdmin),
+      items: section.items.filter((item) => {
+        if (item.adminOnly && !auth.isAdmin) return false;
+        if (item.managerOnly && role !== "manager") return false;
+        return true;
+      }),
     }))
     .filter((section) => section.items.length > 0);
 
