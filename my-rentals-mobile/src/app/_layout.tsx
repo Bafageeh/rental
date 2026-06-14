@@ -32,6 +32,7 @@ const routeTitles: Record<string, string> = {
   "trash-center": "سلة المحذوفات",
   "communication-center": "مركز المراسلات",
   "smart-alerts": "التنبيهات الذكية",
+  "follow-ups": "المتابعات والمهام",
   "user-accounts": "إدارة المستخدمين",
   "inquiry-center": "مركز الاستفسارات",
   "scheduled-messages": "الرسائل المجدولة",
