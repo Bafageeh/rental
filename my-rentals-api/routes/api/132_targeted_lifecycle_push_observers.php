@@ -3,6 +3,8 @@
 use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Support\Facades\DB;
 
+if (is_file(__DIR__ . '/132_service_providers.php')) require_once __DIR__ . '/132_service_providers.php';
+
 if (!function_exists('mr_lifecycle_push_observers_register')) {
     function mr_lifecycle_push_observers_register(): void
     {
