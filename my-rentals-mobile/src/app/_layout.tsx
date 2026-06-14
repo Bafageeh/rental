@@ -37,7 +37,7 @@ const hiddenScreens = [
   "upload-property-deed", "property-form", "contract-edit/[id]", "contract-renewals", "alerts", "smart-alerts",
   "reminders", "follow-ups", "reports", "occupancy", "property-performance", "files", "export-center",
   "owner-accounts", "owner-bank-accounts", "owner-portal", "user-accounts", "service-providers", "unit-inspections",
-  "unit-marketing", "utility-bills", otpName, "login", "manager-register", "privacy", "profile", "profile-security", "profile-properties",
+  "unit-marketing", "utility-bills", otpName, "login", "manager-register", "profile", "profile-security", "profile-properties",
   "my-account", "system-settings", "search", "activity-logs", "activity-feed", "data-health", "trash-center",
   "relations-manager", "record-details", "inquiry-center", "scheduled-messages", "communication-center", "owner-properties",
   "owner-overdue-units", "unit-overdue-payments", "edit-record", "owner/[id]", "property/[id]", "unit/[id]",
@@ -127,6 +127,7 @@ function AppTabs() {
       <Tabs.Screen name="tenant-reports" options={{ href: isTenant ? "/tenant-reports" : null, title: "تقاريري", tabBarIcon: ({ color, size }) => <TabIcon name="analytics-outline" color={color} size={size} />, headerRight: () => null }} />
       <Tabs.Screen name="chat-threads" options={{ href: isTenant ? "/chat-threads" : null, title: "مراسلاتي", tabBarIcon: ({ color, size }) => <TabIcon name="chatbubbles-outline" color={color} size={size} /> }} />
       <Tabs.Screen name="tenant-more" options={{ href: isTenant ? "/tenant-more" : null, title: "مزيد", tabBarIcon: ({ color, size }) => <TabIcon name="grid-outline" color={color} size={size} />, headerRight: () => null }} />
+      <Tabs.Screen name="privacy" options={{ href: isTenant ? "/privacy" : null, title: "الخصوصية", tabBarIcon: ({ color, size }) => <TabIcon name="shield-checkmark-outline" color={color} size={size} /> }} />
       {hiddenScreens.map((name) => <Tabs.Screen key={name} name={name} options={{ ...hidden, title: routeTitles[name] }} />)}
     </Tabs>
   );
