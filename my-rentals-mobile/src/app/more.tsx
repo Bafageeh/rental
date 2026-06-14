@@ -18,6 +18,7 @@ export default function MoreScreen() {
   const { loggedIn, isAdmin, user, logout } = useAuth();
   const role = String(user?.role ?? '').trim().toLowerCase();
   const showAdminOnly = isAdmin && (role === 'admin' || role === 'super_admin');
+  const showManagerOnly = loggedIn && role === 'manager';
 
   function requireLogin(path: string, title: string) {
     if (!loggedIn) {
@@ -42,6 +43,23 @@ export default function MoreScreen() {
 
     if (!showAdminOnly) {
       Alert.alert('غير مصرح', 'هذه الشاشة مخصصة للإدارة فقط.');
+      return;
+    }
+
+    router.push(path as any);
+  }
+
+  function requireManager(path: string, title: string) {
+    if (!loggedIn) {
+      Alert.alert('تسجيل الدخول مطلوب', `سجّل دخولك للوصول إلى ${title}`, [
+        { text: 'إلغاء', style: 'cancel' },
+        { text: 'دخول', onPress: () => router.push('/login' as any) },
+      ]);
+      return;
+    }
+
+    if (!showManagerOnly) {
+      Alert.alert('غير مصرح', 'هذه الشاشة مخصصة لمدير العقارات فقط.');
       return;
     }
 
@@ -95,6 +113,17 @@ export default function MoreScreen() {
             onPress={() => requireLogin('/chat-threads', 'تذاكر المستأجرين')}
           />
         </View>
+
+        {showManagerOnly ? (
+          <View style={styles.card}>
+            <ActionTile
+              icon="construct-outline"
+              title="مقدمو الخدمة"
+              subtitle="دليل مقاولي الصيانة والخدمات وربطهم بطلبات الصيانة المفتوحة."
+              onPress={() => requireManager('/service-providers', 'مقدمو الخدمة')}
+            />
+          </View>
+        ) : null}
 
         {showAdminOnly ? (
           <>
