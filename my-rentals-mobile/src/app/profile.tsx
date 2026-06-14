@@ -57,9 +57,8 @@ const sections: ProfileSection[] = [
   },
   {
     title: "محفظتي",
-    subtitle: "روابط الوحدات والعقود حسب صلاحية الحساب.",
+    subtitle: "روابط العقود والمستأجرين حسب صلاحية الحساب.",
     items: [
-      { icon: "🏠", title: "الوحدات", subtitle: "الوحدات المتاحة والمؤجرة", path: "/units" },
       { icon: "📄", title: "العقود", subtitle: "العقود النشطة والمنتهية", path: "/contracts" },
       { icon: "👥", title: "المستأجرون", subtitle: "بيانات المستأجرين وكشوفهم", path: "/tenants" },
       { icon: "🅿️", title: "المواقف", subtitle: "إدارة المواقف والرسوم", path: "/parking" },
@@ -71,7 +70,6 @@ const sections: ProfileSection[] = [
     subtitle: "التحصيل، المصروفات، والتقارير المالية.",
     items: [
       { icon: "💵", title: "الدفعات", subtitle: "المدفوع والمستحق والمتأخر", path: "/payments" },
-      { icon: "🧾", title: "سندات القبض", subtitle: "إصدار ومراجعة السندات", path: "/payment-receipts" },
       { icon: "📉", title: "المصروفات", subtitle: "مصروفات التشغيل والصيانة", path: "/expenses" },
       { icon: "⚡", title: "فواتير الخدمات", subtitle: "الكهرباء والمياه والخدمات", path: "/utility-bills" },
       { icon: "📅", title: "التقرير الشهري", subtitle: "إيرادات ومصروفات الشهر", path: "/monthly-financial" },
@@ -103,7 +101,6 @@ const sections: ProfileSection[] = [
     items: [
       { icon: "🖼️", title: "الملفات والوسائط", subtitle: "صور وفيديوهات وملفات", path: "/files", adminOnly: true },
       { icon: "⚙️", title: "الإعدادات", subtitle: "إعدادات التطبيق العامة", path: "/settings", adminOnly: true },
-      { icon: "🛡️", title: "إعدادات النظام", subtitle: "إعدادات إدارية للنظام", path: "/system-settings", adminOnly: true },
       { icon: "🔑", title: "حسابات المستخدمين", subtitle: "إدارة الصلاحيات والحسابات", path: "/user-accounts", adminOnly: true },
       { icon: "🏦", title: "حسابات الملاك", subtitle: "حسابات دخول الملاك", path: "/owner-accounts", adminOnly: true },
       { icon: "💳", title: "الحسابات البنكية", subtitle: "حسابات الملاك البنكية", path: "/owner-bank-accounts", adminOnly: true },
