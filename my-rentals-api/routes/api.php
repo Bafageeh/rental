@@ -137,6 +137,7 @@ Route::middleware(['auth.api'])->group(function () {
         __DIR__ . '/api/126_chat_attachments.php',
         __DIR__ . '/api/127_chat_ticket_close.php',
         __DIR__ . '/api/128_tenant_reports.php',
+        __DIR__ . '/api/132_privacy_requests.php',
     ] as $publicAuthenticatedRouteModule) {
         if (is_file($publicAuthenticatedRouteModule)) require $publicAuthenticatedRouteModule;
     }
