@@ -12,6 +12,7 @@ if (!function_exists('mr_manager_scope_ensure_schema')) {
             'owners', 'properties', 'units', 'tenants', 'contracts', 'payments',
             'property_expenses', 'parking_spots', 'contract_files', 'property_files', 'unit_media',
             'owner_transfers', 'owner_settlements', 'owner_bank_accounts', 'chat_threads', 'chat_messages',
+            'service_providers', 'maintenance_requests',
         ] as $tableName) {
             if (Schema::hasTable($tableName) && !Schema::hasColumn($tableName, 'manager_id')) {
                 Schema::table($tableName, function (Blueprint $table) {
