@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\Route;
 
 if (is_file(__DIR__ . '/130_manager_data_scope.php')) require_once __DIR__ . '/130_manager_data_scope.php';
 if (is_file(__DIR__ . '/132_targeted_lifecycle_push_observers.php')) require_once __DIR__ . '/132_targeted_lifecycle_push_observers.php';
+if (is_file(__DIR__ . '/132_payment_update_push_listener.php')) require_once __DIR__ . '/132_payment_update_push_listener.php';
 
 Route::get('/owners', function (Request $request) {
     $query = Owner::withCount('properties');
