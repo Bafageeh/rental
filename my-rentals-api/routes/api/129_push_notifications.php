@@ -69,6 +69,219 @@ if (!function_exists('mr_push_user_is_active')) {
     }
 }
 
+if (!function_exists('mr_push_entity_user_ids')) {
+    function mr_push_entity_user_ids(string $role, int $entityId): array
+    {
+        if ($entityId <= 0 || !Schema::hasTable('users')) return [];
+
+        $role = mr_push_normalized_role((object) ['role' => $role]);
+        $column = $role === 'owner' ? 'owner_id' : ($role === 'tenant' ? 'tenant_id' : null);
+        if (!$column || !Schema::hasColumn('users', $column)) return [];
+
+        return DB::table('users')
+            ->select('id', 'role', 'status', $column)
+            ->where($column, $entityId)
+            ->get()
+            ->filter(fn ($user) => mr_push_normalized_role($user) === $role && mr_push_user_is_active($user))
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values()
+            ->all();
+    }
+}
+
+if (!function_exists('mr_push_money')) {
+    function mr_push_money($amount): string
+    {
+        $value = is_numeric($amount) ? (float) $amount : (float) str_replace(',', '', (string) ($amount ?? 0));
+        return number_format($value, 2) . ' ر.س';
+    }
+}
+
+if (!function_exists('mr_push_payment_context')) {
+    function mr_push_payment_context($payment): ?object
+    {
+        $paymentId = is_object($payment) ? (int) ($payment->id ?? 0) : (int) $payment;
+        if ($paymentId <= 0 || !Schema::hasTable('payments')) return null;
+
+        return DB::table('payments')
+            ->leftJoin('contracts', 'contracts.id', '=', 'payments.contract_id')
+            ->leftJoin('tenants', 'tenants.id', '=', 'contracts.tenant_id')
+            ->leftJoin('units', 'units.id', '=', 'contracts.unit_id')
+            ->leftJoin('properties', 'properties.id', '=', 'units.property_id')
+            ->leftJoin('owners', 'owners.id', '=', 'properties.owner_id')
+            ->where('payments.id', $paymentId)
+            ->select([
+                'payments.id as payment_id',
+                'payments.amount',
+                Schema::hasColumn('payments', 'paid_amount') ? 'payments.paid_amount' : DB::raw('NULL as paid_amount'),
+                'payments.due_date',
+                'payments.status',
+                'contracts.id as contract_id',
+                'contracts.contract_number',
+                'contracts.government_contract_number',
+                'tenants.id as tenant_id',
+                'tenants.name as tenant_name',
+                'units.id as unit_id',
+                'units.unit_number',
+                'properties.id as property_id',
+                'properties.name as property_name',
+                'owners.id as owner_id',
+                'owners.name as owner_name',
+            ])
+            ->first();
+    }
+}
+
+if (!function_exists('mr_push_notify_tenant_payment_changed')) {
+    function mr_push_notify_tenant_payment_changed($payment, string $action = 'updated'): void
+    {
+        $ctx = mr_push_payment_context($payment);
+        if (!$ctx || (int) ($ctx->tenant_id ?? 0) <= 0) return;
+
+        $userIds = mr_push_entity_user_ids('tenant', (int) $ctx->tenant_id);
+        if (empty($userIds)) return;
+
+        $amount = $ctx->paid_amount !== null && (float) $ctx->paid_amount > 0 ? $ctx->paid_amount : $ctx->amount;
+        $title = $action === 'paid' ? 'تم تسجيل دفعة إيجار' : 'تم تحديث دفعات عقدك';
+        $body = ($action === 'paid' ? 'تم تسجيل دفعة بقيمة ' : 'تم تعديل بيانات دفعة بقيمة ')
+            . mr_push_money($amount)
+            . ' لعقار ' . (($ctx->property_name ?? '') ?: 'العقار')
+            . (($ctx->unit_number ?? '') ? ' - وحدة ' . $ctx->unit_number : '');
+
+        mr_push_send_to_users($userIds, $title, $body, [
+            'type' => 'tenant_payment_update',
+            'route' => 'tenant-payments',
+            'payment_id' => (int) $ctx->payment_id,
+            'contract_id' => (int) ($ctx->contract_id ?? 0),
+            'tenant_id' => (int) $ctx->tenant_id,
+        ]);
+    }
+}
+
+if (!function_exists('mr_push_notify_owner_rent_payment')) {
+    function mr_push_notify_owner_rent_payment($payment): void
+    {
+        $ctx = mr_push_payment_context($payment);
+        if (!$ctx || (int) ($ctx->owner_id ?? 0) <= 0) return;
+
+        $userIds = mr_push_entity_user_ids('owner', (int) $ctx->owner_id);
+        if (empty($userIds)) return;
+
+        $amount = $ctx->paid_amount !== null && (float) $ctx->paid_amount > 0 ? $ctx->paid_amount : $ctx->amount;
+        $body = 'تم تسجيل دفعة إيجارية بقيمة ' . mr_push_money($amount)
+            . ' من ' . (($ctx->tenant_name ?? '') ?: 'مستأجر')
+            . ' — ' . (($ctx->property_name ?? '') ?: 'عقار')
+            . (($ctx->unit_number ?? '') ? ' / وحدة ' . $ctx->unit_number : '');
+
+        mr_push_send_to_users($userIds, 'دفعة إيجارية جديدة', $body, [
+            'type' => 'owner_rent_payment',
+            'route' => 'owner-statement',
+            'payment_id' => (int) $ctx->payment_id,
+            'contract_id' => (int) ($ctx->contract_id ?? 0),
+            'owner_id' => (int) $ctx->owner_id,
+        ]);
+    }
+}
+
+if (!function_exists('mr_push_notify_tenant_contract_renewed')) {
+    function mr_push_notify_tenant_contract_renewed($contract): void
+    {
+        $contractId = is_object($contract) ? (int) ($contract->id ?? 0) : (int) $contract;
+        if ($contractId <= 0 || !Schema::hasTable('contracts')) return;
+
+        $ctx = DB::table('contracts')
+            ->leftJoin('tenants', 'tenants.id', '=', 'contracts.tenant_id')
+            ->leftJoin('units', 'units.id', '=', 'contracts.unit_id')
+            ->leftJoin('properties', 'properties.id', '=', 'units.property_id')
+            ->where('contracts.id', $contractId)
+            ->select([
+                'contracts.id as contract_id',
+                'contracts.start_date',
+                'contracts.end_date',
+                'contracts.rent_amount',
+                'tenants.id as tenant_id',
+                'properties.name as property_name',
+                'units.unit_number',
+            ])
+            ->first();
+
+        if (!$ctx || (int) ($ctx->tenant_id ?? 0) <= 0) return;
+        $userIds = mr_push_entity_user_ids('tenant', (int) $ctx->tenant_id);
+        if (empty($userIds)) return;
+
+        $body = 'تم تجديد عقدك لعقار ' . (($ctx->property_name ?? '') ?: 'العقار')
+            . (($ctx->unit_number ?? '') ? ' - وحدة ' . $ctx->unit_number : '')
+            . ' حتى تاريخ ' . (($ctx->end_date ?? '') ?: 'غير محدد') . '.';
+
+        mr_push_send_to_users($userIds, 'تم تجديد العقد', $body, [
+            'type' => 'tenant_contract_renewed',
+            'route' => 'tenant-contract',
+            'contract_id' => (int) $ctx->contract_id,
+            'tenant_id' => (int) $ctx->tenant_id,
+        ]);
+    }
+}
+
+if (!function_exists('mr_push_notify_owner_expense')) {
+    function mr_push_notify_owner_expense($expense): void
+    {
+        $expenseId = is_object($expense) ? (int) ($expense->id ?? 0) : (int) $expense;
+        if ($expenseId <= 0 || !Schema::hasTable('property_expenses')) return;
+
+        $ctx = DB::table('property_expenses')
+            ->leftJoin('properties', 'properties.id', '=', 'property_expenses.property_id')
+            ->leftJoin('units', 'units.id', '=', 'property_expenses.unit_id')
+            ->leftJoin('expense_categories', 'expense_categories.id', '=', 'property_expenses.expense_category_id')
+            ->where('property_expenses.id', $expenseId)
+            ->select([
+                'property_expenses.id as expense_id',
+                'property_expenses.amount',
+                'property_expenses.title',
+                'properties.id as property_id',
+                'properties.name as property_name',
+                'properties.owner_id',
+                'units.unit_number',
+                'expense_categories.name as category_name',
+            ])
+            ->first();
+
+        if (!$ctx || (int) ($ctx->owner_id ?? 0) <= 0) return;
+        $userIds = mr_push_entity_user_ids('owner', (int) $ctx->owner_id);
+        if (empty($userIds)) return;
+
+        $label = $ctx->category_name ?: ($ctx->title ?: 'مصروف');
+        $body = 'تم إضافة مصروف ' . $label . ' بقيمة ' . mr_push_money($ctx->amount)
+            . ' على ' . (($ctx->property_name ?? '') ?: 'عقار')
+            . (($ctx->unit_number ?? '') ? ' / وحدة ' . $ctx->unit_number : '');
+
+        mr_push_send_to_users($userIds, 'مصروف جديد على عقارك', $body, [
+            'type' => 'owner_expense_added',
+            'route' => 'owner-statement',
+            'expense_id' => (int) $ctx->expense_id,
+            'owner_id' => (int) $ctx->owner_id,
+            'property_id' => (int) ($ctx->property_id ?? 0),
+        ]);
+    }
+}
+
+if (!function_exists('mr_push_notify_owner_transfer')) {
+    function mr_push_notify_owner_transfer(int $ownerId, $amount, ?int $transferId = null): void
+    {
+        if ($ownerId <= 0) return;
+        $userIds = mr_push_entity_user_ids('owner', $ownerId);
+        if (empty($userIds)) return;
+
+        mr_push_send_to_users($userIds, 'تم تسجيل حوالة للمالك', 'تم تسجيل حوالة لك بقيمة ' . mr_push_money($amount) . '.', [
+            'type' => 'owner_transfer_added',
+            'route' => 'owner-statement',
+            'owner_id' => $ownerId,
+            'transfer_id' => $transferId,
+        ]);
+    }
+}
+
 if (!function_exists('mr_push_chat_recipient_user_ids')) {
     function mr_push_chat_recipient_user_ids(object $threadRow, $sender): array
     {
