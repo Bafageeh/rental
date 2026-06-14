@@ -212,6 +212,10 @@ Route::middleware(['auth.api', 'api.scope'])->group(function () {
         __DIR__ . '/api/121_owner_account_statement.php',
         __DIR__ . '/api/122_amal_owner_transfers_import.php',
         __DIR__ . '/api/131_manager_scope_route_overrides.php',
+        __DIR__ . '/api/134_owner_accounts_manager_scope.php',
+        __DIR__ . '/api/134_owner_bank_accounts.php',
+        __DIR__ . '/api/135_activity_logs.php',
+        __DIR__ . '/api/136_trash_center.php',
     ] as $routeModule) {
         if (is_file($routeModule)) require $routeModule;
     }
