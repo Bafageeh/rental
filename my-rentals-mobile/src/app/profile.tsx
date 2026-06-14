@@ -105,7 +105,6 @@ const sections: ProfileSection[] = [
       { icon: "🏦", title: "حسابات الملاك", subtitle: "حسابات دخول الملاك", path: "/owner-accounts", adminOnly: true },
       { icon: "💳", title: "الحسابات البنكية", subtitle: "حسابات الملاك البنكية", path: "/owner-bank-accounts", adminOnly: true },
       { icon: "🩺", title: "صحة البيانات", subtitle: "فحص العلاقات والبيانات", path: "/data-health", adminOnly: true },
-      { icon: "✏️", title: "مركز التعديل", subtitle: "تعديل وحذف سجلات النظام", path: "/edit-delete-center", adminOnly: true },
       { icon: "🗑️", title: "المحذوفات", subtitle: "مراجعة واستعادة المحذوفات", path: "/trash-center", adminOnly: true },
       { icon: "🔗", title: "مدير العلاقات", subtitle: "ربط وتنظيف العلاقات", path: "/relations-manager", adminOnly: true },
       { icon: "🕘", title: "آخر النشاطات", subtitle: "آخر العمليات على النظام", path: "/activity-feed", adminOnly: true },
