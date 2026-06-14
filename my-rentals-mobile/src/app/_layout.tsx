@@ -29,6 +29,7 @@ const routeTitles: Record<string, string> = {
   "owner-bank-accounts": "الحسابات البنكية",
   "activity-logs": "سجل العمليات",
   "activity-feed": "آخر النشاطات",
+  "trash-center": "سلة المحذوفات",
   "user-accounts": "إدارة المستخدمين",
   "inquiry-center": "مركز الاستفسارات",
   "scheduled-messages": "الرسائل المجدولة",
