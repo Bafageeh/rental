@@ -31,7 +31,7 @@ const routeTitles: Record<string, string> = {
 };
 
 const hiddenScreens = [
-  "+not-found",
+  "+not-found", "system-settings",
   "chat-thread", "payments", "statistics", "settings", "tenants", "parking", "expenses",
   "owner-payouts", "owner-settlements", "owner-statement", "owner-account-statement",
   "monthly-financial", "rent-roll", "tenant-statement", "tenant-statements", "create-contract", "upload-contract",
@@ -69,6 +69,7 @@ function AppTabs() {
   const isPrivacyRoute = pathname === "/privacy";
   const isPublicAuthRoute = isLoginRoute || isOtpRoute || isManagerRegisterRoute;
   const isPublicRoute = isPublicAuthRoute || isPrivacyRoute;
+  const isRemovedRoute = pathname === "/system-settings";
   const isAdminOnlyRoute = pathname === "/inquiry-center" || pathname === "/scheduled-messages" || pathname === "/user-accounts";
   const isTenantPaymentsRoute = pathname === "/tenant-payments";
   const isTenantReportsRoute = pathname === "/tenant-reports";
@@ -95,11 +96,12 @@ function AppTabs() {
 
   useEffect(() => {
     if (loading) return;
+    if (isRemovedRoute) return router.replace("/more" as any);
     if ((!loggedIn || locked) && !isPublicRoute) return router.replace("/login" as any);
     if (loggedIn && !locked && isPublicAuthRoute) return router.replace(isTenant ? "/tenant-payments" as any : "/" as any);
     if (loggedIn && !locked && isAdminOnlyRoute && !isSystemAdmin) return router.replace("/more" as any);
     if (loggedIn && !locked && isTenant && !isTenantAllowedRoute) router.replace("/tenant-payments" as any);
-  }, [isPublicRoute, isPublicAuthRoute, isAdminOnlyRoute, isSystemAdmin, isTenantAllowedRoute, isTenant, loading, loggedIn, locked]);
+  }, [isRemovedRoute, isPublicRoute, isPublicAuthRoute, isAdminOnlyRoute, isSystemAdmin, isTenantAllowedRoute, isTenant, loading, loggedIn, locked]);
 
   return (
     <Tabs
