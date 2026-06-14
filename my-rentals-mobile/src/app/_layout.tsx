@@ -13,6 +13,10 @@ function TabIcon({ name, color, size }: { name: string; color: string; size: num
 const hidden = { href: null as any };
 const otpName = String.fromCharCode(112, 97, 115, 115, 119, 111, 114, 100, 45, 111, 116, 112);
 const routeTitles: Record<string, string> = {
+  "login": "تسجيل الدخول",
+  [otpName]: "استعادة كلمة السر",
+  "manager-register": "إنشاء حساب مدير عقارات",
+  "privacy": "الخصوصية والدعم",
   "owner/[id]": "تفاصيل المالك",
   "property/[id]": "تفاصيل العقار",
   "unit/[id]": "تفاصيل الوحدة",
@@ -33,7 +37,7 @@ const hiddenScreens = [
   "upload-property-deed", "property-form", "contract-edit/[id]", "contract-renewals", "alerts", "smart-alerts",
   "reminders", "follow-ups", "reports", "occupancy", "property-performance", "files", "export-center",
   "owner-accounts", "owner-bank-accounts", "owner-portal", "user-accounts", "service-providers", "unit-inspections",
-  "unit-marketing", "utility-bills", otpName, "login", "manager-register", "profile", "profile-security", "profile-properties",
+  "unit-marketing", "utility-bills", otpName, "login", "manager-register", "privacy", "profile", "profile-security", "profile-properties",
   "my-account", "system-settings", "search", "activity-logs", "activity-feed", "data-health", "trash-center",
   "relations-manager", "record-details", "inquiry-center", "scheduled-messages", "communication-center", "owner-properties",
   "owner-overdue-units", "unit-overdue-payments", "edit-record", "owner/[id]", "property/[id]", "unit/[id]",
@@ -61,18 +65,20 @@ function AppTabs() {
   const isLoginRoute = pathname === "/login";
   const isOtpRoute = pathname === "/" + otpName;
   const isManagerRegisterRoute = pathname === "/manager-register";
+  const isPrivacyRoute = pathname === "/privacy";
   const isPublicAuthRoute = isLoginRoute || isOtpRoute || isManagerRegisterRoute;
+  const isPublicRoute = isPublicAuthRoute || isPrivacyRoute;
   const isAdminOnlyRoute = pathname === "/inquiry-center" || pathname === "/scheduled-messages" || pathname === "/user-accounts";
   const isTenantPaymentsRoute = pathname === "/tenant-payments";
   const isTenantReportsRoute = pathname === "/tenant-reports";
   const isTenantMoreRoute = pathname === "/tenant-more";
   const isChatRoute = pathname === "/chat-threads" || pathname === "/chat-thread" || pathname.startsWith("/chat-thread/");
-  const isTenantAllowedRoute = isTenantPaymentsRoute || isTenantReportsRoute || isTenantMoreRoute || isChatRoute;
+  const isTenantAllowedRoute = isTenantPaymentsRoute || isTenantReportsRoute || isTenantMoreRoute || isChatRoute || isPrivacyRoute;
 
   useEffect(() => {
     if (forcedLoginOnLaunch.current) return;
     forcedLoginOnLaunch.current = true;
-    if (!isPublicAuthRoute) router.replace("/login" as any);
+    if (!isPublicRoute) router.replace("/login" as any);
   }, []);
 
   useEffect(() => {
@@ -88,11 +94,11 @@ function AppTabs() {
 
   useEffect(() => {
     if (loading) return;
-    if ((!loggedIn || locked) && !isPublicAuthRoute) return router.replace("/login" as any);
+    if ((!loggedIn || locked) && !isPublicRoute) return router.replace("/login" as any);
     if (loggedIn && !locked && isPublicAuthRoute) return router.replace(isTenant ? "/tenant-payments" as any : "/" as any);
     if (loggedIn && !locked && isAdminOnlyRoute && !isSystemAdmin) return router.replace("/more" as any);
     if (loggedIn && !locked && isTenant && !isTenantAllowedRoute) router.replace("/tenant-payments" as any);
-  }, [isPublicAuthRoute, isAdminOnlyRoute, isSystemAdmin, isTenantAllowedRoute, isTenant, loading, loggedIn, locked]);
+  }, [isPublicRoute, isPublicAuthRoute, isAdminOnlyRoute, isSystemAdmin, isTenantAllowedRoute, isTenant, loading, loggedIn, locked]);
 
   return (
     <Tabs
