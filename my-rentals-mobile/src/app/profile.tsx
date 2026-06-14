@@ -57,9 +57,8 @@ const sections: ProfileSection[] = [
   },
   {
     title: "محفظتي",
-    subtitle: "روابط العقود والمستأجرين حسب صلاحية الحساب.",
+    subtitle: "روابط المستأجرين والخدمات حسب صلاحية الحساب.",
     items: [
-      { icon: "📄", title: "العقود", subtitle: "العقود النشطة والمنتهية", path: "/contracts" },
       { icon: "👥", title: "المستأجرون", subtitle: "بيانات المستأجرين وكشوفهم", path: "/tenants" },
       { icon: "🅿️", title: "المواقف", subtitle: "إدارة المواقف والرسوم", path: "/parking" },
       { icon: "👤", title: "الملاك", subtitle: "إدارة الملاك وربطهم بالعقارات", path: "/owners", adminOnly: true },
