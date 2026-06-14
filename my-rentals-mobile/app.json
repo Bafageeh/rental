@@ -1,15 +1,16 @@
 {
   "expo": {
-    "name": "my-rentals-mobile",
+    "name": "Ejاراتي",
     "slug": "my-rentals-mobile",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "myrentalsmobile",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/expo.icon",
+      "icon": "./assets/images/icon.png",
       "bundleIdentifier": "com.bafageeh.myrentalsmobile",
+      "buildNumber": "2",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
@@ -22,7 +23,8 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.bafageeh.myrentalsmobile"
+      "package": "com.bafageeh.myrentalsmobile",
+      "versionCode": 2
     },
     "web": {
       "output": "static",
