@@ -31,14 +31,14 @@ const routeTitles: Record<string, string> = {
 };
 
 const hiddenScreens = [
-  "chat-thread", "payments", "statistics", "settings", "tenants", "units", "parking", "expenses",
-  "owner-payouts", "owner-settlements", "owner-statement", "owner-account-statement", "payment-receipts",
+  "chat-thread", "payments", "statistics", "settings", "tenants", "parking", "expenses",
+  "owner-payouts", "owner-settlements", "owner-statement", "owner-account-statement",
   "monthly-financial", "rent-roll", "tenant-statement", "tenant-statements", "create-contract", "upload-contract",
   "upload-property-deed", "property-form", "contract-edit/[id]", "contract-renewals", "alerts", "smart-alerts",
-  "reminders", "follow-ups", "reports", "occupancy", "property-performance", "files", "export-center",
+  "reminders", "follow-ups", "reports", "occupancy", "property-performance", "files",
   "owner-accounts", "owner-bank-accounts", "owner-portal", "user-accounts", "service-providers", "unit-inspections",
   "unit-marketing", "utility-bills", otpName, "login", "manager-register", "profile", "profile-security", "profile-properties",
-  "my-account", "system-settings", "search", "activity-logs", "activity-feed", "data-health", "trash-center",
+  "my-account", "search", "activity-logs", "activity-feed", "data-health", "trash-center",
   "relations-manager", "record-details", "inquiry-center", "scheduled-messages", "communication-center", "owner-properties",
   "owner-overdue-units", "unit-overdue-payments", "edit-record", "owner/[id]", "property/[id]", "unit/[id]",
   "unit-edit/[id]", "tenant/[id]", "contract/[id]", "payment/[id]",
