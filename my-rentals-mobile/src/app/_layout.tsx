@@ -31,6 +31,7 @@ const routeTitles: Record<string, string> = {
   "activity-feed": "آخر النشاطات",
   "trash-center": "سلة المحذوفات",
   "communication-center": "مركز المراسلات",
+  "smart-alerts": "التنبيهات الذكية",
   "user-accounts": "إدارة المستخدمين",
   "inquiry-center": "مركز الاستفسارات",
   "scheduled-messages": "الرسائل المجدولة",
