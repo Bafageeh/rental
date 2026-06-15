@@ -17,6 +17,8 @@ use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
@@ -161,6 +163,109 @@ if (!function_exists('my_rentals_create_or_link_owner_account')) {
     }
 }
 
+if (!function_exists('my_rentals_owner_added_whatsapp_config')) {
+    function my_rentals_owner_added_whatsapp_config(array $configKeys, array $envKeys = [], string $default = ''): string
+    {
+        foreach ($configKeys as $key) {
+            $value = config($key);
+            if ($value !== null && trim((string) $value) !== '') return trim((string) $value);
+        }
+
+        foreach ($envKeys as $key) {
+            $value = env($key);
+            if ($value !== null && trim((string) $value) !== '') return trim((string) $value);
+        }
+
+        return $default;
+    }
+}
+
+if (!function_exists('my_rentals_owner_added_whatsapp_phone')) {
+    function my_rentals_owner_added_whatsapp_phone(?string $phone): string
+    {
+        $digits = preg_replace('/\D+/', '', (string) $phone) ?: '';
+        if (str_starts_with($digits, '00')) $digits = substr($digits, 2);
+        if (str_starts_with($digits, '05') && strlen($digits) === 10) return '966' . substr($digits, 1);
+        if (str_starts_with($digits, '5') && strlen($digits) === 9) return '966' . $digits;
+        return $digits;
+    }
+}
+
+if (!function_exists('my_rentals_owner_added_whatsapp_manager_name')) {
+    function my_rentals_owner_added_whatsapp_manager_name(Request $request): string
+    {
+        $user = $request->user();
+        $name = trim((string) ($user->name ?? ''));
+        return $name !== '' ? $name : 'مدير العقارات';
+    }
+}
+
+if (!function_exists('my_rentals_send_owner_added_whatsapp_template')) {
+    function my_rentals_send_owner_added_whatsapp_template(Owner $owner, Request $request): array
+    {
+        $to = my_rentals_owner_added_whatsapp_phone($owner->phone ?? null);
+        $token = my_rentals_owner_added_whatsapp_config(['services.whatsapp.access_token'], ['WHATSAPP_ACCESS_TOKEN', 'WHATSAPP_TOKEN', 'META_WHATSAPP_ACCESS_TOKEN', 'META_ACCESS_TOKEN']);
+        $phoneNumberId = my_rentals_owner_added_whatsapp_config(['services.whatsapp.phone_number_id'], ['WHATSAPP_PHONE_NUMBER_ID', 'META_WHATSAPP_PHONE_NUMBER_ID', 'META_PHONE_NUMBER_ID']);
+        $version = my_rentals_owner_added_whatsapp_config(['services.whatsapp.graph_version'], ['WHATSAPP_GRAPH_VERSION', 'META_GRAPH_VERSION'], 'v20.0');
+        $templateName = env('WHATSAPP_OWNER_ADDED_TEMPLATE', 'owner_added_ejarati');
+        $language = env('WHATSAPP_OWNER_ADDED_TEMPLATE_LANGUAGE', 'ar');
+
+        if ($to === '' || $token === '' || $phoneNumberId === '') {
+            $result = [
+                'ok' => false,
+                'reason' => 'missing_config_or_phone',
+                'has_phone' => $to !== '',
+                'has_token' => $token !== '',
+                'has_phone_number_id' => $phoneNumberId !== '',
+            ];
+            Log::warning('Owner added WhatsApp template was not sent', ['owner_id' => $owner->id, 'result' => $result]);
+            return $result;
+        }
+
+        try {
+            $response = Http::withToken($token)->post("https://graph.facebook.com/{$version}/{$phoneNumberId}/messages", [
+                'messaging_product' => 'whatsapp',
+                'to' => $to,
+                'type' => 'template',
+                'template' => [
+                    'name' => $templateName,
+                    'language' => ['code' => $language],
+                    'components' => [[
+                        'type' => 'body',
+                        'parameters' => [
+                            ['type' => 'text', 'text' => (string) $owner->name],
+                            ['type' => 'text', 'text' => my_rentals_owner_added_whatsapp_manager_name($request)],
+                        ],
+                    ]],
+                ],
+            ]);
+
+            $body = $response->json() ?: [];
+            $result = [
+                'ok' => $response->successful(),
+                'status' => $response->status(),
+                'template' => $templateName,
+                'to' => $to,
+                'provider_message_id' => data_get($body, 'messages.0.id'),
+                'error' => data_get($body, 'error.message'),
+                'error_code' => data_get($body, 'error.code'),
+            ];
+
+            if ($response->successful()) {
+                Log::info('Owner added WhatsApp template sent', ['owner_id' => $owner->id, 'result' => $result]);
+            } else {
+                Log::warning('Owner added WhatsApp template failed', ['owner_id' => $owner->id, 'result' => $result, 'body' => $response->body()]);
+            }
+
+            return $result;
+        } catch (Throwable $e) {
+            $result = ['ok' => false, 'reason' => 'exception', 'to' => $to, 'error' => $e->getMessage()];
+            Log::error('Owner added WhatsApp template exception', ['owner_id' => $owner->id, 'result' => $result]);
+            return $result;
+        }
+    }
+}
+
 Route::get('/owners', function (Request $request) {
     $query = Owner::withCount('properties');
     if (function_exists('mr_manager_scope_apply')) mr_manager_scope_apply($query, 'owners', $request);
@@ -209,6 +314,7 @@ Route::post('/owners', function (Request $request) {
     $owner = $owner->fresh();
 
     [$account, $accountMessage] = my_rentals_create_or_link_owner_account($owner);
+    $whatsappResult = my_rentals_send_owner_added_whatsapp_template($owner, $request);
 
     return response()->json([
         'status' => 'ok',
@@ -226,6 +332,7 @@ Route::post('/owners', function (Request $request) {
             'initial_password' => '123456',
         ] : null,
         'account_message' => $accountMessage,
+        'owner_added_whatsapp' => $whatsappResult,
     ], 201);
 });
 
