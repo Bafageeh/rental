@@ -234,7 +234,6 @@ if (!function_exists('my_rentals_send_owner_added_whatsapp_template')) {
                         'type' => 'body',
                         'parameters' => [
                             ['type' => 'text', 'text' => (string) $owner->name],
-                            ['type' => 'text', 'text' => my_rentals_owner_added_whatsapp_manager_name($request)],
                         ],
                     ]],
                 ],
