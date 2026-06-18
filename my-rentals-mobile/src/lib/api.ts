@@ -189,14 +189,14 @@ export function apiGetScoped(_normalPath: string, scopedPath: string) {
   return apiGet(addEditContextToScopedPath(scopedPath));
 }
 
-export function apiPostFormData(path: string, formData: FormData) {
+export function apiPostFormData(path: string, formData: FormData, timeoutMs = 90000) {
   return buildHeaders(false)
     .then((headers) =>
       fetchWithTimeout(`${API_BASE_URL}${path}`, {
         method: "POST",
         headers,
         body: formData,
-      }),
+      }, timeoutMs),
     )
     .then((response) => parseResponse(response));
 }
