@@ -25,10 +25,6 @@ export default function LoginScreen() {
     router.push({ pathname: '/password-otp' as any, params: { identifier: username.trim() } });
   }
 
-  function goToManagerRegister() {
-    router.push('/manager-register' as any);
-  }
-
   async function login() {
     const name = username.trim();
     if (!name) {
@@ -36,7 +32,7 @@ export default function LoginScreen() {
       return;
     }
     if (!password) {
-      Alert.alert('تنبيه', 'الرقم السري مطلوب أو اضغط نسيت كلمة السر / أول دخول');
+      Alert.alert('تنبيه', 'الرقم السري مطلوب. إذا كان هذا أول دخول أو نسيت الرقم السري، استخدم خيار استعادة كلمة السر.');
       return;
     }
 
@@ -59,9 +55,9 @@ export default function LoginScreen() {
     } catch (e) {
       const message = e instanceof Error ? e.message : 'اسم المستخدم أو الرقم السري غير صحيح';
       if (message.includes('لا توجد كلمة سر')) {
-        Alert.alert('أول دخول', 'هذا الحساب لا يملك كلمة سر. أرسل رمز واتساب لتعيين كلمة السر.', [
+        Alert.alert('أول دخول', 'هذا الحساب لا يملك كلمة سر. استخدم استعادة كلمة السر لتعيين كلمة سر من داخل التطبيق.', [
           { text: 'إلغاء', style: 'cancel' },
-          { text: 'إرسال الرمز', onPress: goToOtp },
+          { text: 'استعادة كلمة السر', onPress: goToOtp },
         ]);
       } else {
         Alert.alert('خطأ في الدخول', message);
@@ -141,9 +137,9 @@ export default function LoginScreen() {
               <Text style={styles.secondaryBtnText}>نسيت كلمة السر / أول دخول</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.managerBtn} onPress={goToManagerRegister} disabled={loading} activeOpacity={0.85}>
-              <Text style={styles.managerBtnText}>إنشاء مستخدم جديد كمدير عقارات</Text>
-            </TouchableOpacity>
+            <View style={styles.supportNote}>
+              <Text style={styles.supportNoteText}>لإنشاء حساب مدير عقارات جديد، تواصل مع الدعم الفني من داخل التطبيق بعد تسجيل الدخول أو عبر معلومات الدعم في صفحة المتجر.</Text>
+            </View>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -172,6 +168,6 @@ const styles = StyleSheet.create({
   btnText: { fontSize: 16, fontWeight: '700', color: colors.textInverse },
   secondaryBtn: { height: 46, borderRadius: radii.md, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center', marginTop: spacing.sm, backgroundColor: colors.background },
   secondaryBtnText: { fontSize: 15, fontWeight: '700', color: colors.textSecondary },
-  managerBtn: { height: 46, borderRadius: radii.md, borderWidth: 1, borderColor: colors.primary, alignItems: 'center', justifyContent: 'center', marginTop: spacing.sm, backgroundColor: colors.surface },
-  managerBtnText: { fontSize: 15, fontWeight: '800', color: colors.primary },
+  supportNote: { backgroundColor: colors.surfaceSubtle, borderRadius: radii.md, borderWidth: 1, borderColor: colors.borderLight, padding: spacing.md, marginTop: spacing.md },
+  supportNoteText: { ...typography.caption, color: colors.textSecondary, textAlign: 'center', lineHeight: 21, fontWeight: '700' },
 });
