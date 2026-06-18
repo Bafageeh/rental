@@ -1,16 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
-import { router, useLocalSearchParams } from 'expo-router';
-import { useMemo, useState } from 'react';
-import {
-  ActivityIndicator,
-  Alert,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import { router, useLocalSearchParams, useNavigation } from 'expo-router';
+import { useEffect, useMemo, useState } from 'react';
+import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { apiPostFormData } from '../lib/api';
@@ -39,6 +31,8 @@ type ExtractedData = {
   payments?: PaymentScheduleRow[];
   payments_source?: string;
   payments_count_from_schedule?: number;
+  tenant_identity_fallback_note?: string;
+  tenant_identity_fallback_error?: string;
 };
 
 function firstParam(value: string | string[] | undefined): string {
@@ -128,11 +122,29 @@ function paymentRowsFromExtracted(extracted: ExtractedData | null): PaymentSched
     .map((item, index) => ({ ...item, sequence: item.sequence || index + 1 }));
 }
 
+function readableFileSize(bytes?: number | null) {
+  const value = Number(bytes || 0);
+  if (!Number.isFinite(value) || value <= 0) return '';
+  if (value < 1024 * 1024) return `${Math.ceil(value / 1024)} ك.ب`;
+  return `${(value / 1024 / 1024).toFixed(1)} م.ب`;
+}
+
+function friendlyUploadError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error ?? '');
+  if (message.includes('انتهت مهلة')) {
+    return 'استغرق استخراج ملف PDF وقتًا أطول من المتوقع. أعد المحاولة، وإذا تكرر الخطأ جرّب ملفًا أصغر أو تأكد من سرعة الاتصال. تم رفع مهلة هذه الشاشة لتناسب ملفات العقود الكبيرة.';
+  }
+  if (message.toLowerCase().includes('network')) {
+    return 'تعذر الاتصال بالخادم. تأكد من الاتصال بالإنترنت ثم أعد المحاولة.';
+  }
+  return message || 'حدث خطأ غير معروف';
+}
+
 function InfoRow({ label, value, warning = false }: { label: string; value: string; warning?: boolean }) {
   const isMissing = value === '-';
   return (
     <View style={styles.infoRow}>
-      <Text style={[styles.infoValue, warning || isMissing ? styles.infoValueWarning : null]} numberOfLines={2}>{value}</Text>
+      <Text style={[styles.infoValue, warning || isMissing ? styles.infoValueWarning : null]} numberOfLines={3}>{value}</Text>
       <Text style={styles.infoLabel}>{label}</Text>
     </View>
   );
@@ -205,6 +217,7 @@ function PaymentScheduleCard({ rows, source }: { rows: PaymentScheduleRow[]; sou
 }
 
 export default function UploadContractScreen() {
+  const navigation = useNavigation();
   const params = useLocalSearchParams();
   const ownerId = firstParam(params.owner_id as string | string[] | undefined);
   const ownerName = decodeParam(firstParam(params.owner_name as string | string[] | undefined));
@@ -221,6 +234,10 @@ export default function UploadContractScreen() {
   const [error, setError] = useState('');
   const [extracted, setExtracted] = useState<ExtractedData | null>(null);
   const [lastImportResult, setLastImportResult] = useState<any>(null);
+
+  useEffect(() => {
+    navigation.setOptions({ title: 'رفع عقد إيجار' });
+  }, [navigation]);
 
   const contextItems = useMemo(() => [
     ...(ownerName || ownerId ? [{ label: 'المالك', value: ownerName || `مالك #${ownerId}` }] : []),
@@ -255,7 +272,7 @@ export default function UploadContractScreen() {
 
   async function upload(apply: boolean) {
     if (!selectedFile) {
-      setError('اختر ملف PDF أولًا');
+      setError('اختر ملف PDF أولًا.');
       return;
     }
 
@@ -267,7 +284,7 @@ export default function UploadContractScreen() {
     try {
       setLoading(true);
       setError('');
-      setMessage('');
+      setMessage(apply ? 'جاري استخراج البيانات ثم اعتماد العقد...' : 'جاري رفع العقد وقراءة البيانات...');
 
       const formData = new FormData();
       formData.append('file', {
@@ -283,18 +300,19 @@ export default function UploadContractScreen() {
       formData.append('target_type', contractScope);
       if (apply) formData.append('apply', '1');
 
-      const json = await apiPostFormData('/contract-files/extract', formData);
+      const json = await apiPostFormData('/contract-files/extract', formData, 90000);
       const extractedData = json.extracted_data || null;
 
       setExtracted(extractedData);
       setLastImportResult(json.import_result || null);
-      setMessage(json.message || 'تم رفع العقد واستخراج البيانات');
+      setMessage(json.message || (apply ? 'تم حفظ العقد بنجاح' : 'تم استخراج البيانات للمراجعة'));
 
       if (apply) {
         openSavedContract(json.import_result);
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'حدث خطأ غير معروف');
+      setMessage('');
+      setError(friendlyUploadError(e));
     } finally {
       setLoading(false);
     }
@@ -307,14 +325,15 @@ export default function UploadContractScreen() {
   const paymentRows = paymentRowsFromExtracted(extracted);
   const paymentsCount = paymentRows.length;
   const currentStep = lastImportResult ? 2 : extracted ? 1 : 0;
+  const tenantNameMissing = extracted && display(tenant.name) === '-';
 
   return (
     <SafeAreaView style={styles.safe} edges={['bottom']}>
-      <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         <ScreenHero
           eyebrow="استيراد ذكي"
           title="رفع عقد إيجار ومراجعة البيانات"
-          subtitle="اختر الملف، راجع البيانات المستخرجة، ثم اعتمد الحفظ عند التأكد."
+          subtitle="اختر ملف PDF، ثم راجع البيانات المستخرجة قبل اعتماد الحفظ."
           icon="cloud-upload-outline"
           tone="primary"
         />
@@ -323,9 +342,7 @@ export default function UploadContractScreen() {
 
         {contextItems.length ? (
           <View style={styles.contextCard}>
-            {contextItems.map((item) => (
-              <MetaPill key={item.label} label={item.label} value={item.value} />
-            ))}
+            {contextItems.map((item) => <MetaPill key={item.label} label={item.label} value={item.value} />)}
           </View>
         ) : null}
 
@@ -334,7 +351,7 @@ export default function UploadContractScreen() {
             <View style={styles.cardIcon}><Ionicons name="document-attach-outline" size={20} color={colors.primaryDark} /></View>
             <View style={{ flex: 1 }}>
               <Text style={styles.cardTitle}>ملف العقد</Text>
-              <Text style={styles.cardSubtitle}>يدعم ملفات PDF الصادرة من إيجار أو العقود الحكومية المماثلة.</Text>
+              <Text style={styles.cardSubtitle}>يدعم ملفات PDF الصادرة من إيجار. عند قراءة ملف كبير قد يستغرق الاستخراج حتى دقيقة.</Text>
             </View>
           </View>
 
@@ -347,8 +364,8 @@ export default function UploadContractScreen() {
             <View style={styles.fileBox}>
               <Ionicons name="document-text-outline" size={22} color={colors.primaryDark} />
               <View style={styles.fileInfo}>
-                <Text style={styles.fileName} numberOfLines={1}>{selectedFile.name}</Text>
-                <Text style={styles.fileMeta}>جاهز للاستخراج والمراجعة</Text>
+                <Text style={styles.fileName} numberOfLines={2}>{selectedFile.name}</Text>
+                <Text style={styles.fileMeta}>جاهز للاستخراج والمراجعة {readableFileSize(selectedFile.size) ? `• ${readableFileSize(selectedFile.size)}` : ''}</Text>
               </View>
             </View>
           ) : (
@@ -358,43 +375,31 @@ export default function UploadContractScreen() {
           )}
 
           <View style={styles.actionsRow}>
-            <TouchableOpacity
-              style={[styles.actionButton, styles.previewButton, loading ? styles.disabledButton : null]}
-              onPress={() => upload(false)}
-              disabled={loading}
-              activeOpacity={0.85}
-            >
-              <Text style={styles.actionButtonText}>استخراج للمراجعة</Text>
+            <TouchableOpacity style={[styles.actionButton, styles.previewButton, loading ? styles.disabledButton : null]} onPress={() => upload(false)} disabled={loading} activeOpacity={0.85}>
+              {loading ? <ActivityIndicator size="small" color="#fff" /> : <Text style={styles.actionButtonText}>استخراج للمراجعة</Text>}
             </TouchableOpacity>
 
-            <TouchableOpacity
-              style={[styles.actionButton, styles.applyButton, loading ? styles.disabledButton : null]}
-              onPress={() => upload(true)}
-              disabled={loading}
-              activeOpacity={0.85}
-            >
-              <Text style={styles.actionButtonText}>اعتماد وحفظ</Text>
+            <TouchableOpacity style={[styles.actionButton, styles.applyButton, loading ? styles.disabledButton : null]} onPress={() => upload(true)} disabled={loading} activeOpacity={0.85}>
+              {loading ? <ActivityIndicator size="small" color="#fff" /> : <Text style={styles.actionButtonText}>اعتماد وحفظ</Text>}
             </TouchableOpacity>
           </View>
 
           {loading ? (
             <View style={styles.loadingBox}>
               <ActivityIndicator color={colors.primary} />
-              <Text style={styles.loadingText}>جاري رفع العقد وقراءة البيانات...</Text>
+              <Text style={styles.loadingText}>جاري رفع العقد وقراءة البيانات. لا تغلق الشاشة حتى يكتمل الاستخراج...</Text>
             </View>
           ) : null}
 
-          {message ? <Notice tone="success" icon="checkmark-circle-outline" message={message} style={styles.noticeSpacing} /> : null}
+          {message && !loading ? <Notice tone="success" icon="checkmark-circle-outline" message={message} style={styles.noticeSpacing} /> : null}
           {error ? <Notice tone="danger" icon="warning-outline" title="حدث خطأ" message={error} style={styles.noticeSpacing} /> : null}
         </View>
 
         {extracted ? (
           <View style={styles.previewWrap}>
-            <Notice
-              icon="sparkles-outline"
-              tone="info"
-              message="راجع الحقول التالية قبل الاعتماد. الحقول التي تظهر بعلامة - تحتاج مراجعة أو إدخال يدوي لاحقًا."
-            />
+            <Notice icon="sparkles-outline" tone="info" message="راجع الحقول التالية قبل الاعتماد. الحقول التي تظهر بعلامة - تحتاج مراجعة أو إدخال يدوي لاحقًا." />
+            {tenantNameMissing ? <Notice tone="warning" icon="person-outline" message="لم يتم العثور على اسم المستأجر بوضوح. إذا كان الاسم مكتوبًا بالإنجليزية فتأكد من نسخة العقد بعد التحديث، أو أدخله يدويًا بعد الحفظ." /> : null}
+            {extracted.tenant_identity_fallback_note ? <Notice tone="warning" icon="information-circle-outline" message={extracted.tenant_identity_fallback_note} /> : null}
 
             <PreviewCard title="بيانات العقد" icon="reader-outline">
               <InfoRow label="رقم سجل العقد" value={display(contract.contract_number || contract.ejar_record_number)} />
@@ -405,7 +410,7 @@ export default function UploadContractScreen() {
             </PreviewCard>
 
             <PreviewCard title="بيانات المستأجر" icon="person-circle-outline">
-              <InfoRow label="الاسم" value={display(tenant.name)} />
+              <InfoRow label="الاسم" value={display(tenant.name)} warning={tenantNameMissing} />
               <InfoRow label="الجنسية" value={display(tenant.nationality)} />
               <InfoRow label="نوع الهوية" value={display(tenant.identity_type || tenant.id_type)} />
               <InfoRow label="رقم الهوية" value={display(tenant.national_id)} />
@@ -426,12 +431,7 @@ export default function UploadContractScreen() {
             <PaymentScheduleCard rows={paymentRows} source={extracted.payments_source} />
 
             {lastImportResult ? (
-              <Notice
-                tone="success"
-                icon="checkmark-done-outline"
-                title="تم الحفظ"
-                message={`العقد: #${lastImportResult?.contract?.id || '-'} — المستأجر: ${normalizeExtractedArabic(lastImportResult?.tenant?.name || '-') || '-'} — الدفعات المعتمدة من PDF: ${lastImportResult?.payments_count || paymentsCount || 0}`}
-              />
+              <Notice tone="success" icon="checkmark-done-outline" title="تم الحفظ" message={`العقد: #${lastImportResult?.contract?.id || '-'} — المستأجر: ${normalizeExtractedArabic(lastImportResult?.tenant?.name || '-') || '-'} — الدفعات المعتمدة من PDF: ${lastImportResult?.payments_count || paymentsCount || 0}`} />
             ) : null}
           </View>
         ) : null}
@@ -444,116 +444,44 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   container: { padding: spacing.lg, paddingBottom: spacing['5xl'] },
   contextCard: { gap: spacing.sm, marginBottom: spacing.lg },
-  card: {
-    backgroundColor: colors.surface,
-    borderRadius: radii['2xl'],
-    padding: spacing.lg,
-    borderWidth: 1,
-    borderColor: colors.borderLight,
-    ...shadows.sm,
-  },
+  card: { backgroundColor: colors.surface, borderRadius: radii['2xl'], padding: spacing.lg, borderWidth: 1, borderColor: colors.borderLight, ...shadows.sm },
   cardTitleRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: spacing.md, marginBottom: spacing.md },
-  cardIcon: {
-    width: 42,
-    height: 42,
-    borderRadius: radii.lg,
-    backgroundColor: colors.primaryLight,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  cardIcon: { width: 42, height: 42, borderRadius: radii.lg, backgroundColor: colors.primaryLight, alignItems: 'center', justifyContent: 'center' },
   cardTitle: { ...typography.h4, color: colors.text, textAlign: 'right' },
   cardSubtitle: { ...typography.caption, color: colors.textSecondary, textAlign: 'right', marginTop: 3, lineHeight: 19 },
-  selectButton: {
-    backgroundColor: '#111827',
-    padding: 14,
-    borderRadius: radii.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexDirection: 'row-reverse',
-    gap: 8,
-  },
+  selectButton: { backgroundColor: '#111827', padding: 14, borderRadius: radii.lg, alignItems: 'center', justifyContent: 'center', flexDirection: 'row-reverse', gap: 8 },
   selectButtonText: { color: colors.textInverse, fontWeight: '900', fontSize: 16 },
-  fileBox: {
-    marginTop: spacing.md,
-    backgroundColor: colors.primaryLight,
-    borderRadius: radii.lg,
-    padding: spacing.md,
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    gap: spacing.sm,
-    borderWidth: 1,
-    borderColor: colors.primaryMuted,
-  },
+  fileBox: { marginTop: spacing.md, backgroundColor: colors.primaryLight, borderRadius: radii.lg, padding: spacing.md, flexDirection: 'row-reverse', alignItems: 'center', gap: spacing.sm, borderWidth: 1, borderColor: colors.primaryMuted },
   fileInfo: { flex: 1 },
   fileName: { color: colors.text, fontWeight: '900', textAlign: 'right' },
   fileMeta: { color: colors.primaryDark, marginTop: 4, textAlign: 'right', fontWeight: '700' },
   emptyFileBox: { marginTop: spacing.md, backgroundColor: colors.surfaceSubtle, borderRadius: radii.lg, padding: spacing.md },
   hint: { color: colors.textSecondary, textAlign: 'center', fontWeight: '700' },
   actionsRow: { flexDirection: 'row-reverse', gap: spacing.sm, marginTop: spacing.md },
-  actionButton: { flex: 1, padding: 13, borderRadius: radii.lg, alignItems: 'center' },
+  actionButton: { flex: 1, minHeight: 49, padding: 13, borderRadius: radii.lg, alignItems: 'center', justifyContent: 'center' },
   previewButton: { backgroundColor: colors.primary },
   applyButton: { backgroundColor: colors.success },
   disabledButton: { opacity: 0.65 },
   actionButtonText: { color: colors.textInverse, fontWeight: '900' },
-  loadingBox: { marginTop: spacing.lg, alignItems: 'center' },
-  loadingText: { marginTop: spacing.sm, color: colors.textSecondary, fontWeight: '700' },
+  loadingBox: { marginTop: spacing.lg, alignItems: 'center', backgroundColor: colors.surfaceSubtle, borderRadius: radii.lg, padding: spacing.md },
+  loadingText: { marginTop: spacing.sm, color: colors.textSecondary, fontWeight: '700', textAlign: 'center', lineHeight: 20 },
   noticeSpacing: { marginTop: spacing.md },
   previewWrap: { marginTop: spacing.lg, gap: spacing.md },
-  previewCard: {
-    backgroundColor: colors.surface,
-    borderRadius: radii.xl,
-    padding: spacing.lg,
-    borderWidth: 1,
-    borderColor: colors.borderLight,
-    ...shadows.sm,
-  },
+  previewCard: { backgroundColor: colors.surface, borderRadius: radii.xl, padding: spacing.lg, borderWidth: 1, borderColor: colors.borderLight, ...shadows.sm },
   previewHeader: { flexDirection: 'row-reverse', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.sm },
   previewIcon: { width: 32, height: 32, borderRadius: radii.md, backgroundColor: colors.primaryLight, alignItems: 'center', justifyContent: 'center' },
   previewTitle: { flex: 1, color: colors.text, fontSize: 17, fontWeight: '900', textAlign: 'right' },
-  infoRow: {
-    flexDirection: 'row-reverse',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    paddingVertical: 9,
-    borderTopWidth: 1,
-    borderTopColor: colors.borderLight,
-    gap: spacing.sm,
-  },
+  infoRow: { flexDirection: 'row-reverse', alignItems: 'flex-start', justifyContent: 'space-between', paddingVertical: 9, borderTopWidth: 1, borderTopColor: colors.borderLight, gap: spacing.sm },
   infoLabel: { color: colors.textSecondary, fontSize: 12, fontWeight: '900', minWidth: 112, textAlign: 'right', writingDirection: 'rtl' },
   infoValue: { flex: 1, color: colors.text, fontWeight: '900', textAlign: 'right', writingDirection: 'rtl', lineHeight: 20 },
   infoValueWarning: { color: colors.warningDark },
   scheduleNotice: { marginBottom: spacing.sm },
   scheduleSummaryRow: { gap: spacing.sm, marginBottom: spacing.md },
   scheduleScrollContent: { paddingBottom: 2 },
-  scheduleTable: {
-    minWidth: 860,
-    borderWidth: 1,
-    borderColor: colors.borderLight,
-    borderRadius: radii.lg,
-    overflow: 'hidden',
-    backgroundColor: colors.surface,
-  },
-  scheduleRow: {
-    flexDirection: 'row-reverse',
-    alignItems: 'stretch',
-    borderTopWidth: 1,
-    borderTopColor: colors.borderLight,
-  },
-  scheduleHeaderRow: {
-    borderTopWidth: 0,
-    backgroundColor: colors.surfaceSubtle,
-  },
-  scheduleCell: {
-    paddingVertical: 10,
-    paddingHorizontal: 8,
-    borderLeftWidth: 1,
-    borderLeftColor: colors.borderLight,
-    color: colors.text,
-    fontSize: 12,
-    fontWeight: '800',
-    textAlign: 'center',
-    writingDirection: 'ltr',
-  },
+  scheduleTable: { minWidth: 860, borderWidth: 1, borderColor: colors.borderLight, borderRadius: radii.lg, overflow: 'hidden', backgroundColor: colors.surface },
+  scheduleRow: { flexDirection: 'row-reverse', alignItems: 'stretch', borderTopWidth: 1, borderTopColor: colors.borderLight },
+  scheduleHeaderRow: { borderTopWidth: 0, backgroundColor: colors.surfaceSubtle },
+  scheduleCell: { paddingVertical: 10, paddingHorizontal: 8, borderLeftWidth: 1, borderLeftColor: colors.borderLight, color: colors.text, fontSize: 12, fontWeight: '800', textAlign: 'center', writingDirection: 'ltr' },
   scheduleHeaderText: { color: colors.textSecondary, fontSize: 11, fontWeight: '900', writingDirection: 'rtl' },
   strongScheduleCell: { color: colors.primaryDark, fontWeight: '900' },
   scheduleSeqCell: { width: 46 },
