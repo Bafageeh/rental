@@ -27,7 +27,7 @@ export default function PasswordOtpScreen() {
       setLoading(true);
       const r = await apiPost('/auth/password/otp/request', { identifier: id, purpose: 'password_reset' });
       setStep('verify');
-      Alert.alert('تم الإرسال', r?.data?.phone_masked ? `تم إرسال رمز التحقق إلى ${r.data.phone_masked}` : 'تم إرسال رمز التحقق عبر واتساب');
+      Alert.alert('تم الإرسال', r?.data?.phone_masked ? `تم إرسال رمز التحقق إلى ${r.data.phone_masked}` : 'تم إرسال رمز التحقق.');
     } catch (e) {
       Alert.alert('تعذر الإرسال', e instanceof Error ? e.message : 'حدث خطأ أثناء إرسال الرمز');
     } finally {
@@ -80,13 +80,14 @@ export default function PasswordOtpScreen() {
 
             {step === 'request' ? (
               <>
+                <Text style={styles.help}>يمكنك استعادة كلمة السر من داخل التطبيق باستخدام رمز تحقق دون الحاجة لتثبيت أي تطبيق إضافي.</Text>
                 <Text style={styles.label}>رقم الهوية أو رقم الجوال</Text>
                 <TextInput style={styles.input} value={identifier} onChangeText={setIdentifier} placeholder="رقم الهوية أو الجوال" placeholderTextColor={colors.textTertiary} textAlign="right" />
-                <TouchableOpacity style={styles.btn} onPress={sendCode} disabled={loading}>{loading ? <ActivityIndicator color={colors.textInverse} /> : <Text style={styles.btnText}>إرسال رمز واتساب</Text>}</TouchableOpacity>
+                <TouchableOpacity style={styles.btn} onPress={sendCode} disabled={loading}>{loading ? <ActivityIndicator color={colors.textInverse} /> : <Text style={styles.btnText}>إرسال رمز التحقق</Text>}</TouchableOpacity>
               </>
             ) : step === 'verify' ? (
               <>
-                <Text style={styles.help}>أدخل رمز التحقق المرسل عبر واتساب.</Text>
+                <Text style={styles.help}>أدخل رمز التحقق المرسل لحسابك.</Text>
                 <TextInput style={[styles.input, styles.code]} value={code} onChangeText={setCode} placeholder="123456" placeholderTextColor={colors.textTertiary} keyboardType="number-pad" textAlign="center" maxLength={8} />
                 <TouchableOpacity style={styles.btn} onPress={verifyCode} disabled={loading}>{loading ? <ActivityIndicator color={colors.textInverse} /> : <Text style={styles.btnText}>تحقق</Text>}</TouchableOpacity>
                 <TouchableOpacity style={styles.secondaryBtn} onPress={sendCode} disabled={loading}><Text style={styles.secondaryText}>إعادة إرسال الرمز</Text></TouchableOpacity>
@@ -115,7 +116,7 @@ const styles = StyleSheet.create({
   card: { backgroundColor: colors.surface, borderRadius: radii.xl, padding: spacing['2xl'], borderWidth: 1, borderColor: colors.borderLight, ...shadows.md },
   title: { ...typography.h3, color: colors.text, textAlign: 'center', marginBottom: spacing.xl },
   label: { ...typography.captionBold, color: colors.textSecondary, textAlign: 'right', marginBottom: 6 },
-  help: { ...typography.caption, color: colors.textSecondary, textAlign: 'center', lineHeight: 22, marginBottom: spacing.md },
+  help: { ...typography.caption, color: colors.textSecondary, textAlign: 'center', lineHeight: 22, marginBottom: spacing.md, fontWeight: '700' },
   input: { height: 48, backgroundColor: colors.background, borderRadius: radii.md, borderWidth: 1, borderColor: colors.border, paddingHorizontal: spacing.md + 2, fontSize: 15, color: colors.text, marginBottom: spacing.sm },
   code: { fontSize: 22, fontWeight: '900' },
   btn: { height: 50, backgroundColor: colors.primary, borderRadius: radii.md, alignItems: 'center', justifyContent: 'center', marginTop: spacing.md },
