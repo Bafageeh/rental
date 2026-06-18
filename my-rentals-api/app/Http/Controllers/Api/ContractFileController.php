@@ -147,7 +147,7 @@ class ContractFileController extends Controller
                 if ($name) {
                     $tenant['name'] = $name;
                     $tenant['tenant_kind'] = 'individual';
-                    $tenant['name_source'] = 'tenant_individual_section';
+                    $tenant['name_source'] = $this->hasLatin($name) ? 'tenant_english_name_section' : 'tenant_individual_section';
                 }
             }
 
@@ -156,6 +156,20 @@ class ContractFileController extends Controller
                 if ($tenantNationality) {
                     $tenant['nationality'] = $tenantNationality;
                     $tenant['nationality_source'] = 'tenant_section';
+                }
+            }
+
+            if (!($tenant['national_id'] ?? null)) {
+                $id = $this->extractIdNumber($tenantBlock);
+                if ($id) {
+                    $tenant['national_id'] = $id;
+                }
+            }
+
+            if (!($tenant['phone'] ?? null)) {
+                $phone = $this->extractMobileNumber($tenantBlock);
+                if ($phone) {
+                    $tenant['phone'] = $phone;
                 }
             }
 
@@ -200,11 +214,22 @@ class ContractFileController extends Controller
     private function extractDirectTenantFields(string $tenantBlock): array
     {
         return [
-            'name' => $this->cleanArabicName($this->firstMatch('/(?:االسم|الاسم|الإسم|اإلسم)\s*:?\s*([\p{Arabic}\s\-]+?)\s*Name/u', $tenantBlock)),
-            'nationality' => $this->cleanArabicPhrase($this->firstMatch('/(?:الجنسية|الجنسَّية|الجنس\s*ية)\s*:?\s*([\p{Arabic}\s\-]+?)\s*Nationality/u', $tenantBlock)),
-            'identity_type' => $this->cleanArabicPhrase($this->firstMatch('/(?:نوع\s*الهوية|نوع\s*الهوَّية)\s*:?\s*([\p{Arabic}\s\-]+?)\s*Type\s*ID/ui', $tenantBlock)),
-            'national_id' => $this->firstMatch('/(?:رقم\s*الهوية|رقم\s*الهوَّية)\s*:?\s*(\d{6,20})\s*\.?(?:No\s*ID|ID)/ui', $tenantBlock),
-            'phone' => $this->normalizePhone($this->firstMatch('/(?:رقم\s*الجوال|رقم\s*الجَّوال)\s*:?\s*(\+?\d[\d\s]{7,20})\s*\.?(?:No\s*Mobile|Mobile)/ui', $tenantBlock)),
+            'name' => $this->cleanPersonName($this->firstMatch([
+                '/(?:االسم|الاسم|الإسم|اإلسم)\s*:?\s*([\p{Arabic}A-Za-z][\p{Arabic}A-Za-z\s\.\'\-]{2,150}?)\s*Name/ui',
+                '/Name\s*:?\s*([A-Za-z][A-Za-z\s\.\'\-]{2,150}?)(?:\s*(?:Nationality|الجنس|Type\s*ID|نوع\s*الهوية|ID\s*No|رقم\s*الهوية|Mobile|Email)|\n)/ui',
+                '/Name\s*:?\s*([\p{Arabic}\s\-]{3,150}?)(?:\s*(?:Nationality|الجنس|Type\s*ID|نوع\s*الهوية|ID\s*No|رقم\s*الهوية)|\n)/ui',
+                '/Name\s*([\p{Arabic}A-Za-z\s\.\'\-]{3,150}?)(?:\d{8,}|ID|Nationality|Mobile|Email)/ui',
+            ], $tenantBlock)),
+            'nationality' => $this->cleanNationality($this->firstMatch([
+                '/(?:الجنسية|الجنسَّية|الجنس\s*ية)\s*:?\s*([\p{Arabic}\s\-]+?)\s*Nationality/u',
+                '/Nationality\s*:?\s*([\p{Arabic}A-Za-z\s\-]+?)(?:\s*(?:Type\s*ID|نوع\s*الهوية|ID\s*No|رقم\s*الهوية)|\n)/ui',
+            ], $tenantBlock)),
+            'identity_type' => $this->cleanArabicPhrase($this->firstMatch([
+                '/(?:نوع\s*الهوية|نوع\s*الهوَّية)\s*:?\s*([\p{Arabic}\s\-]+?)\s*Type\s*ID/ui',
+                '/Type\s*ID\s*:?\s*([\p{Arabic}\s\-]+?)(?:\s*(?:ID\s*No|رقم\s*الهوية)|\n)/ui',
+            ], $tenantBlock)),
+            'national_id' => $this->extractIdNumber($tenantBlock),
+            'phone' => $this->extractMobileNumber($tenantBlock),
             'tenant_kind' => 'individual',
             'name_source' => 'strict_section_4_tenant_data',
         ];
@@ -345,12 +370,12 @@ class ContractFileController extends Controller
     {
         $name = null;
 
-        if (preg_match('/Company\s*name\/Founder\s*([\p{Arabic}\s\-]+?)\s*(?:نوع\s*المنظمة|Type\s*Organization|رقم\s*السجل)/ui', $tenantBlock, $m)) {
-            $name = $this->cleanArabicPhrase($m[1] ?? null);
+        if (preg_match('/Company\s*name\/Founder\s*([\p{Arabic}A-Za-z0-9&\.\'\-\s]+?)\s*(?:نوع\s*المنظمة|Type\s*Organization|رقم\s*السجل|No\s*CR|Unified)/ui', $tenantBlock, $m)) {
+            $name = $this->cleanCompanyName($m[1] ?? null);
         }
 
-        if (!$name && preg_match('/اسم\s*(?:الشركة|الَّشركة|المؤسسة|المؤَّسسة)\s*:?\s*([\p{Arabic}\s\-]+?)\s*(?:Company|نوع\s*المنظمة|Type\s*Organization|رقم\s*السجل)/u', $tenantBlock, $m)) {
-            $name = $this->cleanArabicPhrase($m[1] ?? null);
+        if (!$name && preg_match('/اسم\s*(?:الشركة|الَّشركة|المؤسسة|المؤَّسسة)\s*:?\s*([\p{Arabic}A-Za-z0-9&\.\'\-\s]+?)\s*(?:Company|نوع\s*المنظمة|Type\s*Organization|رقم\s*السجل|No\s*CR)/ui', $tenantBlock, $m)) {
+            $name = $this->cleanCompanyName($m[1] ?? null);
         }
 
         return [
@@ -364,15 +389,20 @@ class ContractFileController extends Controller
     private function extractTenantNameFallback(string $block): ?string
     {
         $patterns = [
-            '/(?:الاسم|االسم|الإسم|اإلسم)\s*:?\s*([\p{Arabic}\s\-]{3,100}?)\s*Name/u',
-            '/Name\s*:?\s*([\p{Arabic}\s\-]{3,100}?)(?:\s*(?:Nationality|الجنس|Type\s*ID|نوع\s*الهوية|ID\s*No|رقم\s*الهوية)|\n)/ui',
-            '/Name\s*([\p{Arabic}\s\-]{3,100}?)\s*:?\s*(?:مسالا|مساال)/u',
-            '/Name\s*([\p{Arabic}\s\-]{3,100}?)(?:\d{8,}|ID|Nationality)/ui',
+            '/(?:الاسم|االسم|الإسم|اإلسم)\s*:?\s*([\p{Arabic}A-Za-z][\p{Arabic}A-Za-z\s\.\'\-]{2,150}?)\s*Name/ui',
+            '/Name\s*:?\s*([A-Za-z][A-Za-z\s\.\'\-]{2,150}?)(?:\s*(?:Nationality|الجنس|Type\s*ID|نوع\s*الهوية|ID\s*No|رقم\s*الهوية|Mobile|Email)|\n)/ui',
+            '/Name\s*:?\s*([\p{Arabic}\s\-]{3,150}?)(?:\s*(?:Nationality|الجنس|Type\s*ID|نوع\s*الهوية|ID\s*No|رقم\s*الهوية)|\n)/ui',
+            '/Name\s*([\p{Arabic}A-Za-z\s\.\'\-]{3,150}?)(?:\d{8,}|ID|Nationality|Mobile|Email)/ui',
+            '/Name\s*([\p{Arabic}\s]+?)\s*:?\s*(?:مسالا|مساال)/u',
         ];
 
         foreach ($patterns as $pattern) {
             if (preg_match($pattern, $block, $matches)) {
-                $candidate = $this->cleanArabicName($matches[1] ?? '');
+                $raw = $matches[1] ?? '';
+                $candidate = $this->cleanPersonName($raw);
+                if (!$candidate && preg_match('/[\p{Arabic}]/u', $raw)) {
+                    $candidate = $this->cleanPersonName($this->reverseUtf8($raw));
+                }
                 if ($candidate) {
                     return $candidate;
                 }
@@ -386,12 +416,12 @@ class ContractFileController extends Controller
     {
         $patterns = [
             '/(?:الجنسية|الجنسَّية|الجنس\s*ية)\s*:?\s*([\p{Arabic}\s\-]{2,80}?)\s*Nationality/u',
-            '/Nationality\s*:?\s*([\p{Arabic}\s\-]{2,80}?)(?:\s*(?:الجنسية|الجنس|Type\s*ID|نوع\s*الهوية|ID\s*No|رقم\s*الهوية)|\n)/ui',
+            '/Nationality\s*:?\s*([\p{Arabic}A-Za-z\s\-]{2,80}?)(?:\s*(?:الجنسية|الجنس|Type\s*ID|نوع\s*الهوية|ID\s*No|رقم\s*الهوية)|\n)/ui',
         ];
 
         foreach ($patterns as $pattern) {
             if (preg_match($pattern, $block, $matches)) {
-                $candidate = $this->cleanArabicPhrase($matches[1] ?? '');
+                $candidate = $this->cleanNationality($matches[1] ?? '');
                 if ($candidate) {
                     return $candidate;
                 }
@@ -411,11 +441,16 @@ class ContractFileController extends Controller
         return $this->normalizePhone($this->firstMatch('/(?:رقم\s*الجوال|رقم\s*الجَّوال|Mobile\s*No\.?)\s*:?\s*(\+?\d[\d\s]{7,20})/ui', $block));
     }
 
-    private function firstMatch(string $pattern, string $text): ?string
+    private function firstMatch($pattern, string $text): ?string
     {
-        if (preg_match($pattern, $text, $matches)) {
-            $value = trim($matches[1] ?? '');
-            return $value !== '' ? preg_replace('/\s+/u', ' ', $value) : null;
+        $patterns = is_array($pattern) ? $pattern : [$pattern];
+        foreach ($patterns as $item) {
+            if (preg_match($item, $text, $matches)) {
+                $value = trim($matches[1] ?? '');
+                if ($value !== '') {
+                    return preg_replace('/\s+/u', ' ', $value);
+                }
+            }
         }
 
         return null;
@@ -430,19 +465,42 @@ class ContractFileController extends Controller
         return $phone !== '' ? $phone : null;
     }
 
-    private function cleanArabicName(?string $value): ?string
+    private function cleanPersonName(?string $value): ?string
     {
-        $value = $this->cleanArabicPhrase($value);
+        $value = trim((string) $value);
+        if ($value === '' || $value === '-') {
+            return null;
+        }
+
+        $value = preg_replace('/\b(Name|Nationality|Email|Mobile|Type|ID|No|CR|Unified)\b.*$/iu', '', $value) ?? $value;
+        $value = preg_replace('/(?:الاسم|االسم|الإسم|اإلسم|الجنسية|نوع\s*الهوية|رقم\s*الهوية|رقم\s*الجوال|المؤجر|مالك).*$/u', '', $value) ?? $value;
+        $value = preg_replace('/[^\p{Arabic}A-Za-z\.\'\-\s]+/u', ' ', $value) ?? $value;
+        $value = preg_replace('/\s+/u', ' ', trim($value)) ?? trim($value);
+        $value = trim($value, " \t\n\r\0\x0B.-_");
+        $value = $this->normalizeKnownArabicPdfWords($value);
+
+        if ($this->hasLatin($value) && preg_match('/^(tenant|lessor|broker|company|founder)$/iu', $value)) {
+            return null;
+        }
+
+        return mb_strlen($value) >= 2 ? $value : null;
+    }
+
+    private function cleanCompanyName(?string $value): ?string
+    {
+        $value = $this->cleanPersonName($value);
         if (!$value) {
             return null;
         }
 
-        $value = preg_replace('/\b(Name|Nationality|Email|Mobile|Type|ID|No)\b.*$/iu', '', $value) ?? $value;
-        $value = preg_replace('/(?:الاسم|االسم|الإسم|اإلسم|الجنسية|نوع\s*الهوية|رقم\s*الهوية|المؤجر|مالك).*$/u', '', $value) ?? $value;
-        $value = trim($value);
-        $value = $this->normalizeKnownArabicPdfWords($value);
-
+        $value = preg_replace('/\b(Type|Organization|No|CR|Unified|Number)\b.*$/iu', '', $value) ?? $value;
+        $value = preg_replace('/\s+/u', ' ', trim($value)) ?? trim($value);
         return mb_strlen($value) >= 2 ? $value : null;
+    }
+
+    private function cleanArabicName(?string $value): ?string
+    {
+        return $this->cleanPersonName($value);
     }
 
     private function cleanArabicPhrase(?string $value): ?string
@@ -457,6 +515,26 @@ class ContractFileController extends Controller
         $value = preg_replace('/^(بيانات|المستأجر|المستاجر|الفرد|شركة|مؤسسة)\s+/u', '', $value) ?? $value;
         $value = trim($value, " \t\n\r\0\x0B-");
         $value = $this->normalizeKnownArabicPdfWords($value);
+
+        return mb_strlen($value) >= 2 ? $value : null;
+    }
+
+    private function cleanNationality(?string $value): ?string
+    {
+        $value = trim((string) $value);
+        if ($value === '' || $value === '-') {
+            return null;
+        }
+
+        $value = preg_replace('/\b(Type|ID|No|Mobile|Email|Name)\b.*$/iu', '', $value) ?? $value;
+        $value = preg_replace('/(?:نوع\s*الهوية|رقم\s*الهوية|رقم\s*الجوال|الاسم).*$/u', '', $value) ?? $value;
+        $value = preg_replace('/[^\p{Arabic}A-Za-z\s\-]+/u', ' ', $value) ?? $value;
+        $value = preg_replace('/\s+/u', ' ', trim($value)) ?? trim($value);
+        $value = $this->normalizeKnownArabicPdfWords($value);
+
+        if (preg_match('/^(saudi|saudi arabia|kingdom of saudi arabia|ksa)$/iu', $value)) {
+            return 'المملكة العربية السعودية';
+        }
 
         return mb_strlen($value) >= 2 ? $value : null;
     }
@@ -497,5 +575,16 @@ class ContractFileController extends Controller
         }
 
         return trim($value);
+    }
+
+    private function reverseUtf8(string $value): string
+    {
+        $chars = preg_split('//u', $value, -1, PREG_SPLIT_NO_EMPTY);
+        return is_array($chars) ? implode('', array_reverse($chars)) : $value;
+    }
+
+    private function hasLatin(string $value): bool
+    {
+        return preg_match('/[A-Za-z]/', $value) === 1;
     }
 }
