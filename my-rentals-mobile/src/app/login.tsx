@@ -25,6 +25,10 @@ export default function LoginScreen() {
     router.push({ pathname: '/password-otp' as any, params: { identifier: username.trim() } });
   }
 
+  function goToManagerRegister() {
+    router.push('/manager-register' as any);
+  }
+
   async function login() {
     const name = username.trim();
     if (!name) {
@@ -137,9 +141,9 @@ export default function LoginScreen() {
               <Text style={styles.secondaryBtnText}>نسيت كلمة السر / أول دخول</Text>
             </TouchableOpacity>
 
-            <View style={styles.supportNote}>
-              <Text style={styles.supportNoteText}>لإنشاء حساب مدير عقارات جديد، تواصل مع الدعم الفني من داخل التطبيق بعد تسجيل الدخول أو عبر معلومات الدعم في صفحة المتجر.</Text>
-            </View>
+            <TouchableOpacity style={styles.managerBtn} onPress={goToManagerRegister} disabled={loading} activeOpacity={0.85}>
+              <Text style={styles.managerBtnText}>إنشاء مستخدم جديد كمدير عقارات</Text>
+            </TouchableOpacity>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -168,6 +172,6 @@ const styles = StyleSheet.create({
   btnText: { fontSize: 16, fontWeight: '700', color: colors.textInverse },
   secondaryBtn: { height: 46, borderRadius: radii.md, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center', marginTop: spacing.sm, backgroundColor: colors.background },
   secondaryBtnText: { fontSize: 15, fontWeight: '700', color: colors.textSecondary },
-  supportNote: { backgroundColor: colors.surfaceSubtle, borderRadius: radii.md, borderWidth: 1, borderColor: colors.borderLight, padding: spacing.md, marginTop: spacing.md },
-  supportNoteText: { ...typography.caption, color: colors.textSecondary, textAlign: 'center', lineHeight: 21, fontWeight: '700' },
+  managerBtn: { height: 46, borderRadius: radii.md, borderWidth: 1, borderColor: colors.primary, alignItems: 'center', justifyContent: 'center', marginTop: spacing.sm, backgroundColor: colors.surface },
+  managerBtnText: { fontSize: 15, fontWeight: '800', color: colors.primary },
 });
