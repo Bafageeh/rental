@@ -100,7 +100,7 @@ export default function MoreScreen() {
           <ActionTile
             icon="person-circle-outline"
             title="بروفايل"
-            subtitle="بيانات الحساب، عقاراتي، وروابط المستخدم حسب الصلاحية."
+            subtitle="بيانات الحساب وروابط المستخدم حسب الصلاحية."
             onPress={() => requireLogin('/profile', 'البروفايل')}
           />
         </View>
