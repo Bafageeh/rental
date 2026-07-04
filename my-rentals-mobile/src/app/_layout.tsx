@@ -40,7 +40,7 @@ const routeTitles: Record<string, string> = {
 };
 
 const hiddenScreens = [
-  "+not-found", "system-settings",
+  "+not-found", "system-settings", "properties",
   "chat-thread", "payments", "statistics", "settings", "tenants", "parking", "expenses",
   "owner-payouts", "owner-settlements", "owner-statement", "owner-account-statement",
   "monthly-financial", "rent-roll", "tenant-statement", "tenant-statements", "create-contract", "upload-contract",
@@ -60,7 +60,7 @@ function firstParam(value: unknown) {
 }
 
 function expensesBackRoute(propertyId: string) {
-  return propertyId ? `/property/${propertyId}` : "/properties";
+  return propertyId ? `/property/${propertyId}` : "/owners";
 }
 
 function AppTabs() {
@@ -78,7 +78,7 @@ function AppTabs() {
   const isPrivacyRoute = pathname === "/privacy";
   const isPublicAuthRoute = isLoginRoute || isOtpRoute || isManagerRegisterRoute;
   const isPublicRoute = isPublicAuthRoute || isPrivacyRoute;
-  const isRemovedRoute = pathname === "/system-settings";
+  const isRemovedRoute = pathname === "/system-settings" || pathname === "/properties";
   const isAdminOnlyRoute = pathname === "/inquiry-center" || pathname === "/scheduled-messages" || pathname === "/user-accounts";
   const isTenantPaymentsRoute = pathname === "/tenant-payments";
   const isTenantReportsRoute = pathname === "/tenant-reports";
@@ -105,7 +105,7 @@ function AppTabs() {
 
   useEffect(() => {
     if (loading) return;
-    if (isRemovedRoute) return router.replace("/more" as any);
+    if (isRemovedRoute) return router.replace(isTenant ? "/tenant-payments" as any : "/owners" as any);
     if ((!loggedIn || locked) && !isPublicRoute) return router.replace("/login" as any);
     if (loggedIn && !locked && isPublicAuthRoute) return router.replace(isTenant ? "/tenant-payments" as any : "/" as any);
     if (loggedIn && !locked && isAdminOnlyRoute && !isSystemAdmin) return router.replace("/more" as any);
@@ -132,7 +132,6 @@ function AppTabs() {
       }}
     >
       <Tabs.Screen name="index" options={{ href: isTenant ? null : "/", title: "إحصائيات", tabBarIcon: ({ color, size }) => <TabIcon name="stats-chart" color={color} size={size} /> }} />
-      <Tabs.Screen name="properties" options={{ href: isTenant ? null : "/properties", title: "عقاراتي", tabBarIcon: ({ color, size }) => <TabIcon name="business" color={color} size={size} /> }} />
       <Tabs.Screen name="owners" options={{ href: !isTenant && isAdmin ? "/owners" : null, title: "الملاك", tabBarIcon: ({ color, size }) => <TabIcon name="people" color={color} size={size} /> }} />
       <Tabs.Screen name="more" options={{ href: isTenant ? null : "/more", title: "مزيد", tabBarIcon: ({ color, size }) => <TabIcon name="grid" color={color} size={size} /> }} />
       <Tabs.Screen name="tenant-payments" options={{ href: isTenant ? "/tenant-payments" : null, title: "دفعاتي", tabBarIcon: ({ color, size }) => <TabIcon name="receipt-outline" color={color} size={size} />, headerRight: () => null }} />
