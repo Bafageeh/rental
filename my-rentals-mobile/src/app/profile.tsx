@@ -1,18 +1,11 @@
 import { router } from "expo-router";
 import { useMemo } from "react";
-import {
-  Alert,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from "react-native";
+import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { colors, spacing, typography } from "../constants/theme";
 import { useAuth } from "../context/AuthContext";
 import { apiPost } from "../lib/api";
 import { resetNavigationHistory } from "../lib/navigationHistory";
-import { colors, spacing, typography } from "../constants/theme";
 
 function valueOrDash(value: unknown) {
   if (value === null || value === undefined || value === "") return "-";
@@ -32,83 +25,14 @@ type ProfileAction = {
   title: string;
   subtitle: string;
   path?: string;
-  adminOnly?: boolean;
-  managerOnly?: boolean;
   danger?: boolean;
   action?: "logout";
 };
 
-type ProfileSection = {
-  title: string;
-  subtitle: string;
-  items: ProfileAction[];
-};
-
-const sections: ProfileSection[] = [
-  {
-    title: "الحساب",
-    subtitle: "الخيارات الأساسية للحساب الحالي.",
-    items: [
-      { icon: "🔐", title: "تغيير الرقم السري", subtitle: "تحديث الرقم السري للحساب الحالي", path: "/profile-security" },
-      { icon: "📊", title: "حسابي", subtitle: "ملخص بيانات وصلاحيات المستخدم", path: "/my-account" },
-      { icon: "🚪", title: "تسجيل الخروج", subtitle: "الخروج من الحساب الحالي", danger: true, action: "logout" },
-    ],
-  },
-  {
-    title: "محفظتي",
-    subtitle: "روابط المستأجرين والخدمات حسب صلاحية الحساب.",
-    items: [
-      { icon: "👥", title: "المستأجرون", subtitle: "بيانات المستأجرين وكشوفهم", path: "/tenants" },
-      { icon: "🅿️", title: "المواقف", subtitle: "إدارة المواقف والرسوم", path: "/parking" },
-      { icon: "👤", title: "الملاك", subtitle: "إدارة الملاك وربطهم بالعقارات", path: "/owners", adminOnly: true },
-    ],
-  },
-  {
-    title: "المالية والتقارير",
-    subtitle: "التحصيل، المصروفات، والتقارير المالية.",
-    items: [
-      { icon: "💵", title: "الدفعات", subtitle: "المدفوع والمستحق والمتأخر", path: "/payments" },
-      { icon: "📉", title: "المصروفات", subtitle: "مصروفات التشغيل والصيانة", path: "/expenses" },
-      { icon: "⚡", title: "فواتير الخدمات", subtitle: "الكهرباء والمياه والخدمات", path: "/utility-bills" },
-      { icon: "📅", title: "التقرير الشهري", subtitle: "إيرادات ومصروفات الشهر", path: "/monthly-financial" },
-      { icon: "📋", title: "كشف الإيجار", subtitle: "جدول الإيجارات والتحصيل", path: "/rent-roll" },
-      { icon: "📖", title: "كشوف المستأجرين", subtitle: "كشف حساب المستأجرين", path: "/tenant-statements" },
-      { icon: "💳", title: "تسويات الملاك", subtitle: "مستحقات وتحويلات الملاك", path: "/owner-payouts", adminOnly: true },
-      { icon: "🔁", title: "التسويات", subtitle: "مطابقة الإيرادات والمصروفات", path: "/owner-settlements", adminOnly: true },
-    ],
-  },
-  {
-    title: "التشغيل والمتابعة",
-    subtitle: "الإجراءات اليومية والملفات والتنبيهات.",
-    items: [
-      { icon: "➕", title: "إنشاء عقد", subtitle: "إضافة عقد جديد يدويًا", path: "/create-contract" },
-      { icon: "🔄", title: "تجديد العقود", subtitle: "العقود القريبة من الانتهاء", path: "/contract-renewals" },
-      { icon: "⏰", title: "التذكيرات", subtitle: "المواعيد والمهام", path: "/reminders" },
-      { icon: "✅", title: "المتابعات", subtitle: "مهام تحتاج إجراء", path: "/follow-ups" },
-      { icon: "🔔", title: "التنبيهات", subtitle: "تنبيهات النظام", path: "/alerts" },
-      { icon: "💡", title: "تنبيهات ذكية", subtitle: "اقتراحات وملاحظات ذكية", path: "/smart-alerts" },
-      { icon: "📣", title: "تسويق الوحدات", subtitle: "تجهيز الوحدة للتسويق", path: "/unit-marketing" },
-      { icon: "🧰", title: "فحص الوحدات", subtitle: "توثيق الفحص والملاحظات", path: "/unit-inspections" },
-      { icon: "💬", title: "مركز التواصل", subtitle: "رسائل وتواصل المستأجرين والملاك", path: "/communication-center" },
-      { icon: "🛠️", title: "مقدمو الخدمة", subtitle: "الفنيون وشركات الصيانة", path: "/service-providers", managerOnly: true },
-    ],
-  },
-  {
-    title: "روابط المدير",
-    subtitle: "تظهر فقط لحساب المدير.",
-    items: [
-      { icon: "🖼️", title: "الملفات والوسائط", subtitle: "صور وفيديوهات وملفات", path: "/files", adminOnly: true },
-      { icon: "⚙️", title: "الإعدادات", subtitle: "إعدادات التطبيق العامة", path: "/settings", adminOnly: true },
-      { icon: "🔑", title: "حسابات المستخدمين", subtitle: "إدارة الصلاحيات والحسابات", path: "/user-accounts", adminOnly: true },
-      { icon: "🏦", title: "حسابات الملاك", subtitle: "حسابات دخول الملاك", path: "/owner-accounts", adminOnly: true },
-      { icon: "💳", title: "الحسابات البنكية", subtitle: "حسابات الملاك البنكية", path: "/owner-bank-accounts", adminOnly: true },
-      { icon: "🩺", title: "صحة البيانات", subtitle: "فحص العلاقات والبيانات", path: "/data-health", adminOnly: true },
-      { icon: "🗑️", title: "المحذوفات", subtitle: "مراجعة واستعادة المحذوفات", path: "/trash-center", adminOnly: true },
-      { icon: "🔗", title: "مدير العلاقات", subtitle: "ربط وتنظيف العلاقات", path: "/relations-manager", adminOnly: true },
-      { icon: "🕘", title: "آخر النشاطات", subtitle: "آخر العمليات على النظام", path: "/activity-feed", adminOnly: true },
-      { icon: "📜", title: "سجل النشاط", subtitle: "سجل تدقيق مفصل", path: "/activity-logs", adminOnly: true },
-    ],
-  },
+const accountItems: ProfileAction[] = [
+  { icon: "🔐", title: "تغيير الرقم السري", subtitle: "تحديث الرقم السري للحساب الحالي", path: "/profile-security" },
+  { icon: "📊", title: "حسابي", subtitle: "ملخص بيانات وصلاحيات المستخدم", path: "/my-account" },
+  { icon: "🚪", title: "تسجيل الخروج", subtitle: "الخروج من الحساب الحالي", danger: true, action: "logout" },
 ];
 
 function ProfileButton({ item, onPress }: { item: ProfileAction; onPress: () => void }) {
@@ -129,7 +53,6 @@ function ProfileButton({ item, onPress }: { item: ProfileAction; onPress: () => 
 export default function ProfileScreen() {
   const auth = useAuth();
   const displayUser = auth.user;
-  const role = String(displayUser?.role ?? "").trim().toLowerCase();
 
   const initials = useMemo(() => {
     const name = String(displayUser?.name || displayUser?.email || "م").trim();
@@ -160,17 +83,6 @@ export default function ProfileScreen() {
     if (item.path) router.push(item.path as any);
   }
 
-  const visibleSections = sections
-    .map((section) => ({
-      ...section,
-      items: section.items.filter((item) => {
-        if (item.adminOnly && !auth.isAdmin) return false;
-        if (item.managerOnly && role !== "manager") return false;
-        return true;
-      }),
-    }))
-    .filter((section) => section.items.length > 0);
-
   return (
     <SafeAreaView style={styles.safe} edges={["bottom"]}>
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
@@ -185,15 +97,13 @@ export default function ProfileScreen() {
           </View>
         </View>
 
-        {visibleSections.map((section) => (
-          <View key={section.title} style={styles.actionsCard}>
-            <Text style={styles.sectionTitle}>{section.title}</Text>
-            <Text style={styles.sectionSubtitle}>{section.subtitle}</Text>
-            {section.items.map((item) => (
-              <ProfileButton key={`${section.title}-${item.title}`} item={item} onPress={() => openAction(item)} />
-            ))}
-          </View>
-        ))}
+        <View style={styles.actionsCard}>
+          <Text style={styles.sectionTitle}>الحساب</Text>
+          <Text style={styles.sectionSubtitle}>الخيارات الأساسية للحساب الحالي فقط.</Text>
+          {accountItems.map((item) => (
+            <ProfileButton key={item.title} item={item} onPress={() => openAction(item)} />
+          ))}
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
