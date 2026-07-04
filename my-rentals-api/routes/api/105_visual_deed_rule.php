@@ -60,6 +60,71 @@ if (!function_exists('deed_visual_line_after')) {
     }
 }
 
+if (!function_exists('deed_visual_parse_owner_row')) {
+    function deed_visual_parse_owner_row(?string $row): array
+    {
+        $row = deed_visual_clean($row, 1000);
+        if (!$row || mb_strpos($row, 'رقم الهوية') !== false || mb_strpos($row, 'الاسم') !== false || mb_strpos($row, 'الجنسية') !== false) {
+            return [];
+        }
+
+        $nationalities = 'سعودي|سعودية|مصري|مصرية|سوري|سورية|يمني|يمنية|أردني|اردني|أردنية|اردنية|فلسطيني|فلسطينية|لبناني|لبنانية|هندي|هندية|باكستاني|باكستانية|سوداني|سودانية|تركي|تركية|أمريكي|امريكي|أمريكية|امريكية|بريطاني|بريطانية|كويتي|كويتية|إماراتي|اماراتي|إماراتية|اماراتية|بحريني|بحرينية|قطري|قطرية|عماني|عمانية';
+        if (preg_match('/^([0-9]{6,})\s+(.+?)\s+(' . $nationalities . ')\s+([0-9]+(?:\.[0-9]+)?)\s*%?$/u', $row, $m)) {
+            return [
+                'deed_owner_identifier' => deed_visual_clean($m[1]),
+                'deed_owner_name' => deed_visual_clean($m[2], 180),
+                'deed_owner_nationality' => deed_visual_clean($m[3], 80),
+                'deed_ownership_percentage' => deed_visual_num($m[4]),
+            ];
+        }
+
+        return [];
+    }
+}
+
+if (!function_exists('deed_visual_extract_owner_from_owners_table')) {
+    function deed_visual_extract_owner_from_owners_table(array $lines): array
+    {
+        $ownersIndex = null;
+        foreach ($lines as $index => $line) {
+            if (trim($line) === 'الملاك') {
+                $ownersIndex = $index;
+                break;
+            }
+        }
+
+        if ($ownersIndex !== null) {
+            $headerIndex = null;
+            for ($i = $ownersIndex + 1; $i < min(count($lines), $ownersIndex + 10); $i++) {
+                if (mb_strpos($lines[$i], 'رقم الهوية') !== false && mb_strpos($lines[$i], 'الاسم') !== false && mb_strpos($lines[$i], 'الجنسية') !== false) {
+                    $headerIndex = $i;
+                    break;
+                }
+                if (trim($lines[$i]) === 'العقار') break;
+            }
+
+            if ($headerIndex !== null) {
+                $parts = [];
+                for ($i = $headerIndex + 1; $i < min(count($lines), $headerIndex + 8); $i++) {
+                    $line = trim((string) $lines[$i]);
+                    if ($line === '' || $line === 'العقار') break;
+                    if (mb_strpos($line, 'رقم الهوية') !== false || mb_strpos($line, 'الاسم') !== false || mb_strpos($line, 'الجنسية') !== false) continue;
+                    $parts[] = $line;
+                    $parsed = deed_visual_parse_owner_row(implode(' ', $parts));
+                    if ($parsed) return $parsed;
+                }
+            }
+        }
+
+        foreach ($lines as $line) {
+            $parsed = deed_visual_parse_owner_row($line);
+            if ($parsed) return $parsed;
+        }
+
+        return [];
+    }
+}
+
 if (!function_exists('deed_visual_extract_location')) {
     function deed_visual_extract_location(?string $row): array
     {
@@ -175,14 +240,8 @@ if (!function_exists('deed_visual_payload')) {
             $payload['previous_document_number'] = deed_visual_clean($m[2], 150);
         }
 
-        foreach ($lines as $line) {
-            if (preg_match('/^([0-9]{6,})\s+(.+?)\s+(سعودي|سعودية)\s+([0-9]+)\s*%?$/u', $line, $m)) {
-                $payload['deed_owner_identifier'] = deed_visual_clean($m[1]);
-                $payload['deed_owner_name'] = deed_visual_clean($m[2]);
-                $payload['deed_owner_nationality'] = deed_visual_clean($m[3]);
-                $payload['deed_ownership_percentage'] = deed_visual_num($m[4]);
-                break;
-            }
+        foreach (deed_visual_extract_owner_from_owners_table($lines) as $key => $value) {
+            if ($value !== null) $payload[$key] = $value;
         }
 
         $propertyMain = deed_visual_line_after($lines, 'رقم الهوية العقارية نوع العقار');
