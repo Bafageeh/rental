@@ -19,7 +19,6 @@ import {
 } from '../components/ui/shared';
 import { colors, typography, spacing, radii } from '../constants/theme';
 
-import { smartBack } from "@/lib/navigationHistory";
 type TenantItem = {
   id: number;
   name?: string;
@@ -55,7 +54,7 @@ function TenantCard({ item }: { item: TenantItem }) {
 }
 
 export default function TenantsScreen() {
-  const { items, loading, refreshing, error, total, refresh, loadMore, search } =
+  const { items, loading, refreshing, error, refresh, loadMore, search } =
     useList<TenantItem>({ endpoint: '/tenants' });
 
   const [searchText, setSearchText] = useState('');
@@ -84,20 +83,6 @@ export default function TenantsScreen() {
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={styles.header}>
-        <View style={styles.headerRow}>
-          <TouchableOpacity
-            onPress={() => smartBack()}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            accessibilityRole="button"
-            accessibilityLabel="العودة"
-          >
-            <Text style={styles.backBtn}>→</Text>
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>المستأجرين</Text>
-          <View style={styles.countWrap}>
-            <Text style={styles.headerCount}>{total}</Text>
-          </View>
-        </View>
         <View style={styles.searchWrap}>
           <TextInput
             style={styles.searchInput}
@@ -161,31 +146,10 @@ const styles = StyleSheet.create({
   header: {
     backgroundColor: colors.surface,
     paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
     paddingBottom: spacing.md,
     borderBottomWidth: 1,
     borderBottomColor: colors.borderLight,
-  },
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: spacing.md,
-    gap: spacing.md,
-  },
-  backBtn: { fontSize: 24, color: colors.primary, fontWeight: '600' },
-  headerTitle: { ...typography.h2, color: colors.text, flex: 1, textAlign: 'center' },
-  countWrap: {
-    minWidth: 36,
-    alignItems: 'center',
-  },
-  headerCount: {
-    ...typography.captionBold,
-    color: colors.textSecondary,
-    backgroundColor: colors.surfaceSubtle,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: radii.full,
-    overflow: 'hidden',
   },
   searchWrap: { position: 'relative', justifyContent: 'center' },
   searchInput: {
@@ -195,12 +159,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     ...typography.body,
     color: colors.text,
-    marginTop: spacing.sm,
   },
   clearBtn: {
     position: 'absolute',
     left: 10,
-    top: 8 + spacing.sm,
+    top: 8,
     width: 26,
     height: 26,
     borderRadius: 13,
