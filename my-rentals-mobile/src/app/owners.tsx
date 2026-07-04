@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
+import { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Alert, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "../context/AuthContext";
 import { apiGet, apiPost } from "../lib/api";
 
@@ -19,7 +19,7 @@ type Owner = {
 };
 
 function valueOrDash(value?: string | null) {
-  return value && String(value).trim() ? value : "-";
+  return value && String(value).trim() ? String(value) : "-";
 }
 
 function compact(value?: string | null, max = 24) {
@@ -35,24 +35,10 @@ function normalize(value?: string | number | null) {
   return String(value ?? "").trim().toLowerCase().replace(/[أإآ]/g, "ا").replace(/ى/g, "ي");
 }
 
-function isAdminLikeOwner(owner: Owner, user: any) {
+function isSystemOwner(owner: Owner) {
   const type = normalize(owner.type);
-  const ownerName = normalize(owner.name);
-  const ownerEmail = normalize(owner.email);
-  const userEmail = normalize(user?.email);
-  const userOwnerId = Number(user?.owner_id ?? 0);
-
-  return (
-    type === "self" ||
-    type === "admin" ||
-    type === "manager" ||
-    (userOwnerId > 0 && owner.id === userOwnerId) ||
-    (ownerEmail && userEmail && ownerEmail === userEmail) ||
-    ownerName.includes("احمد") ||
-    ownerName.includes("ahmed") ||
-    ownerName.includes("الادمن") ||
-    ownerName.includes("admin")
-  );
+  // لا نخفي مالك حساب مدير العقارات أبدًا، حتى لو كان اسمه أحمد أو مربوطًا بنفس حساب المستخدم.
+  return type === "self" || type === "admin" || type === "system";
 }
 
 function OwnerMetric({ icon, value, label }: { icon: keyof typeof Ionicons.glyphMap; value?: number; label: string }) {
@@ -79,7 +65,7 @@ function InfoChip({ icon, text, wide = false }: { icon: keyof typeof Ionicons.gl
 }
 
 export default function OwnersScreen() {
-  const { loading: authLoading, loggedIn, isAdmin, user } = useAuth();
+  const { loading: authLoading, loggedIn, isAdmin } = useAuth();
   const [items, setItems] = useState<Owner[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -94,7 +80,7 @@ export default function OwnersScreen() {
   const [nationalId, setNationalId] = useState("");
 
   const canAccess = loggedIn && isAdmin;
-  const visibleOwners = useMemo(() => items.filter((owner) => !isAdminLikeOwner(owner, user)), [items, user]);
+  const visibleOwners = useMemo(() => items.filter((owner) => !isSystemOwner(owner)), [items]);
 
   function resetForm() {
     setName("");
