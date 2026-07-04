@@ -117,6 +117,48 @@ if (!function_exists('deed360650001834_data')) {
     }
 }
 
+if (!function_exists('deed420216016809_data')) {
+    function deed420216016809_data(array $base): array
+    {
+        return array_merge($base, [
+            'name' => 'شقة 5 - الورود - جدة',
+            'deed_number' => '420216016809',
+            'document_number' => '420216016809',
+            'document_date_hijri' => '1439/3/23',
+            'document_date_gregorian' => '2017-12-11',
+            'document_status' => 'فعال',
+            'document_restrictions' => 'لا يوجد قيود',
+            'previous_document_date_hijri' => '1438/3/28',
+            'previous_document_number' => '920223013738',
+            'operation_type' => 'صفقة',
+            'deed_owner_identifier' => '1002803458',
+            'deed_owner_name' => 'احمد علوي هاشم بافقيه',
+            'deed_owner_nationality' => 'سعودي',
+            'deed_ownership_percentage' => '100',
+            'real_estate_identity_number' => null,
+            'deed_property_type_text' => 'شقة',
+            'deed_usage_text' => 'لا يوجد',
+            'deed_neighboring_part' => 'لا يوجد',
+            'deed_location_text' => 'لا يوجد',
+            'deed_property_model' => 'لا يوجد',
+            'deed_unit_number' => '5',
+            'plot_number' => '185 / 14',
+            'plan_number' => '444 / ج / س',
+            'city' => 'جدة',
+            'district' => 'الورود',
+            'address' => 'حي الورود، جدة، مخطط 444 / ج / س، قطعة 185 / 14، شقة رقم 5',
+            'property_area' => '154.99',
+            'property_type' => 'apartment',
+            'usage_type' => 'residential',
+            'management_type' => 'managed',
+            'deed_north_boundary_type' => 'ارتداد',
+            'deed_north_boundary_description' => 'بعرض 2.00م ثم القطعة رقم 183',
+            'deed_north_boundary_length' => '20.6',
+            'deed_boundaries_description' => 'شمالا: ارتداد بعرض 2.00م ثم القطعة رقم 183 طول 20.6 م. وبقية الحدود مفصلة في صفحة الصك الثانية.',
+        ]);
+    }
+}
+
 if (!function_exists('deed_route_save_payload')) {
     function deed_route_save_payload(Request $request, array $payload, string $doc, string $assetKind = 'property')
     {
@@ -196,6 +238,10 @@ if (!function_exists('deed398_handle')) {
 
         if ($doc === '360650001834') {
             return deed_route_save_payload($request, deed360650001834_data($base), '360650001834', 'property');
+        }
+
+        if ($doc === '420216016809') {
+            return deed_route_save_payload($request, deed420216016809_data($base), '420216016809', 'apartment');
         }
 
         return function_exists('deed_visual_handle') ? deed_visual_handle($request) : deed_up_handle($request);
