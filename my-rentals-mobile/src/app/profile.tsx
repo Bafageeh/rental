@@ -51,7 +51,6 @@ const sections: ProfileSection[] = [
     items: [
       { icon: "🔐", title: "تغيير الرقم السري", subtitle: "تحديث الرقم السري للحساب الحالي", path: "/profile-security" },
       { icon: "📊", title: "حسابي", subtitle: "ملخص بيانات وصلاحيات المستخدم", path: "/my-account" },
-      { icon: "🏢", title: "عقاراتي", subtitle: "الشاشة الرسمية لعقارات الحساب الحالي", path: "/properties" },
       { icon: "🚪", title: "تسجيل الخروج", subtitle: "الخروج من الحساب الحالي", danger: true, action: "logout" },
     ],
   },
