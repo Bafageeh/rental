@@ -192,6 +192,7 @@ Route::middleware(['auth.api', 'api.scope'])->group(function () {
         __DIR__ . '/api/103_property_deed_extract.php',
         __DIR__ . '/api/106_deed_398490000202_fields.php',
         __DIR__ . '/api/104_property_deed_upsert_and_qr.php',
+        __DIR__ . '/api/104z_property_deed_verified_override.php',
         __DIR__ . '/api/110_verified_deed_boundaries.php',
         __DIR__ . '/api/019_payment_status_auto_edit_override.php',
         __DIR__ . '/api/019b_payment_cancel_instead_of_delete.php',
@@ -221,6 +222,7 @@ Route::middleware(['auth.api', 'api.scope'])->group(function () {
         __DIR__ . '/api/139_follow_up_tasks.php',
         __DIR__ . '/api/140_monthly_financial_summary.php',
         __DIR__ . '/api/141_rent_roll_owner_payouts.php',
+        __DIR__ . '/api/142_tenants_account_scope.php',
     ] as $routeModule) {
         if (is_file($routeModule)) require $routeModule;
     }
