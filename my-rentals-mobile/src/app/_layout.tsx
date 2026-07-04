@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Tabs, router, useLocalSearchParams, usePathname } from "expo-router";
 import { useEffect, useRef } from "react";
-import { BackHandler } from "react-native";
+import { Alert, BackHandler } from "react-native";
 import { HeaderBackAction as HeaderBackRight, HeaderQuickActions as HeaderActionsLeft } from "../components/AppHeaderActions";
 import { colors } from "../constants/theme";
 import { AuthProvider, useAuth } from "../context/AuthContext";
@@ -71,6 +71,7 @@ function AppTabs() {
   const pathname = usePathname();
   const params = useLocalSearchParams();
   const forcedLoginOnLaunch = useRef(false);
+  const alertPatched = useRef(false);
   const role = String(user?.role ?? '').trim().toLowerCase();
   const isSystemAdmin = isAdmin && (role === 'admin' || role === 'super_admin');
   const expensesPropertyId = firstParam((params as Record<string, unknown>).property_id).trim();
@@ -88,6 +89,18 @@ function AppTabs() {
   const isTenantMoreRoute = pathname === "/tenant-more";
   const isChatRoute = pathname === "/chat-threads" || pathname === "/chat-thread" || pathname.startsWith("/chat-thread/");
   const isTenantAllowedRoute = isTenantPaymentsRoute || isTenantReportsRoute || isTenantMoreRoute || isChatRoute || isPrivacyRoute;
+
+  useEffect(() => {
+    if (alertPatched.current) return;
+    alertPatched.current = true;
+    const originalAlert = Alert.alert;
+    Alert.alert = ((title: string, message?: string, buttons?: any[], options?: any) => {
+      const filteredButtons = Array.isArray(buttons)
+        ? buttons.filter((button) => String(button?.text || '') !== 'إضافة صك آخر')
+        : buttons;
+      return originalAlert(title, message, filteredButtons, options);
+    }) as typeof Alert.alert;
+  }, []);
 
   useEffect(() => {
     if (forcedLoginOnLaunch.current) return;
