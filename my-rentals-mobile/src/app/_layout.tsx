@@ -19,6 +19,7 @@ const routeTitles: Record<string, string> = {
   "privacy": "الخصوصية والدعم",
   "profile": "الحساب",
   "profile-security": "تغيير الرقم السري",
+  "tenants": "المستأجرون",
   "owner/[id]": "تفاصيل المالك",
   "property/[id]": "تفاصيل العقار",
   "unit/[id]": "تفاصيل الوحدة",
