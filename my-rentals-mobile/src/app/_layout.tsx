@@ -17,6 +17,8 @@ const routeTitles: Record<string, string> = {
   [otpName]: "استعادة كلمة السر",
   "manager-register": "إنشاء حساب مدير عقارات",
   "privacy": "الخصوصية والدعم",
+  "profile": "الحساب",
+  "profile-security": "تغيير الرقم السري",
   "owner/[id]": "تفاصيل المالك",
   "property/[id]": "تفاصيل العقار",
   "unit/[id]": "تفاصيل الوحدة",
