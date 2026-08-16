@@ -32,12 +32,11 @@ jobs:
           cache: npm
           cache-dependency-path: my-rentals-mobile/package-lock.json
 
-      - name: Setup Java with Gradle cache
+      - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 17
-          cache: gradle
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
