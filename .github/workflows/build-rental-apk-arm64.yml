@@ -1,0 +1,122 @@
+name: Build Rental APK arm64
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/apk-arm64-trigger.txt'
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: my-rentals-mobile
+
+jobs:
+  build-android-apk-arm64:
+    name: Build Android APK arm64
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: my-rentals-mobile/package-lock.json
+
+      - name: Setup Java with Gradle cache
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+          cache: gradle
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Remove stale notifications dependency before install
+        run: |
+          node - <<'NODE'
+          const fs = require('fs');
+          const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+          if (pkg.dependencies && pkg.dependencies['expo-notifications']) {
+            delete pkg.dependencies['expo-notifications'];
+            fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+          }
+          NODE
+
+      - name: Install mobile dependencies
+        env:
+          NPM_CONFIG_LEGACY_PEER_DEPS: true
+        run: npm install --legacy-peer-deps --no-audit --no-fund
+
+      - name: Align Expo notifications version
+        env:
+          CI: 1
+          EXPO_NO_TELEMETRY: 1
+          NPM_CONFIG_LEGACY_PEER_DEPS: true
+        run: npx expo install expo-notifications
+
+      - name: Prebuild Android project
+        env:
+          EXPO_NO_TELEMETRY: 1
+          NPM_CONFIG_LEGACY_PEER_DEPS: true
+        run: npx expo prebuild --platform android --clean --no-install
+
+      - name: Limit native build to arm64-v8a
+        run: |
+          if grep -q '^reactNativeArchitectures=' android/gradle.properties; then
+            sed -i 's/^reactNativeArchitectures=.*/reactNativeArchitectures=arm64-v8a/' android/gradle.properties
+          else
+            echo 'reactNativeArchitectures=arm64-v8a' >> android/gradle.properties
+          fi
+          grep '^reactNativeArchitectures=' android/gradle.properties
+
+      - name: Force release APK to be signed
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          p = Path('android/app/build.gradle')
+          text = p.read_text()
+          marker = 'release {'
+          insert = 'release {\n            signingConfig signingConfigs.debug'
+          if marker in text and 'signingConfig signingConfigs.debug' not in text.split(marker, 1)[1].split('}', 1)[0]:
+              text = text.replace(marker, insert, 1)
+              p.write_text(text)
+          print('release signingConfig ready')
+          PY
+
+      - name: Build arm64 release APK
+        working-directory: my-rentals-mobile/android
+        env:
+          EXPO_NO_TELEMETRY: 1
+        run: |
+          chmod +x ./gradlew
+          ./gradlew assembleRelease --no-daemon -PreactNativeArchitectures=arm64-v8a
+
+      - name: Prepare APK artifact
+        run: |
+          mkdir -p artifacts
+          APK_PATH="android/app/build/outputs/apk/release/app-release.apk"
+          if [ ! -f "$APK_PATH" ]; then
+            APK_PATH="$(find android/app/build/outputs/apk/release -name '*.apk' | head -n 1)"
+          fi
+          test -n "$APK_PATH"
+          cp "$APK_PATH" artifacts/my-rentals-arm64.apk
+          ls -lh artifacts/my-rentals-arm64.apk
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: my-rentals-apk-arm64
+          path: my-rentals-mobile/artifacts/my-rentals-arm64.apk
+          if-no-files-found: error
+          retention-days: 14
