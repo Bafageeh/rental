@@ -79,6 +79,8 @@ jobs:
 
           npm install --no-audit --no-fund
 
+          # The installed preview app is an SDK 55 development client, so Metro must target dev-client rather than Expo Go.
+          sed -i 's/--go --host/--dev-client --host/' scripts/start-expo-8081.sh || true
           chmod +x scripts/start-expo-8081.sh || true
           bash scripts/start-expo-8081.sh || true
 

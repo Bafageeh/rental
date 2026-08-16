@@ -1,0 +1,75 @@
+name: Build Rental Dev Client APK
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/build-rental-dev-client.yml'
+  workflow_dispatch:
+
+jobs:
+  build-dev-client:
+    name: Build SDK 55 Android development client
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: my-rentals-mobile
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install dependencies
+        env:
+          NPM_CONFIG_LEGACY_PEER_DEPS: true
+        run: npm install --legacy-peer-deps --no-audit --no-fund
+
+      - name: Use separate preview app identity
+        run: |
+          node - <<'NODE'
+          const fs = require('fs');
+          const path = 'app.json';
+          const app = JSON.parse(fs.readFileSync(path, 'utf8'));
+          app.expo.name = 'إيجار - معاينة';
+          app.expo.android.package = 'com.bafageeh.myrentalsmobile.dev';
+          fs.writeFileSync(path, JSON.stringify(app, null, 2) + '\n');
+          NODE
+
+      - name: Prebuild Android development client
+        env:
+          EXPO_NO_TELEMETRY: 1
+        run: npx expo prebuild --platform android --clean --no-install
+
+      - name: Build debug APK
+        run: |
+          cd android
+          chmod +x ./gradlew
+          ./gradlew assembleDebug --no-daemon
+
+      - name: Collect development client APK
+        run: |
+          mkdir -p ../dev-client-output
+          cp android/app/build/outputs/apk/debug/app-debug.apk ../dev-client-output/rental-dev-client-sdk55.apk
+
+      - name: Upload development client APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: rental-dev-client-sdk55
+          path: dev-client-output/rental-dev-client-sdk55.apk
+          if-no-files-found: error
+          retention-days: 14

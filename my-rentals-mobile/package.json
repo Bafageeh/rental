@@ -12,7 +12,7 @@
     "web:build": "EXPO_NO_TELEMETRY=1 expo export --platform web",
     "web:deploy:rental": "bash scripts/deploy-web-rental.sh",
     "web:clear": "rm -rf .expo dist node_modules/.cache && mkdir -p /home/pmsa/apps/.cache /home/pmsa/apps/.tmp",
-    "mobile:dev": "BROWSER=none EXPO_NO_TELEMETRY=1 REACT_NATIVE_PACKAGER_HOSTNAME=my.pm.sa expo start --clear --go --host lan --port 8081",
+    "mobile:dev": "BROWSER=none EXPO_NO_TELEMETRY=1 REACT_NATIVE_PACKAGER_HOSTNAME=my.pm.sa expo start --clear --dev-client --host lan --port 8083",
     "lint": "expo lint",
     "start:safe": "mkdir -p /home/pmsa/apps/.tmp && TMPDIR=/home/pmsa/apps/.tmp TMP=/home/pmsa/apps/.tmp TEMP=/home/pmsa/apps/.tmp npx expo start --clear",
     "start:tunnel": "mkdir -p /home/pmsa/apps/.tmp && TMPDIR=/home/pmsa/apps/.tmp TMP=/home/pmsa/apps/.tmp TEMP=/home/pmsa/apps/.tmp npx expo start --clear --tunnel"
@@ -25,6 +25,7 @@
     "@react-navigation/native": "^7.1.33",
     "expo": "~55.0.26",
     "expo-constants": "~55.0.16",
+    "expo-dev-client": "~55.0.37",
     "expo-device": "~55.0.17",
     "expo-document-picker": "~55.0.13",
     "expo-font": "~55.0.8",
