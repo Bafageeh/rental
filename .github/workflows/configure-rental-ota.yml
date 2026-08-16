@@ -3,10 +3,8 @@ name: Configure Rental OTA Updates
 on:
   workflow_dispatch:
   push:
-    branches:
-      - main
-    paths:
-      - '.github/workflows/configure-rental-ota.yml'
+    branches: [main]
+    paths: ['.github/workflows/configure-rental-ota.yml']
 
 permissions:
   contents: write
@@ -17,64 +15,39 @@ concurrency:
 
 jobs:
   configure:
-    name: Install and configure expo-updates
     runs-on: ubuntu-latest
     timeout-minutes: 20
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 22
-
-      - name: Install current dependencies
-        working-directory: my-rentals-mobile
-        env:
-          NPM_CONFIG_LEGACY_PEER_DEPS: true
-        run: npm install --legacy-peer-deps --no-audit --no-fund
-
-      - name: Install Expo Updates for SDK 55
+      - name: Install dependencies and expo-updates
         working-directory: my-rentals-mobile
         env:
           CI: 1
           EXPO_NO_TELEMETRY: 1
           NPM_CONFIG_LEGACY_PEER_DEPS: true
-        run: npx expo install expo-updates
-
-      - name: Configure app update runtime and channels
+        run: |
+          npm install --legacy-peer-deps --no-audit --no-fund
+          npx expo install expo-updates
+      - name: Configure OTA
         shell: bash
         run: |
           python3 <<'PY'
           import json
           from pathlib import Path
-
-          app_path = Path('my-rentals-mobile/app.json')
-          app = json.loads(app_path.read_text())
-          expo = app['expo']
-          project_id = expo['extra']['eas']['projectId']
-          expo['runtimeVersion'] = {'policy': 'appVersion'}
-          expo['updates'] = {
-              'url': f'https://u.expo.dev/{project_id}',
-              'checkAutomatically': 'ON_ERROR_RECOVERY',
-              'fallbackToCacheTimeout': 0,
-          }
-          app_path.write_text(json.dumps(app, ensure_ascii=False, indent=2) + '\n')
-
-          eas_path = Path('my-rentals-mobile/eas.json')
-          eas = json.loads(eas_path.read_text())
-          eas.setdefault('build', {}).setdefault('preview', {})['channel'] = 'preview'
-          eas.setdefault('build', {}).setdefault('production', {})['channel'] = 'production'
-          eas_path.write_text(json.dumps(eas, ensure_ascii=False, indent=2) + '\n')
+          p=Path('my-rentals-mobile/app.json'); app=json.loads(p.read_text()); expo=app['expo']; pid=expo['extra']['eas']['projectId']
+          expo['runtimeVersion']={'policy':'appVersion'}
+          expo['updates']={'url':f'https://u.expo.dev/{pid}','checkAutomatically':'ON_ERROR_RECOVERY','fallbackToCacheTimeout':0}
+          p.write_text(json.dumps(app,ensure_ascii=False,indent=2)+'\n')
+          p=Path('my-rentals-mobile/eas.json'); eas=json.loads(p.read_text())
+          eas.setdefault('build',{}).setdefault('preview',{})['channel']='preview'
+          eas.setdefault('build',{}).setdefault('production',{})['channel']='production'
+          p.write_text(json.dumps(eas,ensure_ascii=False,indent=2)+'\n')
           PY
-
-      - name: Add automatic update checker
-        shell: bash
-        run: |
           cat > my-rentals-mobile/src/lib/appUpdates.ts <<'EOF'
           import * as Updates from 'expo-updates';
           import { useEffect, useRef } from 'react';
@@ -85,16 +58,12 @@ jobs:
 
           async function checkDownloadAndApplyUpdate() {
             if (__DEV__ || Platform.OS === 'web' || !Updates.isEnabled || updateCheckInProgress) return;
-
             updateCheckInProgress = true;
             try {
               const check = await Updates.checkForUpdateAsync();
               if (!check.isAvailable) return;
-
               const fetched = await Updates.fetchUpdateAsync();
-              if (fetched.isNew) {
-                await Updates.reloadAsync();
-              }
+              if (fetched.isNew) await Updates.reloadAsync();
             } catch (error) {
               console.warn('[app-updates] Automatic update check failed:', error);
             } finally {
@@ -104,7 +73,6 @@ jobs:
 
           export function useAutomaticAppUpdates() {
             const lastCheckAt = useRef(0);
-
             useEffect(() => {
               const checkNow = () => {
                 const now = Date.now();
@@ -112,143 +80,45 @@ jobs:
                 lastCheckAt.current = now;
                 void checkDownloadAndApplyUpdate();
               };
-
               checkNow();
-              const subscription = AppState.addEventListener('change', (state) => {
+              const subscription = AppState.addEventListener('change', state => {
                 if (state === 'active') checkNow();
               });
-
               return () => subscription.remove();
             }, []);
           }
           EOF
-
           python3 <<'PY'
           from pathlib import Path
-          p = Path('my-rentals-mobile/src/app/_layout.tsx')
-          text = p.read_text()
-          import_line = 'import { useAutomaticAppUpdates } from "../lib/appUpdates";\n'
-          anchor = 'import { AuthProvider, useAuth } from "../context/AuthContext";\n'
-          if import_line not in text:
-              text = text.replace(anchor, anchor + import_line, 1)
-
-          hook_line = '  useAutomaticAppUpdates();\n'
-          anchor2 = '  const alertPatched = useRef(false);\n'
-          if hook_line not in text:
-              text = text.replace(anchor2, anchor2 + hook_line, 1)
+          p=Path('my-rentals-mobile/src/app/_layout.tsx'); text=p.read_text()
+          imp='import { useAutomaticAppUpdates } from "../lib/appUpdates";\n'; anchor='import { AuthProvider, useAuth } from "../context/AuthContext";\n'
+          if imp not in text: text=text.replace(anchor,anchor+imp,1)
+          hook='  useAutomaticAppUpdates();\n'; anchor2='  const alertPatched = useRef(false);\n'
+          if hook not in text: text=text.replace(anchor2,anchor2+hook,1)
           p.write_text(text)
           PY
-
-      - name: Add production OTA publisher workflow
-        shell: bash
-        run: |
-          cat > .github/workflows/publish-rental-ota.yml <<'EOF'
-          name: Publish Rental OTA Update
-
-          on:
-            workflow_dispatch:
-            push:
-              branches:
-                - main
-              paths:
-                - 'my-rentals-mobile/src/**'
-                - 'my-rentals-mobile/assets/**'
-
-          permissions:
-            contents: read
-
-          concurrency:
-            group: rental-ota-production
-            cancel-in-progress: true
-
-          jobs:
-            publish:
-              name: Publish production EAS Update
-              runs-on: ubuntu-latest
-              timeout-minutes: 20
-              defaults:
-                run:
-                  working-directory: my-rentals-mobile
-              steps:
-                - name: Checkout repository
-                  uses: actions/checkout@v4
-
-                - name: Setup Node.js
-                  uses: actions/setup-node@v4
-                  with:
-                    node-version: 22
-
-                - name: Verify Expo token
-                  env:
-                    EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-                  run: |
-                    if [ -z "${EXPO_TOKEN:-}" ]; then
-                      echo "EXPO_TOKEN secret is required to publish OTA updates."
-                      exit 1
-                    fi
-
-                - name: Install dependencies
-                  env:
-                    NPM_CONFIG_LEGACY_PEER_DEPS: true
-                  run: npm ci --legacy-peer-deps --no-audit --no-fund
-
-                - name: Publish OTA update to production
-                  env:
-                    EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-                    EXPO_NO_TELEMETRY: 1
-                  run: npx --yes eas-cli@latest update --channel production --message "Auto update ${GITHUB_SHA::7}" --non-interactive
-          EOF
-
-      - name: Validate Expo and OTA source changes
+      - name: Validate OTA configuration
         working-directory: my-rentals-mobile
         env:
           EXPO_NO_TELEMETRY: 1
         run: |
           npx expo config --type public >/tmp/rental-expo-config.txt
           node <<'NODE'
-          const fs = require('fs');
-          const ts = require('typescript');
-          for (const file of ['src/lib/appUpdates.ts', 'src/app/_layout.tsx']) {
-            const source = fs.readFileSync(file, 'utf8');
-            const result = ts.transpileModule(source, {
-              reportDiagnostics: true,
-              compilerOptions: {
-                jsx: ts.JsxEmit.ReactJSX,
-                module: ts.ModuleKind.ESNext,
-                target: ts.ScriptTarget.ES2022,
-              },
-              fileName: file,
-            });
-            const errors = (result.diagnostics || []).filter(d => d.category === ts.DiagnosticCategory.Error);
-            if (errors.length) {
-              for (const d of errors) console.error(ts.flattenDiagnosticMessageText(d.messageText, '\n'));
-              process.exit(1);
-            }
-            console.log(`Syntax OK: ${file}`);
+          const fs=require('fs'),ts=require('typescript');
+          for(const file of ['src/lib/appUpdates.ts','src/app/_layout.tsx']){
+            const r=ts.transpileModule(fs.readFileSync(file,'utf8'),{reportDiagnostics:true,compilerOptions:{jsx:ts.JsxEmit.ReactJSX,module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022},fileName:file});
+            const e=(r.diagnostics||[]).filter(d=>d.category===ts.DiagnosticCategory.Error); if(e.length) process.exit(1); console.log(`Syntax OK: ${file}`);
           }
           NODE
           grep -q 'expo-updates' package.json
           grep -q 'useAutomaticAppUpdates' src/app/_layout.tsx
-
       - name: Commit OTA configuration
         shell: bash
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add \
-            my-rentals-mobile/package.json \
-            my-rentals-mobile/package-lock.json \
-            my-rentals-mobile/app.json \
-            my-rentals-mobile/eas.json \
-            my-rentals-mobile/src/lib/appUpdates.ts \
-            my-rentals-mobile/src/app/_layout.tsx \
-            .github/workflows/publish-rental-ota.yml
-
-          if git diff --cached --quiet; then
-            echo "OTA configuration is already current."
-            exit 0
-          fi
-
+          git add my-rentals-mobile/package.json my-rentals-mobile/package-lock.json my-rentals-mobile/app.json my-rentals-mobile/eas.json my-rentals-mobile/src/lib/appUpdates.ts my-rentals-mobile/src/app/_layout.tsx
+          if git diff --cached --quiet; then exit 0; fi
           git commit -m "Enable automatic Rental app OTA updates"
           git push origin HEAD:main
