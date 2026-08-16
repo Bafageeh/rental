@@ -1,2 +1,3 @@
-Build requested: 2026-08-16 10:00 Asia/Riyadh
-Purpose: release APK via GitHub Actions without EAS Build credits.
+Build requested: 2026-08-16 12:20 Asia/Riyadh
+Purpose: optimized arm64 release APK via GitHub Actions without EAS Build credits.
+Fix: increased Gradle heap/metaspace and limited native build to arm64-v8a.
