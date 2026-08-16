@@ -79,8 +79,10 @@ jobs:
 
           npm install --no-audit --no-fund
 
-          # The installed preview app is an SDK 55 development client, so Metro must target dev-client rather than Expo Go.
+          # Target the SDK 55 development client instead of Expo Go.
           sed -i 's/--go --host/--dev-client --host/' scripts/start-expo-8081.sh || true
+          # Expo Router typed routes expect this directory after the startup script clears .expo.
+          sed -i '/rm -rf \.expo \.expo-shared \.metro-cache node_modules\/\.cache || true/a mkdir -p .expo/types' scripts/start-expo-8081.sh || true
           chmod +x scripts/start-expo-8081.sh || true
           bash scripts/start-expo-8081.sh || true
 
