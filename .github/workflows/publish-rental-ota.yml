@@ -1,0 +1,55 @@
+name: Publish Rental OTA Update
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - 'my-rentals-mobile/src/**'
+      - 'my-rentals-mobile/assets/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rental-ota-production
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    name: Publish production EAS Update
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: my-rentals-mobile
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Verify Expo token
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          if [ -z "${EXPO_TOKEN:-}" ]; then
+            echo "EXPO_TOKEN secret is required to publish OTA updates."
+            exit 1
+          fi
+
+      - name: Install dependencies
+        env:
+          NPM_CONFIG_LEGACY_PEER_DEPS: true
+        run: npm ci --legacy-peer-deps --no-audit --no-fund
+
+      - name: Publish OTA update to production
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          EXPO_NO_TELEMETRY: 1
+        run: npx --yes eas-cli@latest update --channel production --message "Auto update ${GITHUB_SHA::7}" --non-interactive
