@@ -2,6 +2,11 @@ name: Build Rental APK
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/apk-build-trigger.txt'
 
 permissions:
   contents: read
