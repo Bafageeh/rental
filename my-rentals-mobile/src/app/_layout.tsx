@@ -5,6 +5,7 @@ import { Alert, BackHandler } from "react-native";
 import { HeaderBackAction as HeaderBackRight, HeaderQuickActions as HeaderActionsLeft } from "../components/AppHeaderActions";
 import { colors } from "../constants/theme";
 import { AuthProvider, useAuth } from "../context/AuthContext";
+import { useAutomaticAppUpdates } from "../lib/appUpdates";
 
 function TabIcon({ name, color, size }: { name: string; color: string; size: number }) {
   return <Ionicons name={name as any} size={Math.max(22, size)} color={color} />;
@@ -75,6 +76,7 @@ function AppTabs() {
   const params = useLocalSearchParams();
   const forcedLoginOnLaunch = useRef(false);
   const alertPatched = useRef(false);
+  useAutomaticAppUpdates();
   const role = String(user?.role ?? '').trim().toLowerCase();
   const isSystemAdmin = isAdmin && (role === 'admin' || role === 'super_admin');
   const expensesPropertyId = firstParam((params as Record<string, unknown>).property_id).trim();
