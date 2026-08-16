@@ -2,12 +2,6 @@ name: Build Rental APK
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
-    paths:
-      - 'my-rentals-mobile/**'
-      - '.github/workflows/build-rental-apk.yml'
 
 permissions:
   contents: read
