@@ -1,0 +1,98 @@
+name: Generate Rental App Icons
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'my-rentals-mobile/assets/branding/rental-app-icon*.svg'
+      - '.github/workflows/generate-rental-icons.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: rental-icon-generation
+  cancel-in-progress: true
+
+jobs:
+  generate-icons:
+    name: Render and verify app icon assets
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install SVG renderer
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y librsvg2-bin
+
+      - name: Render icon assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          SRC="my-rentals-mobile/assets/branding"
+          OUT="my-rentals-mobile/assets/images"
+          mkdir -p "$OUT"
+
+          rsvg-convert -w 1024 -h 1024 "$SRC/rental-app-icon.svg" -o "$OUT/icon.png"
+          rsvg-convert -w 1024 -h 1024 "$SRC/rental-app-icon-background.svg" -o "$OUT/android-icon-background.png"
+          rsvg-convert -w 1024 -h 1024 "$SRC/rental-app-icon-foreground.svg" -o "$OUT/android-icon-foreground.png"
+          rsvg-convert -w 1024 -h 1024 "$SRC/rental-app-icon-monochrome.svg" -o "$OUT/android-icon-monochrome.png"
+          rsvg-convert -w 512 -h 512 "$SRC/rental-app-icon-foreground.svg" -o "$OUT/splash-icon.png"
+          rsvg-convert -w 96 -h 96 "$SRC/rental-app-icon.svg" -o "$OUT/favicon.png"
+
+      - name: Verify exact PNG dimensions
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import struct
+
+          expected = {
+              'my-rentals-mobile/assets/images/icon.png': (1024, 1024),
+              'my-rentals-mobile/assets/images/android-icon-background.png': (1024, 1024),
+              'my-rentals-mobile/assets/images/android-icon-foreground.png': (1024, 1024),
+              'my-rentals-mobile/assets/images/android-icon-monochrome.png': (1024, 1024),
+              'my-rentals-mobile/assets/images/splash-icon.png': (512, 512),
+              'my-rentals-mobile/assets/images/favicon.png': (96, 96),
+          }
+
+          for filename, wanted in expected.items():
+              path = Path(filename)
+              data = path.read_bytes()[:24]
+              if data[:8] != b'\x89PNG\r\n\x1a\n':
+                  raise SystemExit(f'{filename}: not a PNG')
+              width, height = struct.unpack('>II', data[16:24])
+              actual = (width, height)
+              if actual != wanted:
+                  raise SystemExit(f'{filename}: expected {wanted}, got {actual}')
+              print(f'OK {filename}: {width}x{height}')
+          PY
+
+      - name: Commit generated icon assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            my-rentals-mobile/assets/images/icon.png \
+            my-rentals-mobile/assets/images/android-icon-background.png \
+            my-rentals-mobile/assets/images/android-icon-foreground.png \
+            my-rentals-mobile/assets/images/android-icon-monochrome.png \
+            my-rentals-mobile/assets/images/splash-icon.png \
+            my-rentals-mobile/assets/images/favicon.png
+
+          if git diff --cached --quiet; then
+            echo "Icon assets are already current."
+            exit 0
+          fi
+
+          git commit -m "Apply approved Rental app icon assets"
+          git push origin HEAD:main
