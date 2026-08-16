@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0" stop-color="#033B49"/>
+      <stop offset="0.52" stop-color="#045D62"/>
+      <stop offset="1" stop-color="#0FA39A"/>
+    </linearGradient>
+    <linearGradient id="mint" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#E9FFF9"/>
+      <stop offset="1" stop-color="#67D8C2"/>
+    </linearGradient>
+    <linearGradient id="paperCurl" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#F7FFFC"/>
+      <stop offset="1" stop-color="#69DCC6"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#bg)"/>
+  <path d="M-40 825 C225 990 645 1000 1070 815 L1070 1040 L-40 1040 Z" fill="#033441" opacity="0.58"/>
+  <path d="M-20 820 C245 950 658 965 1050 810" fill="none" stroke="#35C7B5" stroke-width="7" opacity="0.72"/>
+  <g stroke-linejoin="round" stroke-linecap="round">
+    <path d="M252 300 C252 274 266 253 291 242 L338 222 L338 300 L294 319 C269 330 252 323 252 300 Z" fill="#FFFDF9"/>
+    <path d="M264 344 H335 V650 C335 703 303 744 250 759 V388 C250 366 256 352 264 344 Z" fill="#FFFDF9"/>
+    <circle cx="291" cy="806" r="34" fill="#FFFDF9"/>
+    <path d="M248 861 H445 V920 H286 C265 920 248 903 248 882 Z" fill="#FFFDF9"/>
+    <path d="M338 399 L520 235 Q542 215 565 235 L812 451 Q830 467 830 491 V778 Q830 845 764 845 H610" fill="none" stroke="#FFFDF9" stroke-width="72"/>
+    <path d="M610 845 H726" fill="none" stroke="#FFFDF9" stroke-width="72"/>
+    <g fill="url(#mint)">
+      <rect x="426" y="432" width="50" height="50" rx="9"/>
+      <rect x="490" y="432" width="50" height="50" rx="9"/>
+      <rect x="426" y="496" width="50" height="50" rx="9"/>
+      <rect x="490" y="496" width="50" height="50" rx="9"/>
+    </g>
+    <path d="M606 518 Q606 495 629 495 H737 L797 555 V741 Q797 762 776 762 H629 Q606 762 606 739 Z" fill="#FFFDF9"/>
+    <path d="M737 495 V542 Q737 555 750 555 H797 Z" fill="url(#paperCurl)"/>
+    <g stroke="#58B8AA" stroke-width="10" stroke-linecap="round">
+      <path d="M642 590 H696"/>
+      <path d="M642 624 H744"/>
+      <path d="M642 658 H744"/>
+      <path d="M642 692 H744"/>
+    </g>
+    <path d="M644 727 C662 689 670 710 676 723 C684 740 697 712 706 721 C713 728 720 727 737 727" fill="none" stroke="#078A83" stroke-width="8" stroke-linecap="round"/>
+    <g fill="url(#mint)">
+      <circle cx="523" cy="681" r="70"/>
+      <circle cx="523" cy="681" r="28" fill="#064D52"/>
+      <path d="M495 726 H550 V875 L573 888 L550 901 L573 914 L550 928 L550 946 L523 970 L495 946 Z"/>
+    </g>
+  </g>
+</svg>
