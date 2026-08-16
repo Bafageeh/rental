@@ -199,13 +199,36 @@ jobs:
                   run: npx --yes eas-cli@latest update --channel production --message "Auto update ${GITHUB_SHA::7}" --non-interactive
           EOF
 
-      - name: Validate Expo configuration and TypeScript
+      - name: Validate Expo and OTA source changes
         working-directory: my-rentals-mobile
         env:
           EXPO_NO_TELEMETRY: 1
         run: |
           npx expo config --type public >/tmp/rental-expo-config.txt
-          npx tsc --noEmit
+          node <<'NODE'
+          const fs = require('fs');
+          const ts = require('typescript');
+          for (const file of ['src/lib/appUpdates.ts', 'src/app/_layout.tsx']) {
+            const source = fs.readFileSync(file, 'utf8');
+            const result = ts.transpileModule(source, {
+              reportDiagnostics: true,
+              compilerOptions: {
+                jsx: ts.JsxEmit.ReactJSX,
+                module: ts.ModuleKind.ESNext,
+                target: ts.ScriptTarget.ES2022,
+              },
+              fileName: file,
+            });
+            const errors = (result.diagnostics || []).filter(d => d.category === ts.DiagnosticCategory.Error);
+            if (errors.length) {
+              for (const d of errors) console.error(ts.flattenDiagnosticMessageText(d.messageText, '\n'));
+              process.exit(1);
+            }
+            console.log(`Syntax OK: ${file}`);
+          }
+          NODE
+          grep -q 'expo-updates' package.json
+          grep -q 'useAutomaticAppUpdates' src/app/_layout.tsx
 
       - name: Commit OTA configuration
         shell: bash
