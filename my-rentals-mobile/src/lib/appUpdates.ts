@@ -5,6 +5,7 @@ import { AppState, Platform } from 'react-native';
 const FOREGROUND_CHECK_INTERVAL_MS = 5 * 60 * 1000;
 let updateCheckInProgress = false;
 
+// Check on app launch and again when returning to the foreground.
 async function checkDownloadAndApplyUpdate() {
   if (__DEV__ || Platform.OS === 'web' || !Updates.isEnabled || updateCheckInProgress) return;
   updateCheckInProgress = true;
