@@ -1,0 +1,2 @@
+Build requested: 2026-08-16 Asia/Riyadh
+Target: arm64-v8a release APK via GitHub Actions, no EAS Build credits.
