@@ -2,12 +2,6 @@ name: Build Rental AAB
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
-    paths:
-      - 'my-rentals-mobile/**'
-      - '.github/workflows/build-rental-aab.yml'
 
 permissions:
   contents: read
