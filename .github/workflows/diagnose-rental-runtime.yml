@@ -1,0 +1,50 @@
+name: Diagnose Rental Runtime
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/diagnose-rental-runtime.yml'
+  workflow_dispatch:
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    env:
+      RENTAL_DEPLOY_HOST: ${{ secrets.DEPLOY_HOST || secrets.RENTAL_DEPLOY_HOST || secrets.SERVER_HOST || secrets.SSH_HOST }}
+      RENTAL_DEPLOY_USER: ${{ secrets.DEPLOY_USER || secrets.RENTAL_DEPLOY_USER || secrets.SERVER_USER || secrets.SSH_USER }}
+      RENTAL_DEPLOY_PORT: ${{ secrets.DEPLOY_PORT || secrets.RENTAL_DEPLOY_PORT || secrets.SERVER_PORT || secrets.SSH_PORT }}
+      RENTAL_DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY || secrets.RENTAL_DEPLOY_SSH_KEY || secrets.SSH_PRIVATE_KEY || secrets.SERVER_SSH_KEY }}
+    steps:
+      - name: Read current Expo runtime diagnostics
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          printf '%s\n' "$RENTAL_DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p "$RENTAL_DEPLOY_PORT" "$RENTAL_DEPLOY_HOST" >> ~/.ssh/known_hosts
+          ssh -i ~/.ssh/deploy_key -p "$RENTAL_DEPLOY_PORT" -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes "$RENTAL_DEPLOY_USER@$RENTAL_DEPLOY_HOST" 'bash -s' <<'REMOTE'
+          set -u
+          APP=/mnt/home-storage/home/pmsa/apps/rental/my-rentals-mobile
+          echo '=== time ==='
+          date
+          echo '=== process ==='
+          ps -ef | grep -E '[e]xpo|[m]etro|node.*8090' || true
+          echo '=== port ==='
+          ss -lntp | grep ':8090' || true
+          echo '=== package versions ==='
+          cd "$APP"
+          node -p "require('expo/package.json').version" || true
+          node -p "require('expo-router/package.json').version" || true
+          node -p "require('react-native/package.json').version" || true
+          node -p "require('react-native-screens/package.json').version" || true
+          npm ls react-native-screens --all || true
+          echo '=== expo log last 500 ==='
+          tail -n 500 /home/pmsa/apps/my-rentals-expo.log || true
+          echo '=== recent errors ==='
+          grep -Ei 'error|exception|fatal|crash|invariant|typeerror|referenceerror|cannot|failed|undefined|not a function' /home/pmsa/apps/my-rentals-expo.log | tail -n 200 || true
+          echo '=== android bundle http ==='
+          curl -sS -o /tmp/rental-bundle -w 'HTTP=%{http_code} SIZE=%{size_download}\n' --max-time 180 'http://127.0.0.1:8090/node_modules/expo-router/entry.bundle?platform=android&dev=true&hot=false&lazy=true&transform.engine=hermes&transform.bytecode=1&transform.routerRoot=src%2Fapp&unstable_transformProfile=hermes-stable' || true
+          REMOTE
