@@ -42,6 +42,13 @@ jobs:
           set -euo pipefail
           npm install --no-audit --no-fund
           npx expo install --fix
+          # Expo Router on SDK 56+ must not keep external React Navigation
+          # packages as direct application dependencies. expo install --fix can
+          # re-introduce them, so explicitly remove them before doctor/deploy.
+          npm uninstall --no-audit --no-fund \
+            @react-navigation/bottom-tabs \
+            @react-navigation/elements \
+            @react-navigation/native
           npx expo-doctor || true
 
       - name: Commit aligned dependency files
