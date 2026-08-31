@@ -1,0 +1,58 @@
+name: Sync Rental Expo 57 Dependencies
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'my-rentals-mobile/package.json'
+      - '.github/workflows/sync-rental-expo57-deps.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: rental-expo57-dependency-sync
+  cancel-in-progress: true
+
+jobs:
+  sync:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: my-rentals-mobile
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.16.0'
+          cache: npm
+          cache-dependency-path: my-rentals-mobile/package-lock.json
+
+      - name: Upgrade and align Expo SDK 57 dependencies
+        run: |
+          set -euo pipefail
+          npm install --no-audit --no-fund
+          npx expo install --fix
+          npx expo-doctor || true
+
+      - name: Commit aligned dependency files
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add package.json package-lock.json
+          if git diff --cached --quiet; then
+            echo 'Dependency files are already aligned.'
+            exit 0
+          fi
+          git commit -m 'Align rental dependencies with Expo SDK 57'
+          git push origin HEAD:main
