@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   deploy:
-    name: Deploy Expo mobile from monorepo
+    name: Deploy Expo 57 mobile from monorepo
     runs-on: ubuntu-latest
     env:
       RENTAL_DEPLOY_HOST: ${{ secrets.DEPLOY_HOST || secrets.RENTAL_DEPLOY_HOST || secrets.SERVER_HOST || secrets.SSH_HOST }}
@@ -29,15 +29,15 @@ jobs:
         run: |
           set -euo pipefail
           missing=0
-          if [ -z "${RENTAL_DEPLOY_HOST:-}" ]; then echo "Missing deploy host. Add one of: DEPLOY_HOST, RENTAL_DEPLOY_HOST, SERVER_HOST, SSH_HOST"; missing=1; fi
-          if [ -z "${RENTAL_DEPLOY_USER:-}" ]; then echo "Missing deploy user. Add one of: DEPLOY_USER, RENTAL_DEPLOY_USER, SERVER_USER, SSH_USER"; missing=1; fi
-          if [ -z "${RENTAL_DEPLOY_PORT:-}" ]; then echo "Missing deploy port. Add one of: DEPLOY_PORT, RENTAL_DEPLOY_PORT, SERVER_PORT, SSH_PORT"; missing=1; fi
-          if [ -z "${RENTAL_DEPLOY_SSH_KEY:-}" ]; then echo "Missing SSH key. Add one of: DEPLOY_SSH_KEY, RENTAL_DEPLOY_SSH_KEY, SSH_PRIVATE_KEY, SERVER_SSH_KEY"; missing=1; fi
+          if [ -z "${RENTAL_DEPLOY_HOST:-}" ]; then echo "Missing deploy host"; missing=1; fi
+          if [ -z "${RENTAL_DEPLOY_USER:-}" ]; then echo "Missing deploy user"; missing=1; fi
+          if [ -z "${RENTAL_DEPLOY_PORT:-}" ]; then echo "Missing deploy port"; missing=1; fi
+          if [ -z "${RENTAL_DEPLOY_SSH_KEY:-}" ]; then echo "Missing SSH key"; missing=1; fi
           exit "$missing"
 
-      - name: Deploy over SSH
+      - name: Deploy Expo SDK 57 over SSH
         shell: bash
-        timeout-minutes: 15
+        timeout-minutes: 20
         run: |
           set -euo pipefail
           mkdir -p ~/.ssh
@@ -46,13 +46,14 @@ jobs:
           ssh-keyscan -p "$RENTAL_DEPLOY_PORT" "$RENTAL_DEPLOY_HOST" >> ~/.ssh/known_hosts
 
           ssh -i ~/.ssh/deploy_key -p "$RENTAL_DEPLOY_PORT" -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes "$RENTAL_DEPLOY_USER@$RENTAL_DEPLOY_HOST" 'bash -s' <<'REMOTE'
-          set -e
+          set -euo pipefail
 
-          SOURCE="/home/pmsa/apps/rental-source"
-          MOBILE_PATH="/home/pmsa/apps/rental/my-rentals-mobile"
+          BASE="/mnt/home-storage/home/pmsa/apps"
+          SOURCE="$BASE/rental-source"
+          MOBILE_PATH="$BASE/rental/my-rentals-mobile"
           REPO="git@github.com:Bafageeh/rental.git"
 
-          mkdir -p /home/pmsa/apps
+          mkdir -p "$BASE" "$BASE/.cache" "$BASE/.tmp"
 
           if [ ! -d "$SOURCE/.git" ]; then
             rm -rf "$SOURCE"
@@ -73,19 +74,34 @@ jobs:
 
           cd "$MOBILE_PATH"
 
-          mkdir -p /home/pmsa/apps/.cache /home/pmsa/apps/.tmp
+          if [ -x /opt/cpanel/ea-nodejs22/bin/node ]; then
+            export PATH="/opt/cpanel/ea-nodejs22/bin:$PATH"
+          fi
+
+          echo "NODE=$(node -v)"
+          echo "NPM=$(npm -v)"
+          node -e 'const [M,m]=process.versions.node.split(".").map(Number); if (M < 22 || (M === 22 && m < 13)) { console.error("Expo SDK 57 requires Node >= 22.13"); process.exit(1) }'
+
           rm -rf .expo .expo-shared node_modules/.cache .metro-cache
-          rm -rf /home/pmsa/apps/.cache/expo /home/pmsa/apps/.cache/metro /home/pmsa/apps/.cache/react-native
+          rm -rf "$BASE/.cache/expo" "$BASE/.cache/metro" "$BASE/.cache/react-native" || true
 
           npm install --no-audit --no-fund
+          npx expo install --fix
+          npx expo-doctor || true
 
-          # Target the SDK 55 development client instead of Expo Go.
-          sed -i 's/--go --host/--dev-client --host/' scripts/start-expo-8081.sh || true
-          # Expo Router typed routes expect this directory after the startup script clears .expo.
+          # Keep the existing rental runtime compatibility patches, but run Expo Go on SDK 57 / port 8090.
+          sed -i 's/PORT="8083"/PORT="8090"/' scripts/start-expo-8081.sh || true
+          sed -i 's/HOSTNAME="my.pm.sa"/HOSTNAME="rental.pm.sa"/' scripts/start-expo-8081.sh || true
+          sed -i 's/--dev-client --host/--go --host/' scripts/start-expo-8081.sh || true
           sed -i '/rm -rf \.expo \.expo-shared \.metro-cache node_modules\/\.cache || true/a mkdir -p .expo/types' scripts/start-expo-8081.sh || true
-          chmod +x scripts/start-expo-8081.sh || true
-          bash scripts/start-expo-8081.sh || true
+          chmod +x scripts/start-expo-8081.sh
+          bash scripts/start-expo-8081.sh
 
           sleep 8
-          tail -n 120 /home/pmsa/apps/my-rentals-expo.log || true
+          echo "--- Expo SDK ---"
+          npx expo --version || true
+          echo "--- Port 8090 ---"
+          if command -v ss >/dev/null 2>&1; then ss -lntp | grep ':8090' || true; fi
+          echo "--- Expo log ---"
+          tail -n 160 /home/pmsa/apps/my-rentals-expo.log || true
           REMOTE
