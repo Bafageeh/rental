@@ -51,6 +51,7 @@ jobs:
           BASE="/mnt/home-storage/home/pmsa/apps"
           SOURCE="$BASE/rental-source"
           MOBILE_PATH="$BASE/rental/my-rentals-mobile"
+          LEGACY_MOBILE_PATH="/home/pmsa/apps/rental/my-rentals-mobile"
           REPO="git@github.com:Bafageeh/rental.git"
 
           mkdir -p "$BASE" "$BASE/.cache" "$BASE/.tmp"
@@ -91,7 +92,10 @@ jobs:
             @react-navigation/bottom-tabs \
             @react-navigation/elements \
             @react-navigation/native || true
-          npx expo-doctor || true
+          npm dedupe --no-audit --no-fund
+          echo "--- Native dependency tree ---"
+          npm ls react-native-screens --all
+          npx expo-doctor
 
           echo "--- Unsupported React Navigation imports ---"
           if grep -R --line-number \
@@ -102,6 +106,10 @@ jobs:
             exit 1
           fi
           echo "No direct @react-navigation imports found."
+
+          # Remove stale rental Metro instances from old ports. Match the rental app path only.
+          pkill -f "$LEGACY_MOBILE_PATH/node_modules/.bin/expo start.*--port 8081" || true
+          pkill -f "$LEGACY_MOBILE_PATH/node_modules/.bin/expo start.*--port 8083" || true
 
           # Keep the existing rental runtime compatibility patches, but run Expo Go on SDK 57 / port 8090.
           sed -i 's/PORT="8083"/PORT="8090"/' scripts/start-expo-8081.sh || true
