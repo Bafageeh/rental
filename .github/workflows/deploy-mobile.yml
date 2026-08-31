@@ -87,7 +87,21 @@ jobs:
 
           npm install --no-audit --no-fund
           npx expo install --fix
+          npm uninstall --no-audit --no-fund \
+            @react-navigation/bottom-tabs \
+            @react-navigation/elements \
+            @react-navigation/native || true
           npx expo-doctor || true
+
+          echo "--- Unsupported React Navigation imports ---"
+          if grep -R --line-number \
+            --exclude-dir=node_modules \
+            --include='*.ts' --include='*.tsx' --include='*.js' --include='*.jsx' \
+            '@react-navigation/' src; then
+            echo "ERROR: Direct @react-navigation imports remain in src. Expo Router SDK 57 must own navigation."
+            exit 1
+          fi
+          echo "No direct @react-navigation imports found."
 
           # Keep the existing rental runtime compatibility patches, but run Expo Go on SDK 57 / port 8090.
           sed -i 's/PORT="8083"/PORT="8090"/' scripts/start-expo-8081.sh || true
@@ -102,6 +116,21 @@ jobs:
           npx expo --version || true
           echo "--- Port 8090 ---"
           if command -v ss >/dev/null 2>&1; then ss -lntp | grep ':8090' || true; fi
+
+          echo "--- Android bundle validation ---"
+          BUNDLE_URL='http://127.0.0.1:8090/node_modules/expo-router/entry.bundle?platform=android&dev=true&hot=false&lazy=true&transform.engine=hermes&transform.bytecode=1&transform.routerRoot=src%2Fapp&unstable_transformProfile=hermes-stable'
+          if ! curl --fail --silent --show-error --max-time 180 "$BUNDLE_URL" -o /tmp/rental-entry.bundle; then
+            echo "ERROR: Android bundle request failed."
+            tail -n 240 /home/pmsa/apps/my-rentals-expo.log || true
+            exit 1
+          fi
+          if [ ! -s /tmp/rental-entry.bundle ]; then
+            echo "ERROR: Android bundle response is empty."
+            tail -n 240 /home/pmsa/apps/my-rentals-expo.log || true
+            exit 1
+          fi
+          echo "Android bundle OK ($(wc -c < /tmp/rental-entry.bundle) bytes)."
+
           echo "--- Expo log ---"
           tail -n 160 /home/pmsa/apps/my-rentals-expo.log || true
           REMOTE
