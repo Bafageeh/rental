@@ -4,16 +4,16 @@ set -euo pipefail
 LOG_FILE="/home/pmsa/apps/my-rentals-expo.log"
 CACHE_DIR="/home/pmsa/apps/.cache"
 TMP_DIR="/home/pmsa/apps/.tmp"
-PORT="8083"
-HOSTNAME="my.pm.sa"
+PORT="8090"
+HOSTNAME="rental.pm.sa"
 API_BASE_URL="https://rental.pm.sa/api"
-DEPLOY_STAMP="2026-05-10-unit-edit-floor-number-and-boolean-cleanup-v15"
+DEPLOY_STAMP="2026-09-01-sdk55-dev-client-rollback-v1"
 
 choose_app_dir() {
   for candidate in \
     "/home/pmsa/apps/rental/my-rentals-mobile" \
-    "/home/pmsa/apps/my-rentals-mobile" \
     "/mnt/home-storage/home/pmsa/apps/rental/my-rentals-mobile" \
+    "/home/pmsa/apps/my-rentals-mobile" \
     "/mnt/home-storage/home/pmsa/apps/my-rentals-mobile"; do
     if [ -f "$candidate/package.json" ]; then printf '%s\n' "$candidate"; return 0; fi
   done
@@ -30,6 +30,7 @@ touch "$LOG_FILE"
   echo "APP_DIR=$APP_DIR"
   echo "PORT=$PORT"
   echo "HOSTNAME=$HOSTNAME"
+  echo "MODE=development-client"
   echo "CURRENT_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
   echo "DATE=$(date '+%Y-%m-%d %H:%M:%S')"
   echo "IMPORTANT: unit edit floor accepts digits only"
@@ -38,7 +39,6 @@ touch "$LOG_FILE"
 
 python3 - <<'PY' | tee -a "/home/pmsa/apps/my-rentals-expo.log"
 from pathlib import Path
-import re
 
 def patch_file(path, fn):
     p = Path(path)
@@ -98,11 +98,6 @@ def patch_edit_center(text):
         '    const nextValue = field === "national_short_address" ? value.replace(/[^A-Za-z0-9]/g, "").slice(0, 8).toUpperCase() : field === "floor" ? numericOnly(value) : value;'
     )
     text = text.replace(
-        '{!relationKey && !isBoolean && optionList.length === 0 ? (',
-        '{!relationKey && !isBoolean && optionList.length === 0 ? ('
-    )
-    # Older versions had boolean TextInput because !isBoolean was missing; normalize any old condition.
-    text = text.replace(
         '{!relationKey && optionList.length === 0 ? (',
         '{!relationKey && !isBoolean && optionList.length === 0 ? ('
     )
@@ -143,6 +138,7 @@ patch_file('src/lib/arabicDisplay.ts', patch_arabic)
 PY
 
 rm -rf .expo .expo-shared .metro-cache node_modules/.cache || true
+mkdir -p .expo/types
 rm -rf "$CACHE_DIR"/expo "$CACHE_DIR"/metro "$CACHE_DIR"/react-native "$CACHE_DIR"/metro-* "$CACHE_DIR"/haste-map-* || true
 
 if command -v lsof >/dev/null 2>&1; then
@@ -152,14 +148,14 @@ fi
 pkill -f "expo start.*--port $PORT|node.*$PORT" 2>/dev/null || true
 sleep 2
 
-setsid bash -lc "cd '$APP_DIR' && exec env BROWSER=none EXPO_NO_TELEMETRY=1 EXPO_PUBLIC_API_BASE_URL='$API_BASE_URL' EXPO_PUBLIC_API_URL='$API_BASE_URL' EXPO_PUBLIC_DEPLOY_STAMP='$DEPLOY_STAMP' REACT_NATIVE_PACKAGER_HOSTNAME='$HOSTNAME' XDG_CACHE_HOME='$CACHE_DIR' TMPDIR='$TMP_DIR' TMP='$TMP_DIR' TEMP='$TMP_DIR' npx expo start --clear --go --host lan --port '$PORT'" </dev/null >> "$LOG_FILE" 2>&1 &
+setsid bash -lc "cd '$APP_DIR' && exec env BROWSER=none EXPO_NO_TELEMETRY=1 EXPO_PUBLIC_API_BASE_URL='$API_BASE_URL' EXPO_PUBLIC_API_URL='$API_BASE_URL' EXPO_PUBLIC_DEPLOY_STAMP='$DEPLOY_STAMP' REACT_NATIVE_PACKAGER_HOSTNAME='$HOSTNAME' XDG_CACHE_HOME='$CACHE_DIR' TMPDIR='$TMP_DIR' TMP='$TMP_DIR' TEMP='$TMP_DIR' npx expo start --clear --dev-client --host lan --port '$PORT'" </dev/null >> "$LOG_FILE" 2>&1 &
 EXPO_PID="$!"
 echo "$EXPO_PID" > /home/pmsa/apps/my-rentals-expo.pid
 echo "STARTED_PID=$EXPO_PID" >> "$LOG_FILE"
 
 for i in $(seq 1 30); do
   if command -v lsof >/dev/null 2>&1 && lsof -iTCP:"$PORT" -sTCP:LISTEN >/dev/null 2>&1; then
-    echo "Expo is listening on port $PORT" >> "$LOG_FILE"
+    echo "Expo development client is listening on port $PORT" >> "$LOG_FILE"
     tail -n 120 "$LOG_FILE" || true
     exit 0
   fi
