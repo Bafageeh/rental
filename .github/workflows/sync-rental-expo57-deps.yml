@@ -49,7 +49,12 @@ jobs:
             @react-navigation/bottom-tabs \
             @react-navigation/elements \
             @react-navigation/native
-          npx expo-doctor || true
+          # Flatten compatible native modules so Expo Go loads a single copy.
+          npm dedupe --no-audit --no-fund
+          echo '--- react-native-screens tree ---'
+          npm ls react-native-screens --all
+          # Native-module duplication is a deployment blocker, not a warning.
+          npx expo-doctor
 
       - name: Commit aligned dependency files
         run: |
