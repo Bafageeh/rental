@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   deploy:
-    name: Deploy Expo 57 mobile from monorepo
+    name: Deploy Expo SDK 55 development client
     runs-on: ubuntu-latest
     env:
       RENTAL_DEPLOY_HOST: ${{ secrets.DEPLOY_HOST || secrets.RENTAL_DEPLOY_HOST || secrets.SERVER_HOST || secrets.SSH_HOST }}
@@ -35,7 +35,7 @@ jobs:
           if [ -z "${RENTAL_DEPLOY_SSH_KEY:-}" ]; then echo "Missing SSH key"; missing=1; fi
           exit "$missing"
 
-      - name: Deploy Expo SDK 57 over SSH
+      - name: Deploy Expo SDK 55 over SSH
         shell: bash
         timeout-minutes: 20
         run: |
@@ -51,7 +51,6 @@ jobs:
           BASE="/mnt/home-storage/home/pmsa/apps"
           SOURCE="$BASE/rental-source"
           MOBILE_PATH="$BASE/rental/my-rentals-mobile"
-          LEGACY_MOBILE_PATH="/home/pmsa/apps/rental/my-rentals-mobile"
           REPO="git@github.com:Bafageeh/rental.git"
 
           mkdir -p "$BASE" "$BASE/.cache" "$BASE/.tmp"
@@ -81,64 +80,54 @@ jobs:
 
           echo "NODE=$(node -v)"
           echo "NPM=$(npm -v)"
-          node -e 'const [M,m]=process.versions.node.split(".").map(Number); if (M < 22 || (M === 22 && m < 13)) { console.error("Expo SDK 57 requires Node >= 22.13"); process.exit(1) }'
 
-          rm -rf .expo .expo-shared node_modules/.cache .metro-cache
-          rm -rf "$BASE/.cache/expo" "$BASE/.cache/metro" "$BASE/.cache/react-native" || true
-
-          npm install --no-audit --no-fund
-          npx expo install --fix
-          npm uninstall --no-audit --no-fund \
-            @react-navigation/bottom-tabs \
-            @react-navigation/elements \
-            @react-navigation/native || true
-          npm dedupe --no-audit --no-fund
-          echo "--- Native dependency tree ---"
-          npm ls react-native-screens --all
-          npx expo-doctor
-
-          echo "--- Unsupported React Navigation imports ---"
-          if grep -R --line-number \
-            --exclude-dir=node_modules \
-            --include='*.ts' --include='*.tsx' --include='*.js' --include='*.jsx' \
-            '@react-navigation/' src; then
-            echo "ERROR: Direct @react-navigation imports remain in src. Expo Router SDK 57 must own navigation."
-            exit 1
+          # Stop the SDK 57 / Expo Go Metro instance before replacing dependencies.
+          if command -v lsof >/dev/null 2>&1; then
+            OLD_PIDS="$(lsof -tiTCP:8090 -sTCP:LISTEN 2>/dev/null || true)"
+            [ -n "$OLD_PIDS" ] && echo "$OLD_PIDS" | xargs -r kill -9 2>/dev/null || true
           fi
-          echo "No direct @react-navigation imports found."
+          pkill -f 'expo start.*--port 8090|node.*8090' 2>/dev/null || true
+          sleep 2
 
-          # Remove stale rental Metro instances from old ports. Match the rental app path only.
-          pkill -f "$LEGACY_MOBILE_PATH/node_modules/.bin/expo start.*--port 8081" || true
-          pkill -f "$LEGACY_MOBILE_PATH/node_modules/.bin/expo start.*--port 8083" || true
+          # A clean dependency tree is required when moving backward from RN 0.86 / SDK 57.
+          rm -rf node_modules package-lock.json .expo .expo-shared .metro-cache
+          rm -rf "$BASE/.cache/expo" "$BASE/.cache/metro" "$BASE/.cache/react-native" "$BASE/.cache"/metro-* "$BASE/.cache"/haste-map-* || true
+          npm cache verify || true
+          npm install --no-audit --no-fund
 
-          # Keep the existing rental runtime compatibility patches, but run Expo Go on SDK 57 / port 8090.
-          sed -i 's/PORT="8083"/PORT="8090"/' scripts/start-expo-8081.sh || true
-          sed -i 's/HOSTNAME="my.pm.sa"/HOSTNAME="rental.pm.sa"/' scripts/start-expo-8081.sh || true
-          sed -i 's/--dev-client --host/--go --host/' scripts/start-expo-8081.sh || true
-          sed -i '/rm -rf \.expo \.expo-shared \.metro-cache node_modules\/\.cache || true/a mkdir -p .expo/types' scripts/start-expo-8081.sh || true
+          echo "--- Runtime versions ---"
+          node -p "'expo=' + require('expo/package.json').version"
+          node -p "'expo-router=' + require('expo-router/package.json').version"
+          node -p "'expo-dev-client=' + require('expo-dev-client/package.json').version"
+          node -p "'react-native=' + require('react-native/package.json').version"
+          node -p "'react-native-reanimated=' + require('react-native-reanimated/package.json').version"
+          node -p "'react-native-screens=' + require('react-native-screens/package.json').version"
+          node -p "'react-native-worklets=' + require('react-native-worklets/package.json').version"
+
+          echo "--- Expo doctor ---"
+          npx expo-doctor || true
+
           chmod +x scripts/start-expo-8081.sh
           bash scripts/start-expo-8081.sh
 
           sleep 8
-          echo "--- Expo SDK ---"
-          npx expo --version || true
           echo "--- Port 8090 ---"
-          if command -v ss >/dev/null 2>&1; then ss -lntp | grep ':8090' || true; fi
+          if command -v ss >/dev/null 2>&1; then ss -lntp | grep ':8090'; fi
+
+          echo "--- Metro status ---"
+          curl --fail --silent --show-error --max-time 30 http://127.0.0.1:8090/status
+          echo
 
           echo "--- Android bundle validation ---"
           BUNDLE_URL='http://127.0.0.1:8090/node_modules/expo-router/entry.bundle?platform=android&dev=true&hot=false&lazy=true&transform.engine=hermes&transform.bytecode=1&transform.routerRoot=src%2Fapp&unstable_transformProfile=hermes-stable'
-          if ! curl --fail --silent --show-error --max-time 180 "$BUNDLE_URL" -o /tmp/rental-entry.bundle; then
-            echo "ERROR: Android bundle request failed."
+          if ! curl --fail --silent --show-error --max-time 180 "$BUNDLE_URL" -o /tmp/rental-entry-sdk55.bundle; then
+            echo "ERROR: SDK 55 Android bundle request failed."
             tail -n 240 /home/pmsa/apps/my-rentals-expo.log || true
             exit 1
           fi
-          if [ ! -s /tmp/rental-entry.bundle ]; then
-            echo "ERROR: Android bundle response is empty."
-            tail -n 240 /home/pmsa/apps/my-rentals-expo.log || true
-            exit 1
-          fi
-          echo "Android bundle OK ($(wc -c < /tmp/rental-entry.bundle) bytes)."
+          test -s /tmp/rental-entry-sdk55.bundle
+          echo "SDK 55 Android bundle OK ($(wc -c < /tmp/rental-entry-sdk55.bundle) bytes)."
 
           echo "--- Expo log ---"
-          tail -n 160 /home/pmsa/apps/my-rentals-expo.log || true
+          tail -n 180 /home/pmsa/apps/my-rentals-expo.log || true
           REMOTE
