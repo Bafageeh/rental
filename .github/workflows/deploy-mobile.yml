@@ -81,7 +81,6 @@ jobs:
           echo "NODE=$(node -v)"
           echo "NPM=$(npm -v)"
 
-          # Stop the SDK 57 / Expo Go Metro instance before replacing dependencies.
           if command -v lsof >/dev/null 2>&1; then
             OLD_PIDS="$(lsof -tiTCP:8090 -sTCP:LISTEN 2>/dev/null || true)"
             [ -n "$OLD_PIDS" ] && echo "$OLD_PIDS" | xargs -r kill -9 2>/dev/null || true
@@ -89,11 +88,11 @@ jobs:
           pkill -f 'expo start.*--port 8090|node.*8090' 2>/dev/null || true
           sleep 2
 
-          # A clean dependency tree is required when moving backward from RN 0.86 / SDK 57.
           rm -rf node_modules package-lock.json .expo .expo-shared .metro-cache
           rm -rf "$BASE/.cache/expo" "$BASE/.cache/metro" "$BASE/.cache/react-native" "$BASE/.cache"/metro-* "$BASE/.cache"/haste-map-* || true
           npm cache verify || true
           npm install --no-audit --no-fund
+          npm dedupe --no-audit --no-fund
 
           echo "--- Runtime versions ---"
           node -p "'expo=' + require('expo/package.json').version"
@@ -103,6 +102,9 @@ jobs:
           node -p "'react-native-reanimated=' + require('react-native-reanimated/package.json').version"
           node -p "'react-native-screens=' + require('react-native-screens/package.json').version"
           node -p "'react-native-worklets=' + require('react-native-worklets/package.json').version"
+
+          echo "--- Duplicate-sensitive dependency tree ---"
+          npm ls expo-constants @expo/log-box --all || true
 
           echo "--- Expo doctor ---"
           npx expo-doctor || true
