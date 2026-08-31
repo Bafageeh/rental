@@ -54,9 +54,7 @@
     "typescript": "~6.0.3"
   },
   "overrides": {
-    "expo-router": {
-      "react-native-screens": "4.26.2"
-    }
+    "react-native-screens": "$react-native-screens"
   },
   "engines": {
     "node": ">=22.13.0"
