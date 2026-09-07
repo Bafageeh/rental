@@ -70,3 +70,8 @@ $overdueFormulaRoute = __DIR__ . '/117_contract_overdue_formula.php';
 if (is_file($overdueFormulaRoute)) {
     require_once $overdueFormulaRoute;
 }
+
+$unitContractExitFollowupsRoute = __DIR__ . '/143_unit_contract_exit_followups.php';
+if (is_file($unitContractExitFollowupsRoute)) {
+    require_once $unitContractExitFollowupsRoute;
+}
