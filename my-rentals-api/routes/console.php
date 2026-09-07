@@ -20,3 +20,13 @@ Schedule::command('scheduled-messages:run-due')
     ->timezone('Asia/Riyadh')
     ->withoutOverlapping()
     ->onOneServer();
+
+// بعد انتهاء العقد وعدم وجود عقد نشط: سؤال يومي الساعة 9 صباحًا حتى تتم الإجابة.
+Schedule::call(function () {
+    \App\Support\UnitContractExitFollowups::sendDailyReminders();
+})
+    ->name('unit-contract-exit-followups-9am')
+    ->dailyAt('09:00')
+    ->timezone('Asia/Riyadh')
+    ->withoutOverlapping()
+    ->onOneServer();
