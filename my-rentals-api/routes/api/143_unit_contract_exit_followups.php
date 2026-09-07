@@ -5,7 +5,6 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
-use RuntimeException;
 
 if (is_file(__DIR__ . '/130_manager_data_scope.php')) require_once __DIR__ . '/130_manager_data_scope.php';
 
@@ -87,7 +86,7 @@ Route::post('/units/{unit}/contract-exit-decision', function (Request $request, 
             (int) ($request->user()?->id ?? 0),
             isset($data['contract_id']) ? (int) $data['contract_id'] : null,
         );
-    } catch (RuntimeException $e) {
+    } catch (\RuntimeException $e) {
         return response()->json(['status' => 'error', 'message' => $e->getMessage()], 409);
     }
 
