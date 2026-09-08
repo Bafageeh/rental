@@ -1,7 +1,7 @@
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { router, useFocusEffect, useNavigation } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, BackHandler, RefreshControl, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, BackHandler, RefreshControl, SafeAreaView, ScrollView, StyleSheet, Text, View } from "react-native";
 import { apiGet } from "../lib/api";
 import ContractPaymentCard from "./ContractPaymentCard";
 
@@ -307,16 +307,6 @@ export default function ContractDetailsScreen({ id }: { id: string | number }) {
     };
   }, [forcedUnitRoute, navigation]);
 
-  function openEdit() {
-    const unitId = contract?.unit?.id;
-    router.push({ pathname: "/contract-edit/[id]", params: { id: String(id), return_to: unitId ? `/unit/${unitId}` : `/contract/${id}` } } as never);
-  }
-
-  function deleteContract() {
-    const unitId = contract?.unit?.id;
-    router.push(`/edit-delete-center?resource=contracts&id=${id}${unitId ? `&return_to=${encodeURIComponent(`/unit/${unitId}`)}` : ""}` as never);
-  }
-
   const relatedPayments = (data?.sections || []).flatMap((section) => section.items || []).filter(isPayment);
   const payments = apiPayments.length > 0 ? apiPayments : relatedPayments;
   const tenantName = display(contract?.tenant?.name, "المستأجر غير محدد");
@@ -331,15 +321,33 @@ export default function ContractDetailsScreen({ id }: { id: string | number }) {
     const paid = payments.filter((payment) => paymentStatusLabel(payment.status, payment.badge) === "paid").length;
     const overdue = payments.filter((payment) => paymentStatusLabel(payment.status, payment.badge) === "overdue").length;
     const due = payments.filter((payment) => paymentStatusLabel(payment.status, payment.badge) === "due").length;
-    const totalAmount = payments.reduce((sum, payment) => sum + numberValue(payment.amount), 0);
+    const paymentTotalAmount = payments.reduce((sum, payment) => sum + numberValue(payment.amount), 0);
+    const overdueAmount = payments
+      .filter((payment) => paymentStatusLabel(payment.status, payment.badge) === "overdue")
+      .reduce((sum, payment) => sum + numberValue(requiredAmountForDisplay(payment)), 0);
     const paidAmount = hasText(contract?.paid_total_amount)
       ? numberValue(contract?.paid_total_amount)
       : payments.reduce((sum, payment) => sum + paidAmountForSummary(payment), 0);
+    const totalAmount = paymentTotalAmount || numberValue(contract?.total_contract_value || contract?.rent_amount);
+    const remainingAmount = Math.max(totalAmount - paidAmount, 0);
     const nextPayment = payments
       .filter((payment) => paymentStatusLabel(payment.status, payment.badge) !== "paid")
       .sort((a, b) => String(a.due_date || "9999-99-99").localeCompare(String(b.due_date || "9999-99-99")))[0];
-    return { paid, overdue, due, totalAmount, paidAmount, nextPayment };
-  }, [payments, contract?.paid_total_amount]);
+    return { paid, overdue, due, totalAmount, paidAmount, overdueAmount, remainingAmount, nextPayment };
+  }, [payments, contract?.paid_total_amount, contract?.total_contract_value, contract?.rent_amount]);
+
+  const timelinePayments = useMemo(() => (
+    [...payments].sort((a, b) => {
+      const dateCompare = String(a.due_date || "9999-99-99").localeCompare(String(b.due_date || "9999-99-99"));
+      return dateCompare || Number(a.id || 0) - Number(b.id || 0);
+    })
+  ), [payments]);
+
+  const overdueTimelinePayments = useMemo(() => (
+    timelinePayments
+      .map((payment, index) => ({ payment, installmentNumber: index + 1 }))
+      .filter(({ payment }) => paymentStatusLabel(payment.status, payment.badge) === "overdue")
+  ), [timelinePayments]);
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -347,14 +355,6 @@ export default function ContractDetailsScreen({ id }: { id: string | number }) {
         <View style={styles.hero}>
           <View style={styles.heroGlow} />
           <View style={styles.heroTopRow}>
-            <View style={styles.heroActionsBox}>
-              <TouchableOpacity style={[styles.actionCircle, styles.deleteCircle]} onPress={deleteContract} activeOpacity={0.86}>
-                <Text style={styles.actionIconText}>🗑️</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.actionCircle, styles.editCircle]} onPress={openEdit} activeOpacity={0.86}>
-                <Text style={styles.actionIconText}>✏️</Text>
-              </TouchableOpacity>
-            </View>
             <View style={styles.heroTextBox}>
               <View style={styles.tenantRow}>
                 <Text style={styles.tenantName}>{tenantName}</Text>
@@ -428,6 +428,108 @@ export default function ContractDetailsScreen({ id }: { id: string | number }) {
           </View>
         </View>
 
+        {timelinePayments.length > 0 ? (
+          <View style={styles.paymentTimelineCard}>
+            <View style={styles.paymentTimelineHeader}>
+              <View style={styles.paymentTimelinePaidBadge}>
+                <Text style={styles.paymentTimelinePaidBadgeText}>
+                  {paymentSummary.paid.toLocaleString("ar-SA")} / {timelinePayments.length.toLocaleString("ar-SA")} مدفوعة
+                </Text>
+              </View>
+              <View style={styles.paymentTimelineTitleBox}>
+                <Text style={styles.paymentTimelineTitle}>الخط الزمني للدفع</Text>
+                <Text style={styles.paymentTimelineSubtitle}>ملخص حالة الأقساط والمبالغ بشكل سريع وواضح</Text>
+              </View>
+            </View>
+
+            <View style={styles.paymentTimelineAmounts}>
+              <View style={styles.paymentTimelineAmountItem}>
+                <Text style={styles.paymentTimelineAmountLabel}>المسدّد</Text>
+                <Text style={styles.paymentTimelineAmountValue} numberOfLines={1} adjustsFontSizeToFit>{money(paymentSummary.paidAmount)}</Text>
+              </View>
+              <View style={styles.paymentTimelineAmountDivider} />
+              <View style={styles.paymentTimelineAmountItem}>
+                <Text style={styles.paymentTimelineAmountLabel}>المتبقي</Text>
+                <Text style={styles.paymentTimelineAmountValue} numberOfLines={1} adjustsFontSizeToFit>{money(paymentSummary.remainingAmount)}</Text>
+              </View>
+              <View style={styles.paymentTimelineAmountDivider} />
+              <View style={styles.paymentTimelineAmountItem}>
+                <Text style={styles.paymentTimelineAmountLabel}>الإجمالي</Text>
+                <Text style={styles.paymentTimelineAmountValue} numberOfLines={1} adjustsFontSizeToFit>{money(paymentSummary.totalAmount)}</Text>
+              </View>
+            </View>
+
+            <View style={styles.paymentRail}>
+              <View style={styles.paymentRailBase} />
+              {paymentSummary.paid > 0 ? (
+                <View style={[styles.paymentRailPaid, { width: `${Math.min(100, (paymentSummary.paid / Math.max(timelinePayments.length, 1)) * 100)}%` as any }]} />
+              ) : null}
+              <View style={styles.paymentRailMarkers}>
+                {timelinePayments.map((payment, index) => {
+                  const status = paymentStatusLabel(payment.status, payment.badge);
+                  const isPaid = status === "paid";
+                  const isOverdue = status === "overdue";
+                  const isDue = status === "due";
+                  const dense = timelinePayments.length > 14;
+                  return (
+                    <View key={`timeline-${payment.id}-${index}`} style={styles.paymentRailMarkerCell}>
+                      <View style={[
+                        styles.paymentRailDot,
+                        dense ? styles.paymentRailDotDense : null,
+                        isPaid ? styles.paymentRailDotPaid : isOverdue ? styles.paymentRailDotOverdue : isDue ? styles.paymentRailDotDue : styles.paymentRailDotUpcoming,
+                      ]}>
+                        {isOverdue ? <Text style={styles.paymentRailDotAlert}>!</Text> : !dense ? (
+                          <Text style={[styles.paymentRailDotNumber, isPaid || isDue ? styles.paymentRailDotNumberLight : null]}>{index + 1}</Text>
+                        ) : null}
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            </View>
+
+            <View style={styles.paymentTimelineEnds}>
+              <Text style={styles.paymentTimelineEndText}>القسط {timelinePayments.length.toLocaleString("ar-SA")}</Text>
+              <Text style={styles.paymentTimelineProgressText}>{paymentSummary.paid.toLocaleString("ar-SA")} من {timelinePayments.length.toLocaleString("ar-SA")} مدفوعة</Text>
+              <Text style={styles.paymentTimelineEndText}>القسط ١</Text>
+            </View>
+
+            <View style={styles.paymentTimelineLegend}>
+              <View style={styles.paymentLegendItem}><View style={[styles.paymentLegendDot, styles.paymentLegendPaid]} /><Text style={styles.paymentLegendText}>مدفوعة</Text></View>
+              <View style={styles.paymentLegendItem}><View style={[styles.paymentLegendDot, styles.paymentLegendOverdue]} /><Text style={styles.paymentLegendText}>متأخرة</Text></View>
+              <View style={styles.paymentLegendItem}><View style={[styles.paymentLegendDot, styles.paymentLegendDue]} /><Text style={styles.paymentLegendText}>مستحقة</Text></View>
+              <View style={styles.paymentLegendItem}><View style={[styles.paymentLegendDot, styles.paymentLegendUpcoming]} /><Text style={styles.paymentLegendText}>قادمة</Text></View>
+            </View>
+
+            {overdueTimelinePayments.length > 0 ? (
+              <View style={styles.overdueTimelineBox}>
+                <View style={styles.overdueTimelineTitleRow}>
+                  <Text style={styles.overdueTimelineTitle}>الدفعات المتأخرة المعلّمة بالأحمر على الخط</Text>
+                  <Ionicons name="alert-circle" size={18} color="#BE123C" />
+                </View>
+                {overdueTimelinePayments.map(({ payment, installmentNumber }) => (
+                  <View key={`overdue-${payment.id}-${installmentNumber}`} style={styles.overdueTimelineItem}>
+                    <View style={styles.overdueTimelineNumber}><Text style={styles.overdueTimelineNumberText}>{installmentNumber.toLocaleString("ar-SA")}</Text></View>
+                    <View style={styles.overdueTimelineTextBox}>
+                      <Text style={styles.overdueTimelineItemTitle}>{payment.title || `القسط ${installmentNumber}`}</Text>
+                      <Text style={styles.overdueTimelineItemMeta}>{prettyDate(payment.due_date)} • {money(requiredAmountForDisplay(payment))}</Text>
+                    </View>
+                  </View>
+                ))}
+                <View style={styles.overdueTimelineTotalRow}>
+                  <Text style={styles.overdueTimelineTotalLabel}>إجمالي المتأخر</Text>
+                  <Text style={styles.overdueTimelineTotalValue}>{money(paymentSummary.overdueAmount)}</Text>
+                </View>
+              </View>
+            ) : (
+              <View style={styles.timelineAllPaidNotice}>
+                <Ionicons name="checkmark-circle" size={18} color="#047857" />
+                <Text style={styles.timelineAllPaidText}>لا توجد دفعات متأخرة حاليًا</Text>
+              </View>
+            )}
+          </View>
+        ) : null}
+
         {paymentSummary.nextPayment ? (
           <View style={styles.nextPaymentCard}>
             <View style={styles.nextPaymentIcon}><Ionicons name="calendar-outline" size={21} color="#0F766E" /></View>
@@ -474,11 +576,6 @@ const styles = StyleSheet.create({
   hero: { backgroundColor: "#111827", borderRadius: 30, padding: 15, marginBottom: 12, overflow: "hidden", shadowColor: "#000", shadowOpacity: 0.12, shadowRadius: 16, elevation: 3 },
   heroGlow: { position: "absolute", left: -34, top: -40, width: 130, height: 130, borderRadius: 65, backgroundColor: "rgba(15,118,110,0.32)" },
   heroTopRow: { flexDirection: "row", alignItems: "center", gap: 10 },
-  heroActionsBox: { minWidth: 96, flexDirection: "row", gap: 8, alignItems: "center", justifyContent: "flex-start" },
-  actionCircle: { width: 42, height: 42, borderRadius: 21, alignItems: "center", justifyContent: "center" },
-  editCircle: { backgroundColor: "#0F9B6F" },
-  deleteCircle: { backgroundColor: "#dc2626" },
-  actionIconText: { fontSize: 19 },
   heroTextBox: { flex: 1, alignItems: "flex-end" },
   heroIconColumn: { width: 66, alignItems: "center", gap: 7 },
   heroIconBox: { width: 55, height: 55, borderRadius: 21, backgroundColor: "#ECFDF5", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#A7F3D0" },
@@ -511,6 +608,57 @@ const styles = StyleSheet.create({
   moneyDivider: { width: 1, height: 42, backgroundColor: "#E5E7EB" },
   moneyLabel: { color: "#64748B", fontWeight: "900", fontSize: 12 },
   moneyValue: { color: "#0F766E", fontWeight: "900", marginTop: 5, fontSize: 16 },
+  paymentTimelineCard: { backgroundColor: "#fff", borderRadius: 24, padding: 14, marginBottom: 10, borderWidth: 1, borderColor: "#DCE7E5" },
+  paymentTimelineHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
+  paymentTimelineTitleBox: { flex: 1, alignItems: "flex-end" },
+  paymentTimelineTitle: { color: "#0F172A", fontSize: 17, fontWeight: "900", textAlign: "right" },
+  paymentTimelineSubtitle: { color: "#64748B", fontSize: 10.5, fontWeight: "700", textAlign: "right", marginTop: 2 },
+  paymentTimelinePaidBadge: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6, backgroundColor: "#ECFDF5", borderWidth: 1, borderColor: "#A7F3D0" },
+  paymentTimelinePaidBadgeText: { color: "#047857", fontSize: 11, fontWeight: "900" },
+  paymentTimelineAmounts: { marginTop: 12, flexDirection: "row-reverse", borderRadius: 17, backgroundColor: "#F8FAFC", paddingVertical: 9, paddingHorizontal: 4, alignItems: "center" },
+  paymentTimelineAmountItem: { flex: 1, alignItems: "center", minWidth: 0 },
+  paymentTimelineAmountDivider: { width: 1, height: 30, backgroundColor: "#E2E8F0" },
+  paymentTimelineAmountLabel: { color: "#64748B", fontSize: 9.5, fontWeight: "800" },
+  paymentTimelineAmountValue: { color: "#0F766E", fontSize: 12.5, fontWeight: "900", marginTop: 2, maxWidth: "96%" },
+  paymentRail: { height: 38, marginTop: 14, marginHorizontal: 5, justifyContent: "center" },
+  paymentRailBase: { position: "absolute", left: 0, right: 0, top: 18, height: 4, borderRadius: 999, backgroundColor: "#E2E8F0" },
+  paymentRailPaid: { position: "absolute", right: 0, top: 18, height: 4, borderRadius: 999, backgroundColor: "#14B8A6" },
+  paymentRailMarkers: { position: "absolute", left: -7, right: -7, top: 6, height: 28, flexDirection: "row-reverse", alignItems: "center" },
+  paymentRailMarkerCell: { flex: 1, alignItems: "center", justifyContent: "center" },
+  paymentRailDot: { width: 22, height: 22, borderRadius: 11, alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: "#fff", shadowColor: "#0F172A", shadowOpacity: 0.08, shadowRadius: 2, elevation: 1 },
+  paymentRailDotDense: { width: 12, height: 12, borderRadius: 6, borderWidth: 1.5 },
+  paymentRailDotPaid: { backgroundColor: "#14B8A6" },
+  paymentRailDotOverdue: { backgroundColor: "#E11D48" },
+  paymentRailDotDue: { backgroundColor: "#F59E0B" },
+  paymentRailDotUpcoming: { backgroundColor: "#CBD5E1" },
+  paymentRailDotNumber: { color: "#334155", fontSize: 8, fontWeight: "900" },
+  paymentRailDotNumberLight: { color: "#fff" },
+  paymentRailDotAlert: { color: "#fff", fontSize: 12, lineHeight: 14, fontWeight: "900" },
+  paymentTimelineEnds: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: -1 },
+  paymentTimelineEndText: { color: "#94A3B8", fontSize: 9, fontWeight: "800" },
+  paymentTimelineProgressText: { color: "#0F766E", fontSize: 10.5, fontWeight: "900" },
+  paymentTimelineLegend: { flexDirection: "row-reverse", flexWrap: "wrap", justifyContent: "center", gap: 10, marginTop: 11 },
+  paymentLegendItem: { flexDirection: "row-reverse", alignItems: "center", gap: 4 },
+  paymentLegendDot: { width: 8, height: 8, borderRadius: 4 },
+  paymentLegendPaid: { backgroundColor: "#14B8A6" },
+  paymentLegendOverdue: { backgroundColor: "#E11D48" },
+  paymentLegendDue: { backgroundColor: "#F59E0B" },
+  paymentLegendUpcoming: { backgroundColor: "#CBD5E1" },
+  paymentLegendText: { color: "#64748B", fontSize: 9.5, fontWeight: "800" },
+  overdueTimelineBox: { marginTop: 12, borderRadius: 17, padding: 10, backgroundColor: "#FFF1F2", borderWidth: 1, borderColor: "#FECDD3" },
+  overdueTimelineTitleRow: { flexDirection: "row-reverse", alignItems: "center", justifyContent: "flex-start", gap: 6, marginBottom: 5 },
+  overdueTimelineTitle: { color: "#9F1239", fontSize: 11.5, fontWeight: "900", textAlign: "right" },
+  overdueTimelineItem: { flexDirection: "row-reverse", alignItems: "center", gap: 8, paddingVertical: 6, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: "#FECDD3" },
+  overdueTimelineNumber: { width: 27, height: 27, borderRadius: 14, backgroundColor: "#E11D48", alignItems: "center", justifyContent: "center" },
+  overdueTimelineNumberText: { color: "#fff", fontSize: 10, fontWeight: "900" },
+  overdueTimelineTextBox: { flex: 1, alignItems: "flex-end" },
+  overdueTimelineItemTitle: { color: "#881337", fontSize: 11, fontWeight: "900", textAlign: "right" },
+  overdueTimelineItemMeta: { color: "#BE123C", fontSize: 10, fontWeight: "800", textAlign: "right", marginTop: 1 },
+  overdueTimelineTotalRow: { flexDirection: "row-reverse", alignItems: "center", justifyContent: "space-between", paddingTop: 7 },
+  overdueTimelineTotalLabel: { color: "#9F1239", fontSize: 10.5, fontWeight: "900" },
+  overdueTimelineTotalValue: { color: "#BE123C", fontSize: 12, fontWeight: "900" },
+  timelineAllPaidNotice: { marginTop: 12, borderRadius: 15, paddingVertical: 9, paddingHorizontal: 10, backgroundColor: "#ECFDF5", flexDirection: "row-reverse", alignItems: "center", justifyContent: "center", gap: 6 },
+  timelineAllPaidText: { color: "#047857", fontSize: 10.5, fontWeight: "900" },
   nextPaymentCard: { backgroundColor: "#F0FDFA", borderRadius: 22, padding: 12, marginBottom: 10, borderWidth: 1, borderColor: "#CCFBF1", flexDirection: "row-reverse", alignItems: "center", gap: 10 },
   nextPaymentIcon: { width: 42, height: 42, borderRadius: 16, backgroundColor: "#fff", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#A7F3D0" },
   nextPaymentTextBox: { flex: 1, alignItems: "flex-end" },

@@ -124,8 +124,19 @@ export function HeaderBackAction() {
 export function HeaderQuickActions() {
   const { loggedIn } = useAuth();
   const pathname = usePathname();
+  const params = useLocalSearchParams();
   const screenCode = useScreenCode();
   const [chatUnreadCount, setChatUnreadCount] = useState(0);
+  const isContractDetails = /^\/contract\/[^/]+$/.test(pathname || "");
+  const contractId = isContractDetails ? firstParam((params as Record<string, unknown>).id).trim() : "";
+
+  function contractReturnTo() {
+    const unitId = firstParam((params as Record<string, unknown>).from_unit_id).trim()
+      || firstParam((params as Record<string, unknown>).unit_id).trim();
+    if (unitId) return `/unit/${unitId}`;
+    const forcedRoute = String((globalThis as any).__RENTAL_FORCED_BACK_ROUTE__?.route || "").trim();
+    return forcedRoute || (contractId ? `/contract/${contractId}` : "/contracts");
+  }
 
   const loadChatUnreadCount = useCallback(async () => {
     if (!loggedIn) {
@@ -154,9 +165,6 @@ export function HeaderQuickActions() {
 
   return (
     <View style={styles.headerActionsLeft}>
-      <View style={styles.screenCodeBadge} pointerEvents="none">
-        <Text style={styles.screenCodeText}>#{screenCode}</Text>
-      </View>
       <TouchableOpacity
         style={styles.headerActionButton}
         onPress={() => router.push("/chat-threads" as any)}
@@ -172,6 +180,35 @@ export function HeaderQuickActions() {
           </View>
         ) : null}
       </TouchableOpacity>
+
+      {isContractDetails && contractId ? (
+        <>
+          <TouchableOpacity
+            style={[styles.headerActionButton, styles.contractDeleteButton]}
+            onPress={() => router.push(`/edit-delete-center?resource=contracts&id=${contractId}&return_to=${encodeURIComponent(contractReturnTo())}` as never)}
+            activeOpacity={0.75}
+            accessibilityRole="button"
+            accessibilityLabel="حذف العقد"
+            hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
+          >
+            <Ionicons name="trash-outline" size={19} color="#B91C1C" />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.headerActionButton, styles.contractEditButton]}
+            onPress={() => router.push({ pathname: "/contract-edit/[id]", params: { id: contractId, return_to: contractReturnTo() } } as never)}
+            activeOpacity={0.75}
+            accessibilityRole="button"
+            accessibilityLabel="تعديل العقد"
+            hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
+          >
+            <Ionicons name="create-outline" size={20} color="#047857" />
+          </TouchableOpacity>
+        </>
+      ) : (
+        <View style={styles.screenCodeBadge} pointerEvents="none">
+          <Text style={styles.screenCodeText}>#{screenCode}</Text>
+        </View>
+      )}
     </View>
   );
 }
@@ -180,7 +217,7 @@ const styles = StyleSheet.create({
   headerActionsLeft: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: 6,
   },
   headerActionButton: {
     minWidth: 36,
@@ -192,6 +229,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.borderLight,
     paddingHorizontal: 8,
+  },
+  contractEditButton: {
+    backgroundColor: "#ECFDF5",
+    borderColor: "#A7F3D0",
+  },
+  contractDeleteButton: {
+    backgroundColor: "#FEF2F2",
+    borderColor: "#FECACA",
   },
   notificationBadge: {
     position: "absolute",
