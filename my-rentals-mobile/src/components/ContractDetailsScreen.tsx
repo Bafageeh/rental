@@ -387,22 +387,6 @@ export default function ContractDetailsScreen({ id }: { id: string | number }) {
             </View>
           </View>
 
-          <View style={styles.timelineBox}>
-            <View style={styles.timelineDateBlock}>
-              <Text style={styles.timelineLabel}>إلى</Text>
-              <Text style={styles.timelineDate}>{endDate}</Text>
-            </View>
-            <View style={styles.timelineLineWrap}>
-              <View style={styles.timelineDot} />
-              <View style={styles.timelineLine} />
-              <View style={styles.timelineDot} />
-            </View>
-            <View style={styles.timelineDateBlock}>
-              <Text style={styles.timelineLabel}>من</Text>
-              <Text style={styles.timelineDate}>{startDate}</Text>
-            </View>
-          </View>
-
           <View style={styles.heroInfoGrid}>
             <View style={styles.heroInfoCard}>
               <MaterialCommunityIcons name="home-city-outline" size={18} color="#A7F3D0" />
@@ -575,13 +559,6 @@ const styles = StyleSheet.create({
   statusActive: { backgroundColor: "#DCFCE7", color: "#166534" },
   statusEnded: { backgroundColor: "#FEE2E2", color: "#991B1B" },
   contractNumber: { color: "#CBD5E1", fontSize: 12, fontWeight: "900", textAlign: "right" },
-  timelineBox: { marginTop: 14, backgroundColor: "rgba(255,255,255,0.10)", borderRadius: 20, padding: 12, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  timelineDateBlock: { flex: 1, alignItems: "center" },
-  timelineLabel: { color: "#A7F3D0", fontWeight: "900", fontSize: 11 },
-  timelineDate: { color: "#fff", fontWeight: "900", marginTop: 4, fontSize: 13 },
-  timelineLineWrap: { width: 86, flexDirection: "row", alignItems: "center", justifyContent: "center" },
-  timelineDot: { width: 9, height: 9, borderRadius: 999, backgroundColor: "#5EEAD4" },
-  timelineLine: { flex: 1, height: 2, backgroundColor: "rgba(94,234,212,0.55)" },
   heroInfoGrid: { flexDirection: "row-reverse", gap: 8, marginTop: 10 },
   heroInfoCard: { flex: 1, backgroundColor: "rgba(255,255,255,0.08)", borderRadius: 18, padding: 10, alignItems: "center", borderWidth: 1, borderColor: "rgba(255,255,255,0.08)" },
   heroInfoLabel: { color: "#CBD5E1", fontWeight: "800", fontSize: 11, marginTop: 4 },
