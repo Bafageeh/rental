@@ -3,6 +3,8 @@ import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -199,14 +201,21 @@ export default function EditRecordScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
-      <View style={styles.header}>
+      <KeyboardAvoidingView style={styles.keyboardArea} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+        <ScrollView
+          contentContainerStyle={styles.content}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
+          automaticallyAdjustKeyboardInsets={Platform.OS === "ios"}
+        >
+          <View style={styles.header}>
         <TouchableOpacity style={styles.closeButton} onPress={() => router.back()}><Text style={styles.closeText}>إغلاق</Text></TouchableOpacity>
         <View style={styles.headerTextBox}>
           <Text style={styles.headerTitle}>{titleForResource(resource)}</Text>
           <Text style={styles.headerSubtitle}>{record?.title || ""}</Text>
         </View>
-      </View>
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+          </View>
         {loading ? <View style={styles.loadingCard}><ActivityIndicator /><Text style={styles.loadingText}>جاري تحميل البيانات...</Text></View> : null}
         {!loading && record ? (
           <>
@@ -231,20 +240,22 @@ export default function EditRecordScreen() {
             </TouchableOpacity>
           </>
         ) : null}
-      </ScrollView>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: "#F7F6F4" },
-  header: { backgroundColor: "#111827", paddingHorizontal: 16, paddingTop: 18, paddingBottom: 16, flexDirection: "row", alignItems: "center", gap: 12 },
+  keyboardArea: { flex: 1 },
+  header: { backgroundColor: "#111827", paddingHorizontal: 16, paddingTop: 16, paddingBottom: 14, flexDirection: "row", alignItems: "center", gap: 12, borderRadius: 22, marginBottom: 12 },
   closeButton: { backgroundColor: "#374151", borderRadius: 16, paddingHorizontal: 14, paddingVertical: 9 },
   closeText: { color: "#fff", fontWeight: "900" },
   headerTextBox: { flex: 1, alignItems: "flex-end" },
   headerTitle: { color: "#fff", fontSize: 24, fontWeight: "900", textAlign: "right" },
   headerSubtitle: { color: "#d1d5db", fontWeight: "800", marginTop: 4, textAlign: "right" },
-  content: { padding: 14, paddingBottom: 48 },
+  content: { padding: 14, paddingBottom: 180 },
   loadingCard: { backgroundColor: "#fff", borderRadius: 22, padding: 18, alignItems: "center" },
   loadingText: { color: "#64748b", fontWeight: "800", marginTop: 8 },
   heroCard: { backgroundColor: "#0f172a", borderRadius: 26, padding: 16, marginBottom: 14, flexDirection: "row-reverse", alignItems: "center", gap: 12 },
