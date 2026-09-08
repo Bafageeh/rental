@@ -127,8 +127,10 @@ export function HeaderQuickActions() {
   const params = useLocalSearchParams();
   const screenCode = useScreenCode();
   const [chatUnreadCount, setChatUnreadCount] = useState(0);
-  const isContractDetails = /^\/contract\/[^/]+$/.test(pathname || "");
-  const contractId = isContractDetails ? firstParam((params as Record<string, unknown>).id).trim() : "";
+  const normalizedPathname = normalizePathname(pathname);
+  const routeContractId = String(pathname || "").match(/^\/contract\/([^/]+)\/?$/)?.[1] || "";
+  const isContractDetails = screenCode === "S-014" || normalizedPathname === "/contract/:id" || /^\/contract\/(?:[^/]+|\[id\])\/?$/.test(pathname || "");
+  const contractId = firstParam((params as Record<string, unknown>).id).trim() || routeContractId;
 
   function contractReturnTo() {
     const unitId = firstParam((params as Record<string, unknown>).from_unit_id).trim()

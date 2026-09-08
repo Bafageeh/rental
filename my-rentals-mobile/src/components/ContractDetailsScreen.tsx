@@ -84,6 +84,22 @@ function paymentStatusLabel(status?: string | null, badge?: string | null) {
   return text;
 }
 
+function localDateKey() {
+  const now = new Date();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${now.getFullYear()}-${month}-${day}`;
+}
+
+function timelinePaymentStatus(payment: PaymentItem) {
+  const base = paymentStatusLabel(payment.status, payment.badge);
+  if (base === "paid" || base === "overdue") return base;
+  const dueDate = String(payment.due_date || "").slice(0, 10);
+  if (dueDate && dueDate > localDateKey()) return "upcoming";
+  if (base === "due" || dueDate) return "due";
+  return "upcoming";
+}
+
 function isActiveStatus(status?: string | null) {
   return statusLabel(status) === "نشط";
 }
@@ -401,33 +417,6 @@ export default function ContractDetailsScreen({ id }: { id: string | number }) {
           </View>
         </View>
 
-        <View style={styles.summaryGrid}>
-          <View style={styles.summaryCard}>
-            <Text style={styles.summaryValue}>{payments.length.toLocaleString("ar-SA")}</Text>
-            <Text style={styles.summaryLabel}>الدفعات</Text>
-          </View>
-          <View style={styles.summaryCard}>
-            <Text style={styles.summaryValue}>{paymentSummary.paid.toLocaleString("ar-SA")}</Text>
-            <Text style={styles.summaryLabel}>مدفوعة</Text>
-          </View>
-          <View style={[styles.summaryCard, paymentSummary.overdue > 0 ? styles.summaryDangerCard : null]}>
-            <Text style={[styles.summaryValue, paymentSummary.overdue > 0 ? styles.summaryDangerValue : null]}>{paymentSummary.overdue.toLocaleString("ar-SA")}</Text>
-            <Text style={styles.summaryLabel}>متأخرة</Text>
-          </View>
-        </View>
-
-        <View style={styles.moneyPanel}>
-          <View style={styles.moneyItem}>
-            <Text style={styles.moneyLabel}>إجمالي الدفعات</Text>
-            <Text style={styles.moneyValue}>{money(paymentSummary.totalAmount || contract?.total_contract_value || contract?.rent_amount)}</Text>
-          </View>
-          <View style={styles.moneyDivider} />
-          <View style={styles.moneyItem}>
-            <Text style={styles.moneyLabel}>المسدّد</Text>
-            <Text style={styles.moneyValue}>{money(paymentSummary.paidAmount)}</Text>
-          </View>
-        </View>
-
         {timelinePayments.length > 0 ? (
           <View style={styles.paymentTimelineCard}>
             <View style={styles.paymentTimelineHeader}>
@@ -466,7 +455,7 @@ export default function ContractDetailsScreen({ id }: { id: string | number }) {
               ) : null}
               <View style={styles.paymentRailMarkers}>
                 {timelinePayments.map((payment, index) => {
-                  const status = paymentStatusLabel(payment.status, payment.badge);
+                  const status = timelinePaymentStatus(payment);
                   const isPaid = status === "paid";
                   const isOverdue = status === "overdue";
                   const isDue = status === "due";
@@ -489,9 +478,9 @@ export default function ContractDetailsScreen({ id }: { id: string | number }) {
             </View>
 
             <View style={styles.paymentTimelineEnds}>
-              <Text style={styles.paymentTimelineEndText}>القسط {timelinePayments.length.toLocaleString("ar-SA")}</Text>
+              <Text style={styles.paymentTimelineEndText}>{endDate}</Text>
               <Text style={styles.paymentTimelineProgressText}>{paymentSummary.paid.toLocaleString("ar-SA")} من {timelinePayments.length.toLocaleString("ar-SA")} مدفوعة</Text>
-              <Text style={styles.paymentTimelineEndText}>القسط ١</Text>
+              <Text style={styles.paymentTimelineEndText}>{startDate}</Text>
             </View>
 
             <View style={styles.paymentTimelineLegend}>
