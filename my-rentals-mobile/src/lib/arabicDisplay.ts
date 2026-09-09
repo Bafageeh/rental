@@ -1,4 +1,4 @@
-export type LookupOption = { id: number; label: string; [key: string]: unknown };
+export type LookupOption = { id: string | number; label: string; [key: string]: unknown };
 export type Lookups = { owners?: LookupOption[]; properties?: LookupOption[]; units?: LookupOption[]; tenants?: LookupOption[]; contracts?: LookupOption[]; service_providers?: LookupOption[]; owner_bank_accounts?: LookupOption[]; expense_categories?: LookupOption[]; users?: LookupOption[]; [key: string]: LookupOption[] | undefined };
 
 export const fieldLabels: Record<string, string> = {

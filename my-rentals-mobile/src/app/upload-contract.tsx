@@ -325,7 +325,7 @@ export default function UploadContractScreen() {
   const paymentRows = paymentRowsFromExtracted(extracted);
   const paymentsCount = paymentRows.length;
   const currentStep = lastImportResult ? 2 : extracted ? 1 : 0;
-  const tenantNameMissing = extracted && display(tenant.name) === '-';
+  const tenantNameMissing = Boolean(extracted && display(tenant.name) === '-');
 
   return (
     <SafeAreaView style={styles.safe} edges={['bottom']}>

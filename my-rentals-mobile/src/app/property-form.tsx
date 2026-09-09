@@ -36,7 +36,13 @@ type PropertyForm = {
   notes: string;
 };
 
-const propertyTypes = [
+type PropertyTypeChoice = {
+  value: string;
+  label: string;
+  icon?: keyof typeof Ionicons.glyphMap;
+};
+
+const propertyTypes: PropertyTypeChoice[] = [
   { value: "building", label: "عمارة", icon: "business-outline" },
   { value: "apartment", label: "شقة", icon: "home-outline" },
   { value: "villa", label: "فيلا", icon: "storefront-outline" },

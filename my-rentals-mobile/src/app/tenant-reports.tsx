@@ -175,12 +175,12 @@ export default function TenantReportsScreen() {
             </View>
 
             <View style={styles.grid}>
-              <StatCard title="عدد الدفعات المتأخرة" value={String(Math.round(overdueCount)).toLocaleString('ar-SA')} subtitle="يحسب من الفرق ÷ قيمة الدفعة ويجبر للأعلى" icon="calendar-alert" tone={overdueCount > 0 ? 'danger' : 'success'} />
-              <StatCard title="المبالغ المتأخرة" value={money(overdueAmount)} subtitle="المطلوب المستحق ناقص المستلم" icon="cash-alert" tone={overdueAmount > 0 ? 'danger' : 'success'} />
+              <StatCard title="عدد الدفعات المتأخرة" value={Math.round(overdueCount).toLocaleString('ar-SA')} subtitle="يحسب من الفرق ÷ قيمة الدفعة ويجبر للأعلى" icon="calendar-alert" tone={overdueCount > 0 ? 'danger' : 'success'} />
+              <StatCard title="المبالغ المتأخرة" value={money(overdueAmount)} subtitle="المطلوب المستحق ناقص المستلم" icon="cash-clock" tone={overdueAmount > 0 ? 'danger' : 'success'} />
               <StatCard title="أقرب دفعة قادمة" value={dateText(reports.next_payment_date)} subtitle={next ? `المتبقي: ${money(next.remaining_amount ?? next.amount)}` : 'لا توجد دفعات قادمة'} icon="calendar-clock" tone="warning" />
-              <StatCard title="التذاكر المفتوحة" value={String(Math.round(openTickets)).toLocaleString('ar-SA')} subtitle="تذاكر مراسلات لم تغلق" icon="chat-alert-outline" tone={openTickets > 0 ? 'warning' : 'success'} />
+              <StatCard title="التذاكر المفتوحة" value={Math.round(openTickets).toLocaleString('ar-SA')} subtitle="تذاكر مراسلات لم تغلق" icon="chat-alert-outline" tone={openTickets > 0 ? 'warning' : 'success'} />
               <StatCard title="تاريخ انتهاء العقد" value={dateText(reports.contract_end_date)} subtitle={reports.contract_number ? `العقد: ${reports.contract_number}` : 'العقد الحالي'} icon="file-document-check-outline" tone="dark" />
-              <StatCard title="عدد العقود" value={String(Math.round(numberValue(reports.contracts_count))).toLocaleString('ar-SA')} subtitle="عقود مرتبطة بحسابك" icon="file-document-multiple-outline" />
+              <StatCard title="عدد العقود" value={Math.round(numberValue(reports.contracts_count)).toLocaleString('ar-SA')} subtitle="عقود مرتبطة بحسابك" icon="file-document-multiple-outline" />
             </View>
           </>
         ) : null}

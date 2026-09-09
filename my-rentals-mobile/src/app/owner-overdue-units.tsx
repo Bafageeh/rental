@@ -116,7 +116,7 @@ export default function OwnerOverdueUnitsScreen() {
     <SafeAreaView style={styles.safe}>
       <ScrollView contentContainerStyle={styles.container} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor="#DC2626" />}>
         <View style={styles.hero}>
-          <View style={styles.heroIcon}><MaterialCommunityIcons name="cash-alert" size={30} color="#DC2626" /></View>
+          <View style={styles.heroIcon}><MaterialCommunityIcons name="cash-clock" size={30} color="#DC2626" /></View>
           <View style={styles.heroText}>
             <Text style={styles.heroKicker}>الدفعات المتأخرة</Text>
             <Text style={styles.heroTitle}>الوحدات المتأخرة</Text>

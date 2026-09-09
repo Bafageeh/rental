@@ -174,7 +174,7 @@ export default function OwnerAssetsDashboardScreen({ id }: { id: string | number
           <QuickMetric icon="office-building-outline" label="العقارات" value={count(summary.properties_count ?? properties.length)} accent />
           <QuickMetric icon="home-city-outline" label="الوحدات" value={count(summary.units_count ?? units.length)} />
           <QuickMetric icon="file-document-check-outline" label="العقود النشطة" value={count(summary.active_contracts_count)} />
-          <QuickMetric icon="cash-alert" label="المتأخر" value={money(summary.overdue_income)} danger={asNumber(summary.overdue_income) > 0} onPress={openOverdueUnits} />
+          <QuickMetric icon="cash-clock" label="المتأخر" value={money(summary.overdue_income)} danger={asNumber(summary.overdue_income) > 0} onPress={openOverdueUnits} />
         </View>
 
         <View style={styles.tabsWrap}>

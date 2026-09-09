@@ -153,7 +153,7 @@ export default function OwnerAssetsDashboardCompactScreen({ id }: { id: string |
           <Metric icon="office-building-outline" label="العقارات" value={count(summary.properties_count ?? properties.length)} green />
           <Metric icon="home-city-outline" label="الوحدات" value={count(summary.units_count ?? units.length)} />
           <Metric icon="file-document-check-outline" label="العقود" value={count(summary.active_contracts_count)} />
-          <Metric icon="cash-alert" label="المتأخر" value={overdue > 0 ? money(overdue) : "٠ ريال"} danger={overdue > 0} onPress={overdueUnits} />
+          <Metric icon="cash-clock" label="المتأخر" value={overdue > 0 ? money(overdue) : "٠ ريال"} danger={overdue > 0} onPress={overdueUnits} />
         </View>
 
         <View style={styles.tabs}>{[{ key: "properties", label: "العقارات", icon: "office-building-outline" }, { key: "summary", label: "الملخص", icon: "chart-box-outline" }].map((t: any) => <TouchableOpacity key={t.key} style={[styles.tab, tab === t.key && styles.tabActive]} onPress={() => { setMenu(false); setTab(t.key); }}><MaterialCommunityIcons name={t.icon} size={18} color={tab === t.key ? "#0F766E" : "#6B7280"} /><Text style={[styles.tabText, tab === t.key && styles.tabTextActive]}>{t.label}</Text></TouchableOpacity>)}</View>

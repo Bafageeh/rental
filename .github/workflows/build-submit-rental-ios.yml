@@ -1,0 +1,57 @@
+name: Build and Submit Rental iOS
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/build-submit-rental-ios.yml"
+      - "my-rentals-mobile/app.json"
+      - "my-rentals-mobile/eas.json"
+      - "my-rentals-mobile/package.json"
+      - "my-rentals-mobile/package-lock.json"
+
+concurrency:
+  group: rental-ios-production
+  cancel-in-progress: false
+
+jobs:
+  build-and-submit:
+    name: Build iOS and upload to App Store Connect
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: my-rentals-mobile
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      CI: "1"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: my-rentals-mobile/package-lock.json
+
+      - name: Verify Expo token
+        run: |
+          if [ -z "${EXPO_TOKEN:-}" ]; then
+            echo "EXPO_TOKEN secret is required."
+            exit 1
+          fi
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Validate Expo project
+        run: npx expo-doctor
+
+      - name: Type-check
+        run: npx tsc --noEmit
+
+      - name: Queue production build and submission
+        run: npx eas-cli@latest build --platform ios --profile production --auto-submit --non-interactive --no-wait

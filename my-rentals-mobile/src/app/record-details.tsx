@@ -42,7 +42,7 @@ function cleanMoney(value: unknown) {
 function displayValue(resource: string | undefined, field: string, value: unknown) {
   if (field.includes("date") || field.endsWith("_at")) return cleanDate(value);
   if (field === "amount" || field === "rent_amount" || field.includes("balance")) return cleanMoney(value);
-  return translateValue(resource || "", field, value);
+  return translateValue(field, value);
 }
 
 export default function RecordDetailsScreen() {
