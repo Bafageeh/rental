@@ -30,3 +30,10 @@ Schedule::call(function () {
     ->timezone('Asia/Riyadh')
     ->withoutOverlapping()
     ->onOneServer();
+
+// Incoming alerts are attempted immediately; retry provider or network failures once a minute.
+Schedule::command('whatsapp:retry-incoming-forwards')
+    ->everyMinute()
+    ->timezone('Asia/Riyadh')
+    ->withoutOverlapping()
+    ->onOneServer();

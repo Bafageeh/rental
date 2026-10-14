@@ -19,6 +19,8 @@ return Application::configure(basePath: dirname(__DIR__))
         },
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        $middleware->prepend(\App\Http\Middleware\ForwardIncomingWhatsAppMessages::class);
+
         $middleware->alias([
             'auth.api'     => \App\Http\Middleware\AuthenticateApi::class,
             'owner.scope'  => \App\Http\Middleware\OwnerScope::class,
