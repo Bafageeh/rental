@@ -1,8 +1,7 @@
 #!/bin/sh
 set -eu
-task_app_directory=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-cd "$task_app_directory"
-if [ "$(id -u)" -eq 0 ]; then
-    exec /usr/sbin/runuser -u pmsa -- /usr/local/bin/php artisan schedule:run
+if [ "$(id -u)" -ne 0 ]; then
+    echo 'The scheduler is managed by psm-rental-scheduler.timer.'
+    exit 0
 fi
-exec /usr/local/bin/php artisan schedule:run
+exec /usr/local/sbin/psm-rental-php artisan schedule:run

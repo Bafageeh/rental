@@ -1,0 +1,12 @@
+<section class="section-heading" id="pm-projects"><div><h2>مشاريع PM</h2><p>التشغيل والخدمات والنطاقات للمشاريع المستقلة</p></div></section>
+<section class="card" id="pm-project-card">
+ <div class="pm-project-header"><h3>إدارة الأملاك</h3><span class="pm-project-badge" id="pm-project-state">جارٍ التحقق...</span></div>
+ <code class="pm-project-root" id="pm-project-root"></code>
+ <div class="pm-services" id="pm-service-states"></div>
+ <p id="pm-public-state" class="pm-project-note"></p>
+ <p id="pm-certificate" class="pm-project-note"></p>
+ <div class="pm-project-dns"><table><thead><tr><th>النطاق</th><th>العنوان الحالي</th><th>عنوان PSM</th><th>الحالة</th></tr></thead><tbody id="pm-dns-rows"></tbody></table></div>
+ <p class="pm-project-note">يكتمل فصل استقبال الزوار عند توجيه النطاقين إلى عنوان PSM. يبقى العنوان السابق مسارًا مؤقتًا خلال انتقال DNS.</p>
+ <div class="pm-project-actions"><button type="button" id="pm-project-refresh">تحديث الحالة</button><a href="https://rental.pm.sa" target="_blank" rel="noopener">فتح الموقع</a><button type="button" data-pm-action="restart-web">إعادة تشغيل الويب</button><button type="button" data-pm-action="restart-php">إعادة تشغيل PHP</button><button type="button" data-pm-action="restart-expo">إعادة تشغيل Expo</button></div>
+ <p class="pm-project-message" id="pm-project-message" role="status" aria-live="polite"></p>
+</section>
