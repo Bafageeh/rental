@@ -37,16 +37,16 @@ async function domainState(domain){
 export async function pmProjectStatus(){
  const [states,domains,publicReady]=await Promise.all([
   Promise.all(Object.entries(services).map(async([key,name])=>[key,await serviceState(name)])),
-  Promise.all(['rental.pm.sa','rentals-api.pm.sa','panel.pm.sa'].map(domainState)),publicProbe()
+  Promise.all(['rental.pm.sa','panel.pm.sa'].map(domainState)),publicProbe()
  ]);
  let certificate={};
  try{
   const x=new crypto.X509Certificate(fs.readFileSync(BASE+'/operations/pm/metadata/rental-cert.pem'));
   certificate={validTo:new Date(x.validTo).toISOString(),issuer:x.issuer,validNow:Date.now()<Date.parse(x.validTo)};
  }catch{}
- return {id:'rental',name:'إدارة الأملاك',root:BASE+'/pm/rental',ip:IP,phpVersion:'8.4.27',
+ return {id:'rental',name:'إدارة الأملاك',root:BASE+'/pm/rental',siteUrl:'https://rental.pm.sa',apiBaseUrl:'https://rental.pm.sa/api',ip:IP,phpVersion:'8.4.27',
   services:Object.fromEntries(states),domains,publicReady,certificate,
-  status:domains.slice(0,2).every(d=>d.ready)&&publicReady?'independent':'awaiting_dns',
+  status:domains.every(d=>d.ready)&&publicReady?'independent':'awaiting_dns',
   checkedAt:new Date().toISOString()};
 }
 export async function pmProjectsRouter(req,res,route,helpers){

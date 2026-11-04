@@ -18,5 +18,7 @@ The helper scripts in this directory are reviewed installation sources. Updating
 them in Git does not overwrite privileged installed helpers automatically.
 
 Legacy Apache proxy configuration is only a transition path for DNS caches.
-Public independence requires `rental.pm.sa` and `rentals-api.pm.sa` to resolve
-to the PSM address. The PSM dashboard can use the same ingress at `panel.pm.sa`.
+The canonical site is `https://rental.pm.sa`; its API base URL is
+`https://rental.pm.sa/api`. Public independence requires only `rental.pm.sa`
+and the management endpoint `panel.pm.sa` to resolve to the PSM address.
+The retired API hostname is not a runtime, DNS, or certificate-renewal requirement.
